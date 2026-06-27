@@ -1,0 +1,948 @@
+{% extends "base.html" %}
+
+{% block title %}Strategie-Konzepte - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Strategie-Konzepte</h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button id="btn-import-concept" class="btn btn-outline-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 11l3 3l3 -3"/><path d="M12 4l0 10"/></svg>
+          Konzept importieren
+        </button>
+        <button id="btn-new-concept" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Neue Strategie
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{# Versteckte Datei-Dialoge für Import (Konzept bzw. Iteration in ein Konzept) #}
+<input type="file" id="concept-import-file" accept=".json,application/json" style="display:none">
+<input type="file" id="iteration-import-file" accept=".json,application/json" style="display:none">
+{# Reusable Macro für das Suchfeld mit Lupe + X-Clear-Button #}
+{% macro search_input(id, width='260px') %}
+<div class="dt-search-input" style="width: {{ width }};">
+  <span class="dt-search-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+  </span>
+  <input type="search" id="{{ id }}" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+  <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="{{ id }}">&times;</button>
+</div>
+{% endmacro %}
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Konzepte (<span id="concepts-total">...</span>)</h3>
+    <div class="card-actions">
+      {{ search_input('concepts-search', '260px') }}
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="concepts-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="w-1"></th>
+            <th class="text-nowrap">ID</th>
+            <th class="text-nowrap">Slug</th>
+            <th class="text-nowrap">Name</th>
+            <th class="text-nowrap">Kategorie</th>
+            <th class="text-nowrap">Status</th>
+            <th class="text-nowrap">Iterationen</th>
+            <th class="text-nowrap">Obsidian</th>
+            <th class="text-nowrap">Erstellt</th>
+            <th style="min-width:100px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Iteration-Detail (spec_json + Lineage) -->
+<div class="modal modal-blur fade" id="modal-iteration-detail" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Iteration: <span id="detail-version"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-7">
+            <h6>Spec JSON</h6>
+            <div class="spec-viewer" id="detail-spec-json">Kein Spec vorhanden.</div>
+          </div>
+          <div class="col-md-5">
+            <h6>Lineage-Kette</h6>
+            <ul class="lineage-chain" id="detail-lineage">
+              <li class="text-muted">Wird geladen...</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Schließen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Konzept anlegen / bearbeiten -->
+<div class="modal modal-blur fade" id="modal-concept" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-md" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-concept-title">Konzept anlegen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="concept-id">
+        <div class="mb-3">
+          <label class="form-label required">Name</label>
+          <input type="text" class="form-control" id="concept-name" placeholder="z.B. Teststrategie">
+        </div>
+        {# GEÄNDERT: Slug wird automatisch aus dem Namen erzeugt (read-only); beim Bearbeiten bleibt er stabil #}
+        <div class="mb-3">
+          <label class="form-label">Slug</label>
+          <input type="text" class="form-control" id="concept-slug" placeholder="wird aus dem Namen erzeugt" readonly>
+          <small class="text-muted">Wird automatisch aus dem Namen erzeugt (Kleinbuchstaben mit Bindestrichen)</small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kategorie</label>
+          <input type="text" class="form-control" id="concept-category" placeholder="z.B. Trend">
+        </div>
+        {# GEÄNDERT: Ticket 16 — Obsidian-Slug-Feld entfernt (Pfad wird deterministisch aus slug abgeleitet) #}
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="concept-status">
+            <option value="active">active</option>
+            <option value="draft">draft</option>
+            <option value="archived">archived</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kurzbeschreibung</label>
+          <textarea class="form-control" id="concept-description" rows="2" placeholder="Kurze Beschreibung der Strategie"></textarea>
+        </div>
+        <div id="concept-modal-error" class="alert alert-danger" style="display:none;"></div>
+      </div>
+      <div class="modal-footer flex-nowrap">
+        {# GEÄNDERT: Ticket 16 — Vault-Button nur für bestehende Konzepte (id gesetzt) #}
+        <button type="button" class="btn btn-outline-secondary" id="btn-concept-vault-create" style="display:none;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Obsidian-Dokumente anlegen
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="btn-save-concept">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// GEÄNDERT: Vault-Name aus Server-Kontext (konfigurierbar via OBSIDIAN_VAULT_NAME)
+var OBSIDIAN_VAULT_NAME = {{ obsidian_vault_name | tojson }};
+
+document.addEventListener("DOMContentLoaded", function() {
+
+  // Cache der vorab geladenen Iterationen pro Concept (vermeidet zweiten HTTP-Call)
+  var iterationsByConcept = {};
+  // Cache aller Iterationen by ID für Lineage-Lookup
+  var allIterations = {};
+  // Sequenz-Counter für eindeutige Child-Tabellen-IDs (verhindert DataTables-Reinit-Fehler)
+  var _childSeq = 0;
+  // Ziel-Konzept für den Iterations-Import (gesetzt beim Klick auf "Iteration importieren")
+  var _importIterationConceptId = null;
+
+  function loadIterations(callback) {
+    fetch('/api/strategy/iterations')
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) ? json.data.items : [];
+        iterationsByConcept = {};
+        items.forEach(function(it) {
+          if (!iterationsByConcept[it.concept_id]) iterationsByConcept[it.concept_id] = [];
+          iterationsByConcept[it.concept_id].push(it);
+          allIterations[it.id] = it;
+        });
+        if (callback) callback();
+      })
+      .catch(function() { if (callback) callback(); });
+  }
+
+  // Generisches Search-Input-Markup (Lupe + Input + X-Button)
+  function buildSearchInput(id, width) {
+    return '<div class="dt-search-input" style="width: ' + (width || '240px') + ';">' +
+      '<span class="dt-search-icon">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>' +
+      '</span>' +
+      '<input type="search" id="' + id + '" class="form-control form-control-sm" placeholder=" " autocomplete="off">' +
+      '<button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="' + id + '">&times;</button>' +
+    '</div>';
+  }
+
+  // Child-Row HTML: Tabler-Card mit Suchfeld im card-header, eindeutige IDs pro Aufklapper
+  // GEÄNDERT: Ticket 16 — conceptSlug-Parameter für Obsidian-Pfad-Ableitung
+  function buildIterationsHtml(conceptId, seq) {
+    var tableId = 'iterations-table-' + seq;
+    var searchId = 'iter-search-' + seq;
+    var count = (iterationsByConcept[conceptId] || []).length;
+    return '<div class="px-5 py-4">' +
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<h3 class="card-title">Iterationen (' + count + ')</h3>' +
+          '<div class="card-actions d-flex gap-2 align-items-center">' +
+            '<button class="btn btn-sm btn-outline-primary btn-import-iteration" data-concept-id="' + conceptId + '" title="Iteration aus Datei in dieses Konzept importieren">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 11l3 3l3 -3"/><path d="M12 4l0 10"/></svg>' +
+              'Iteration importieren</button>' +
+            buildSearchInput(searchId, '240px') +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body p-0">' +
+          '<div class="table-responsive">' +
+            '<table id="' + tableId + '" class="table table-vcenter card-table table-striped mb-0">' +
+              '<thead><tr>' +
+                '<th class="w-1 text-center" style="width:32px" title="Favorit">F</th>' +
+                // GEÄNDERT: Header-Zelle für den roten Doku-Favoriten-Stern (Spalte 2)
+                '<th class="w-1 text-center" style="width:32px" title="Doku-Favorit">D</th>' +
+                // GEÄNDERT: Version (Integer) und Versionsname als getrennte Spalten
+                '<th class="w-1 text-nowrap text-center">Version</th>' +
+                '<th class="w-1 text-nowrap">Versionsname</th>' +
+                '<th>Kurzbeschreibung</th>' +
+                '<th class="w-1 text-nowrap">Status</th>' +
+                '<th class="w-1 text-nowrap">Typ</th>' +
+                '<th class="w-1 text-nowrap">Obsidian</th>' +
+                '<th class="w-1 text-nowrap">Erstellt</th>' +
+                '<th class="w-1 text-nowrap">Aktualisiert</th>' +
+                '<th class="w-1"></th>' +
+              '</tr></thead>' +
+              '<tbody></tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // GEÄNDERT: Ticket 16 — conceptSlug-Parameter für Obsidian-Pfad-Ableitung in der Tabelle
+  function initIterationsTable(conceptId, conceptSlug, seq) {
+    var tableId = '#iterations-table-' + seq;
+    var searchId = '#iter-search-' + seq;
+    // _conceptSlug an jeden Item-Datensatz annotieren für den Obsidian-Link-Renderer
+    var rawItems = iterationsByConcept[conceptId] || [];
+    var items = rawItems.map(function(it) {
+      return Object.assign({}, it, { _conceptSlug: conceptSlug });
+    });
+    var iterTable = $(tableId).DataTable({
+      data: items,
+      columns: [
+        { data: 'is_favorite', orderable: true, className: 'text-center', render: function(d, type, row) {
+            if (type === 'sort' || type === 'type') return d ? 1 : 0;
+            var on = !!d;
+            var fill = on ? 'currentColor' : 'none';
+            var cls = on ? 'btn-ghost-warning text-warning' : 'btn-ghost-secondary text-muted';
+            var title = on ? 'Favorit entfernen' : 'Als Favorit markieren';
+            return '<button class="btn btn-sm ' + cls + ' p-1 btn-toggle-favorite" data-id="' + row.id + '" title="' + title + '">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="' + fill + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/></svg>' +
+            '</button>';
+        }},
+        // GEÄNDERT: Doku-Favorit-Spalte (roter Stern), direkt nach gelbem Stern
+        { data: 'is_doc_favorite', orderable: true, className: 'text-center', render: function(d, type, row) {
+            if (type === 'sort' || type === 'type') return d ? 1 : 0;
+            var on = !!d;
+            var fill = on ? 'currentColor' : 'none';
+            var cls = on ? 'btn-ghost-danger text-danger' : 'btn-ghost-secondary text-muted';
+            var title = on ? 'Doku-Favorit entfernen' : 'Als Doku-Favorit markieren';
+            return '<button class="btn btn-sm ' + cls + ' p-1 btn-toggle-doc-favorite" data-id="' + row.id + '" title="' + title + '">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="' + fill + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/></svg>' +
+            '</button>';
+        }},
+        // GEÄNDERT: Version (Integer) und Versionsname als getrennte Spalten
+        { data: null, className: 'w-1 text-nowrap text-center', render: function(data, type, row) {
+            // Spalte "Version" — zeigt row.version (Integer) mit Detail-Link
+            if (type === 'sort' || type === 'type') return row.version;
+            return '<a href="#" class="btn-show-detail fw-bold text-reset" data-id="' + row.id + '">' + row.version + '</a>';
+        }},
+        { data: null, className: 'w-1 text-nowrap text-start', render: function(data, type, row) {
+            // Spalte "Versionsname" — zeigt row.version_name als reinen Text, kein Fallback mehr
+            // GEÄNDERT: text-start erzwingt Linksausrichtung (sonst richtet DataTables rein-numerische Werte rechts aus)
+            // GEÄNDERT: HTML-Escaping analog zur Kurzbeschreibung-Spalte
+            if (!row.version_name) return '<span class="text-muted">-</span>';
+            return $('<div>').text(row.version_name).html();
+        }},
+        { data: 'description', className: 'text-start', render: function(d) {
+            if (!d) return '<span class="text-muted">-</span>';
+            var esc = $('<div>').text(d).html();
+            return '<span title="' + esc.replace(/"/g, '&quot;') + '">' + esc + '</span>';
+        }},
+        { data: 'status', className: 'w-1 text-nowrap', render: function(d) {
+            var cls = d === 'active' ? 'bg-green-lt' : d === 'archived' ? 'bg-secondary-lt' : 'bg-yellow-lt';
+            return '<span class="badge ' + cls + '">' + d + '</span>';
+        }},
+        { data: 'type', className: 'w-1 text-nowrap', render: function(d) {
+            if (d === 'hardcoded') return '<span class="badge bg-blue-lt">hardcoded</span>';
+            if (d === 'generic') return '<span class="badge bg-green-lt">generic</span>';
+            return '<span class="text-muted">-</span>';
+        }},
+        // GEÄNDERT: Ticket 16 — Obsidian-Link aus version + conceptSlug ableiten, vault_exists für visuellen Status
+        { data: null, className: 'w-1 text-nowrap', render: function(data) {
+            var slug = data._conceptSlug || '';
+            var version = data.version || '';
+            // GEÄNDERT: Obsidian-Link zeigt den Dokumentnamen <slug>-<version> (eindeutig, identisch zur Datei im Pfad)
+            var docName = slug + '-' + version;
+            if (!slug || !version) return '<span class="text-muted">-</span>';
+            var vaultFile = '30_Trading/strategies/' + slug + '/iterations/' + version + '/' + docName + '.md';
+            var url = 'obsidian://open?vault=' + OBSIDIAN_VAULT_NAME + '&file=' + encodeURIComponent(vaultFile);
+            if (data.vault_exists) {
+              return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen (' + version + ')">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+                ' ' + docName + '</a>';
+            }
+            return '<span class="btn btn-sm btn-ghost-secondary py-0 text-muted" title="Notiz nicht vorhanden (' + version + ')">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+              ' ' + docName + '</span>';
+        }},
+        { data: 'created_at', className: 'w-1 text-nowrap', render: function(d) {
+            if (!d) return '-';
+            var dt = new Date(d);
+            if (isNaN(dt.getTime())) return d;
+            var pad = function(n) { return n.toString().padStart(2, '0'); };
+            return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+                   ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+        }},
+        // Spalte "Aktualisiert": updated_at, Fallback auf created_at für Bestand ohne Edit
+        { data: null, className: 'w-1 text-nowrap', render: function(data, type) {
+            var raw = data.updated_at || data.created_at;
+            if (type === 'sort' || type === 'type') return raw || '';
+            if (!raw) return '<span class="text-muted">-</span>';
+            var dt = new Date(raw);
+            if (isNaN(dt.getTime())) return raw;
+            var pad = function(n) { return n.toString().padStart(2, '0'); };
+            var label = pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+                        ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+            return data.updated_at
+              ? label
+              : '<span class="text-muted" title="Noch nie bearbeitet — zeigt Erstelldatum">' + label + '</span>';
+        }},
+        { data: null, orderable: false, className: 'w-1 text-nowrap text-end', render: function(data) {
+            return '<div class="text-end text-nowrap">' +
+              '<button class="btn btn-sm btn-ghost-secondary me-1 btn-show-detail" data-id="' + data.id + '" title="Detail">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg>' +
+              '</button>' +
+              '<a href="/config/strategy-concepts/' + conceptId + '/iterations/' + data.id + '/edit" class="btn btn-sm btn-outline-primary me-1" title="Bearbeiten">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/></svg>' +
+              '</a>' +
+              '<button class="btn btn-sm btn-outline-info me-1 btn-copy-iteration" data-id="' + data.id + '" title="Kopieren">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></svg>' +
+              '</button>' +
+              '<button class="btn btn-sm btn-outline-secondary me-1 btn-export-iteration" data-id="' + data.id + '" title="Als JSON-Datei exportieren">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 8l3 -3l3 3"/><path d="M12 5l0 9"/></svg>' +
+              '</button>' +
+              '<button class="btn btn-sm btn-outline-danger btn-delete-iteration" data-id="' + data.id + '" data-version="' + (data.version || '') + '" data-version-name="' + (data.version_name || data.version || '') + '" data-vault-exists="' + (data.vault_exists ? '1' : '0') + '" data-concept-slug="' + (data._conceptSlug || '') + '" title="Löschen">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>' +
+              '</button>' +
+            '</div>';
+        }}
+      ],
+      dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+      pageLength: 10,
+      lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'Alle']],
+      // GEÄNDERT: Sekundärsortierung auf Version (Spalte 2) absteigend statt created_at
+      order: [[0, 'desc'], [2, 'desc']],
+      language: {
+        lengthMenu: '_MENU_ pro Seite',
+        info: '_START_ bis _END_ von _TOTAL_ Einträgen',
+        infoEmpty: 'Keine Einträge',
+        zeroRecords: 'Keine Iterationen vorhanden',
+        paginate: { first: 'Erste', last: 'Letzte', next: 'Weiter', previous: 'Zurück' }
+      }
+    });
+    $(searchId).on('input', function() { iterTable.search(this.value).draw(); });
+  }
+
+  function buildTable() {
+    var table = new DataTable("#concepts-table", {
+      ajax: {
+        url: "/api/strategy/concepts",
+        dataSrc: function(json) {
+          var items = (json.data && json.data.items) ? json.data.items : [];
+          document.getElementById("concepts-total").textContent = items.length;
+          return items;
+        }
+      },
+      columns: [
+        { className: 'dt-control', orderable: false, data: null, defaultContent: '', width: '30px' },
+        // GEÄNDERT: ID-Spalte vor Slug (reine Zahl, kein Präfix)
+        { data: "id", className: 'w-1 text-nowrap' },
+        { data: "slug", render: function(d) { return '<span class="fw-bold">' + d + '</span>'; } },
+        { data: "name" },
+        { data: "category", render: function(d) {
+            return d ? '<span class="badge bg-purple-lt">' + d + '</span>' : '<span class="text-muted">-</span>';
+        }},
+        { data: "status", render: function(d) {
+            var cls = d === 'active' ? 'bg-green-lt' : d === 'archived' ? 'bg-secondary-lt' : 'bg-yellow-lt';
+            return '<span class="badge ' + cls + '">' + d + '</span>';
+        }},
+        { data: "id", render: function(d) {
+            var count = (iterationsByConcept[d] || []).length;
+            return '<span class="badge bg-azure-lt">' + count + '</span>';
+        }},
+        // GEÄNDERT: Ticket 16 — Obsidian-Link aus slug ableiten, vault_exists für visuellen Status
+        { data: null, render: function(data) {
+            var slug = data.slug || '';
+            var vaultFile = '30_Trading/strategies/' + slug + '/' + slug + '-concept.md';
+            var url = 'obsidian://open?vault=' + OBSIDIAN_VAULT_NAME + '&file=' + encodeURIComponent(vaultFile);
+            if (data.vault_exists) {
+              return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+                ' ' + slug + '</a>';
+            }
+            return '<span class="btn btn-sm btn-ghost-secondary py-0 text-muted" title="Notiz nicht vorhanden">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+              ' ' + slug + '</span>';
+        }},
+        { data: "created_at", render: function(d) {
+            if (!d) return '-';
+            var dt = new Date(d);
+            if (isNaN(dt.getTime())) return d;
+            var pad = function(n) { return n.toString().padStart(2, '0'); };
+            return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+                   ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+        }},
+        { data: null, orderable: false, render: function(data) {
+            return '<div class="text-end text-nowrap">' +
+              // GEÄNDERT: Ticket 16 — data-obsidian entfernt
+              '<button class="btn btn-sm btn-outline-primary me-1 btn-edit-concept" data-id="' + data.id + '" data-slug="' + (data.slug||'') + '" data-name="' + (data.name||'') + '" data-category="' + (data.category||'') + '" data-status="' + data.status + '" data-description="' + ($('<div>').text(data.description||'').html().replace(/"/g,'&quot;')) + '" data-vault-exists="' + (data.vault_exists ? '1' : '0') + '" title="Bearbeiten">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/></svg>' +
+              '</button>' +
+              '<button class="btn btn-sm btn-outline-secondary me-1 btn-export-concept" data-id="' + data.id + '" title="Konzept als JSON-Datei exportieren">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 8l3 -3l3 3"/><path d="M12 5l0 9"/></svg>' +
+              '</button>' +
+              '<button class="btn btn-sm btn-outline-secondary btn-archive-concept" data-id="' + data.id + '" title="Archivieren" ' + (data.status === 'archived' ? 'disabled' : '') + '>' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M3 8l0 10a2 2 0 0 0 2 2h14a2 2 0 0 0 2 -2l0 -10"/><path d="M12 12l0 4"/><path d="M10 14l4 0"/></svg>' +
+              '</button>' +
+            '</div>';
+        }}
+      ],
+      // Top-Slot leer, Length+Info links unten, Pagination rechts unten
+      dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+      pageLength: 25,
+      lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+      // GEÄNDERT: Slug-Spalte ist nach Einschub der ID-Spalte jetzt Index 2
+      order: [[2, "asc"]],
+      language: {
+        lengthMenu: "_MENU_ pro Seite",
+        info: "_START_ bis _END_ von _TOTAL_",
+        infoEmpty: "Keine Konzepte",
+        zeroRecords: "Keine Konzepte gefunden",
+        paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+      }
+    });
+
+    // Eigenes Suchfeld an DataTable binden
+    $('#concepts-search').on('input', function() { table.search(this.value).draw(); });
+
+    // Child-Row öffnen (immer aufgeklappt)
+    function openChildRow(tr) {
+      var row = table.row(tr);
+      if (row.child.isShown()) return;
+      var data = row.data();
+      if (!data) return;
+      var seq = ++_childSeq;
+      // GEÄNDERT: Ticket 16 — data.slug an initIterationsTable übergeben
+      row.child(buildIterationsHtml(data.id, seq)).show();
+      tr.next('tr').addClass('custom-details-row');
+      tr.addClass('table-active');
+      initIterationsTable(data.id, data.slug || '', seq);
+    }
+
+    // Child-Row Toggle (dt-control)
+    $('#concepts-table tbody').on('click', 'td.dt-control', function() {
+      var tr = $(this).closest('tr');
+      var row = table.row(tr);
+      if (row.child.isShown()) {
+        row.child.hide();
+        tr.removeClass('table-active');
+      } else {
+        openChildRow(tr);
+      }
+    });
+
+    // GEÄNDERT: Zeilen starten zugeklappt — Aufklappen nur per Klick auf den Pfeil (dt-control)
+
+    return table;
+  }
+
+  // Detail-Ansicht einer Iteration öffnen
+  function showIterationDetail(id) {
+    fetch('/api/strategy/iterations/' + id)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) { alert('Fehler: ' + json.error); return; }
+        var it = json.data;
+        document.getElementById('detail-version').textContent = it.version_name || it.version;
+        var specEl = document.getElementById('detail-spec-json');
+        specEl.textContent = it.spec_json ? JSON.stringify(it.spec_json, null, 2) : 'Kein Spec JSON vorhanden.';
+        buildLineage(it, function(chain) {
+          var ul = document.getElementById('detail-lineage');
+          ul.innerHTML = '';
+          chain.forEach(function(entry) {
+            var li = document.createElement('li');
+            li.innerHTML = '<span class="badge bg-azure-lt me-1">' + (entry.version_name || entry.version) + '</span>' +
+              (entry.id === it.id ? '<span class="badge bg-green-lt ms-1">aktuell</span>' : '');
+            ul.appendChild(li);
+          });
+        });
+        new tabler.Modal(document.getElementById('modal-iteration-detail')).show();
+      });
+  }
+
+  function buildLineage(iteration, callback) {
+    var chain = [iteration];
+    function loadParent(it) {
+      if (!it.parent_iteration_id) { chain.reverse(); callback(chain); return; }
+      if (allIterations[it.parent_iteration_id]) {
+        chain.push(allIterations[it.parent_iteration_id]);
+        loadParent(allIterations[it.parent_iteration_id]);
+        return;
+      }
+      fetch('/api/strategy/iterations/' + it.parent_iteration_id)
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error || !json.data) { chain.reverse(); callback(chain); return; }
+          allIterations[json.data.id] = json.data;
+          chain.push(json.data);
+          loadParent(json.data);
+        })
+        .catch(function() { chain.reverse(); callback(chain); });
+    }
+    loadParent(iteration);
+  }
+
+  // Globaler Delegations-Handler: Action-Buttons + Clear-Buttons der Suchfelder
+  document.addEventListener('click', function(e) {
+    var clearBtn = e.target.closest('.dt-search-clear');
+    if (clearBtn) {
+      var targetId = clearBtn.getAttribute('data-clear-for');
+      var input = document.getElementById(targetId);
+      if (input) {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+      }
+      return;
+    }
+    var detailBtn = e.target.closest('.btn-show-detail');
+    if (detailBtn) {
+      e.preventDefault();
+      showIterationDetail(parseInt(detailBtn.getAttribute('data-id')));
+      return;
+    }
+    var editBtn = e.target.closest('.btn-edit-concept');
+    if (editBtn) {
+      // GEÄNDERT: Ticket 16 — data-obsidian entfernt, data-vault-exists hinzugefügt
+      openConceptModal({
+        id: editBtn.getAttribute('data-id'),
+        slug: editBtn.getAttribute('data-slug'),
+        name: editBtn.getAttribute('data-name'),
+        category: editBtn.getAttribute('data-category'),
+        status: editBtn.getAttribute('data-status'),
+        description: editBtn.getAttribute('data-description') || '',
+        vaultExists: editBtn.getAttribute('data-vault-exists') === '1',
+        title: 'Konzept bearbeiten'
+      });
+      return;
+    }
+    var favBtn = e.target.closest('.btn-toggle-favorite');
+    if (favBtn) {
+      e.preventDefault();
+      var iterId = favBtn.getAttribute('data-id');
+      favBtn.disabled = true;
+      fetch('/api/strategy/iterations/' + iterId + '/favorite', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) { alert('Fehler: ' + json.error); favBtn.disabled = false; return; }
+          // Lokalen Cache patchen und alle aufgeklappten Child-Tabellen neu zeichnen
+          Object.keys(iterationsByConcept).forEach(function(cid) {
+            iterationsByConcept[cid].forEach(function(it) {
+              if (String(it.id) === String(iterId)) it.is_favorite = json.data.is_favorite;
+            });
+          });
+          if (allIterations[iterId]) allIterations[iterId].is_favorite = json.data.is_favorite;
+          // Star-Button in-place updaten
+          var on = !!json.data.is_favorite;
+          favBtn.disabled = false;
+          favBtn.className = 'btn btn-sm ' + (on ? 'btn-ghost-warning text-warning' : 'btn-ghost-secondary text-muted') + ' p-1 btn-toggle-favorite';
+          favBtn.title = on ? 'Favorit entfernen' : 'Als Favorit markieren';
+          var svg = favBtn.querySelector('svg');
+          if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
+          // Child-Tabelle nach Toggle neu sortieren, damit Favoriten nach oben rutschen
+          var tbl = favBtn.closest('table');
+          if (tbl && $.fn.DataTable && $.fn.DataTable.isDataTable(tbl)) {
+            // Datensatz im DataTable-Cache patchen, sonst sortiert es auf den alten Wert
+            var dt = $(tbl).DataTable();
+            dt.rows().every(function() {
+              var rd = this.data();
+              if (rd && String(rd.id) === String(iterId)) {
+                rd.is_favorite = on;
+                this.data(rd);
+              }
+            });
+            dt.order([[0, 'desc'], [2, 'desc']]).draw(false);
+          }
+        })
+        .catch(function(err) { alert('Fehler: ' + err); favBtn.disabled = false; });
+      return;
+    }
+    var docFavBtn = e.target.closest('.btn-toggle-doc-favorite');
+    if (docFavBtn) {
+      e.preventDefault();
+      var iterId = docFavBtn.getAttribute('data-id');
+      docFavBtn.disabled = true;
+      // GEÄNDERT: Doku-Favorit-Toggle (roter Stern)
+      fetch('/api/strategy/iterations/' + iterId + '/doc_favorite', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) { alert('Fehler: ' + json.error); docFavBtn.disabled = false; return; }
+          // Lokalen Cache patchen
+          Object.keys(iterationsByConcept).forEach(function(cid) {
+            iterationsByConcept[cid].forEach(function(it) {
+              if (String(it.id) === String(iterId)) it.is_doc_favorite = json.data.is_doc_favorite;
+            });
+          });
+          if (allIterations[iterId]) allIterations[iterId].is_doc_favorite = json.data.is_doc_favorite;
+          // Button in-place updaten
+          var on = !!json.data.is_doc_favorite;
+          docFavBtn.disabled = false;
+          docFavBtn.className = 'btn btn-sm ' + (on ? 'btn-ghost-danger text-danger' : 'btn-ghost-secondary text-muted') + ' p-1 btn-toggle-doc-favorite';
+          docFavBtn.title = on ? 'Doku-Favorit entfernen' : 'Als Doku-Favorit markieren';
+          var svg = docFavBtn.querySelector('svg');
+          if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
+        })
+        .catch(function(err) { alert('Fehler: ' + err); docFavBtn.disabled = false; });
+      return;
+    }
+    var delIterBtn = e.target.closest('.btn-delete-iteration');
+    if (delIterBtn) {
+      e.preventDefault();
+      var iid = delIterBtn.getAttribute('data-id');
+      var version = delIterBtn.getAttribute('data-version') || '';
+      var versionName = delIterBtn.getAttribute('data-version-name') || version;
+      var vaultExists = delIterBtn.getAttribute('data-vault-exists') === '1';
+      var msg = 'Iteration "' + versionName + '" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.';
+      if (!confirm(msg)) return;
+      var deleteVault = false;
+      if (vaultExists) {
+        deleteVault = confirm('Auch den Obsidian-Ordner samt allen Dateien löschen?');
+      }
+      fetch('/api/strategy/iterations/' + iid + '?delete_vault=' + (deleteVault ? 'true' : 'false'), { method: 'DELETE' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, json: j }; }); })
+        .then(function(res) {
+          if (!res.ok) {
+            var detail = res.json && res.json.detail;
+            // GEÄNDERT: 409 mit Blocker-Info und Force-Option
+            if (res.status === 409 && detail && detail.blockers) {
+              var b = detail.blockers;
+              var parts = [];
+              if (b.child_iterations > 0) parts.push(b.child_iterations + ' Child-Iteration(en)');
+              if (b.backtest_runs > 0) parts.push(b.backtest_runs + ' Backtest-Run(s)');
+              if (b.backtest_results > 0) parts.push(b.backtest_results + ' Backtest-Ergebnis(se)');
+              var forceMsg = 'Abhängige Datensätze: ' + parts.join(', ') + '.\n\nAlle ebenfalls löschen?';
+              if (!confirm(forceMsg)) return;
+              fetch('/api/strategy/iterations/' + iid + '?delete_vault=' + (deleteVault ? 'true' : 'false') + '&force=true', { method: 'DELETE' })
+                .then(function(r2) { return r2.json().then(function(j) { return { ok: r2.ok, json: j }; }); })
+                .then(function(res2) {
+                  if (!res2.ok) {
+                    var d2 = res2.json && res2.json.detail;
+                    var m2 = (typeof d2 === 'string' ? d2 : (d2 && d2.message) || (res2.json && res2.json.error)) || 'Löschen fehlgeschlagen.';
+                    alert(m2);
+                    return;
+                  }
+                  loadIterations(function() { _table.ajax.reload(); });
+                })
+                .catch(function(err) { alert('Fehler: ' + err); });
+            } else {
+              var m = (typeof detail === 'string' ? detail : (detail && detail.message) || (res.json && res.json.error)) || 'Löschen fehlgeschlagen.';
+              alert(m);
+            }
+            return;
+          }
+          loadIterations(function() { _table.ajax.reload(); });
+        })
+        .catch(function(err) { alert('Fehler: ' + err); });
+      return;
+    }
+    var copyIterBtn = e.target.closest('.btn-copy-iteration');
+    if (copyIterBtn) {
+      e.preventDefault();
+      var cid = copyIterBtn.getAttribute('data-id');
+      copyIterBtn.disabled = true;
+      fetch('/api/strategy/iterations/' + cid + '/copy', { method: 'POST' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          copyIterBtn.disabled = false;
+          if (!res.ok || (res.json && res.json.error)) {
+            var detail = res.json && (res.json.detail || res.json.error);
+            alert((typeof detail === 'string' ? detail : (detail && detail.message)) || 'Kopieren fehlgeschlagen.');
+            return;
+          }
+          loadIterations(function() { _table.ajax.reload(); });
+        })
+        .catch(function(err) { copyIterBtn.disabled = false; alert('Fehler: ' + err); });
+      return;
+    }
+    // Konzept als JSON-Datei exportieren
+    var expConceptBtn = e.target.closest('.btn-export-concept');
+    if (expConceptBtn) {
+      e.preventDefault();
+      var ecId = expConceptBtn.getAttribute('data-id');
+      expConceptBtn.disabled = true;
+      fetch('/api/strategy/concepts/' + ecId + '/export', { method: 'POST' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          expConceptBtn.disabled = false;
+          if (!res.ok || (res.json && res.json.error)) {
+            alert('Export fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+            return;
+          }
+          alert('Konzept exportiert nach:\n' + res.json.data.path);
+        })
+        .catch(function(err) { expConceptBtn.disabled = false; alert('Fehler: ' + err); });
+      return;
+    }
+    // Iteration als JSON-Datei exportieren
+    var expIterBtn = e.target.closest('.btn-export-iteration');
+    if (expIterBtn) {
+      e.preventDefault();
+      var eiId = expIterBtn.getAttribute('data-id');
+      expIterBtn.disabled = true;
+      fetch('/api/strategy/iterations/' + eiId + '/export', { method: 'POST' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          expIterBtn.disabled = false;
+          if (!res.ok || (res.json && res.json.error)) {
+            alert('Export fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+            return;
+          }
+          alert('Iteration exportiert nach:\n' + res.json.data.path);
+        })
+        .catch(function(err) { expIterBtn.disabled = false; alert('Fehler: ' + err); });
+      return;
+    }
+    // Iteration in dieses Konzept importieren — öffnet den Datei-Dialog
+    var impIterBtn = e.target.closest('.btn-import-iteration');
+    if (impIterBtn) {
+      e.preventDefault();
+      _importIterationConceptId = impIterBtn.getAttribute('data-concept-id');
+      document.getElementById('iteration-import-file').click();
+      return;
+    }
+    var archiveBtn = e.target.closest('.btn-archive-concept');
+    if (archiveBtn) {
+      var id = archiveBtn.getAttribute('data-id');
+      if (!confirm('Konzept wirklich archivieren? Diese Aktion kann rückgängig gemacht werden.')) return;
+      fetch('/api/strategy/concepts/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) { alert('Fehler: ' + json.error); return; }
+        loadIterations(function() { _table.ajax.reload(); });
+      });
+    }
+  });
+
+  // GEÄNDERT: Erzeugt den Slug aus dem Namen — spiegelt normalize_concept_slug im Backend
+  // (lowercase, Leerzeichen/Unterstriche zu Bindestrichen, ungültige Zeichen entfernt)
+  function slugifyConceptName(raw) {
+    return (raw || '').trim().toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  // GEÄNDERT: Ticket 16 — obsidian-Feld entfernt; Vault-Button je nach id und vault_exists
+  function openConceptModal(opts) {
+    var defaults = { id: '', slug: '', name: '', category: '', status: 'active', description: '', vaultExists: false, title: 'Konzept anlegen' };
+    var o = Object.assign({}, defaults, opts || {});
+    document.getElementById("concept-id").value = o.id;
+    document.getElementById("concept-slug").value = o.slug;
+    document.getElementById("concept-name").value = o.name;
+    document.getElementById("concept-category").value = o.category;
+    document.getElementById("concept-status").value = o.status;
+    document.getElementById("concept-description").value = o.description;
+    document.getElementById("modal-concept-title").textContent = o.title;
+    document.getElementById("concept-modal-error").style.display = 'none';
+
+    // Vault-Button nur für bestehende Konzepte anzeigen
+    var btnVault = document.getElementById("btn-concept-vault-create");
+    if (o.id) {
+      btnVault.style.display = '';
+      if (o.vaultExists) {
+        btnVault.disabled = true;
+        btnVault.className = 'btn btn-success';
+        btnVault.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M5 12l5 5l10 -10"/></svg> Obsidian-Dokumente vorhanden';
+      } else {
+        btnVault.disabled = false;
+        btnVault.className = 'btn btn-outline-secondary';
+        btnVault.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg> Obsidian-Dokumente anlegen';
+        btnVault.setAttribute('data-concept-id', o.id);
+      }
+    } else {
+      btnVault.style.display = 'none';
+    }
+
+    new tabler.Modal(document.getElementById("modal-concept")).show();
+  }
+
+  var _table;
+  loadIterations(function() {
+    _table = buildTable();
+
+    document.getElementById("btn-new-concept").addEventListener("click", function() {
+      openConceptModal({ title: 'Neue Strategie anlegen' });
+    });
+
+    // Konzept-Import: Datei-Dialog öffnen und hochgeladene JSON importieren
+    document.getElementById("btn-import-concept").addEventListener("click", function() {
+      document.getElementById("concept-import-file").click();
+    });
+    document.getElementById("concept-import-file").addEventListener("change", function() {
+      var inp = this;
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      var fd = new FormData();
+      fd.append('file', f);
+      fetch('/api/strategy/concepts/import', { method: 'POST', body: fd })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          if (!res.ok || (res.json && res.json.error)) {
+            alert('Import fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+            return;
+          }
+          var d = res.json.data;
+          alert('Konzept "' + (d.name || d.slug) + '" ' + (d.action === 'updated' ? 'aktualisiert' : 'importiert') + '.');
+          loadIterations(function() { _table.ajax.reload(); });
+        })
+        .catch(function(err) { alert('Fehler: ' + err); })
+        .finally(function() { inp.value = ''; });
+    });
+
+    // Iterations-Import: hochgeladene JSON als neue Version in das gewählte Konzept laden
+    document.getElementById("iteration-import-file").addEventListener("change", function() {
+      var inp = this;
+      var f = inp.files && inp.files[0];
+      if (!f || !_importIterationConceptId) { inp.value = ''; _importIterationConceptId = null; return; }
+      var cid = _importIterationConceptId;
+      var fd = new FormData();
+      fd.append('file', f);
+      fetch('/api/strategy/concepts/' + cid + '/import-iteration', { method: 'POST', body: fd })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          if (!res.ok || (res.json && res.json.error)) {
+            alert('Import fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+            return;
+          }
+          alert('Iteration als Version ' + res.json.data.version + ' importiert.');
+          loadIterations(function() { _table.ajax.reload(); });
+        })
+        .catch(function(err) { alert('Fehler: ' + err); })
+        .finally(function() { inp.value = ''; _importIterationConceptId = null; });
+    });
+
+    // GEÄNDERT: Slug live aus dem Namen erzeugen — beim Bearbeiten (id gesetzt) bleibt der Slug stabil
+    document.getElementById("concept-name").addEventListener("input", function() {
+      if (document.getElementById("concept-id").value) return;
+      document.getElementById("concept-slug").value = slugifyConceptName(this.value);
+    });
+
+    document.getElementById("btn-save-concept").addEventListener("click", function() {
+      var id = document.getElementById("concept-id").value;
+      // GEÄNDERT: Ticket 16 — obsidian_slug entfernt aus payload
+      var payload = {
+        slug: document.getElementById("concept-slug").value.trim(),
+        name: document.getElementById("concept-name").value.trim(),
+        category: document.getElementById("concept-category").value.trim() || null,
+        status: document.getElementById("concept-status").value,
+        description: document.getElementById("concept-description").value.trim() || null,
+      };
+      if (!payload.name) {
+        document.getElementById("concept-modal-error").textContent = "Name ist ein Pflichtfeld.";
+        document.getElementById("concept-modal-error").style.display = '';
+        return;
+      }
+      if (!payload.slug) {
+        document.getElementById("concept-modal-error").textContent = "Aus dem Namen liess sich kein gültiger Slug erzeugen.";
+        document.getElementById("concept-modal-error").style.display = '';
+        return;
+      }
+      var url = id ? '/api/strategy/concepts/' + id : '/api/strategy/concepts';
+      var method = id ? 'PUT' : 'POST';
+      fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) {
+          document.getElementById("concept-modal-error").textContent = json.error;
+          document.getElementById("concept-modal-error").style.display = '';
+          return;
+        }
+        tabler.Modal.getInstance(document.getElementById("modal-concept")).hide();
+        loadIterations(function() { _table.ajax.reload(); });
+      })
+      .catch(function(err) {
+        document.getElementById("concept-modal-error").textContent = "Fehler: " + err;
+        document.getElementById("concept-modal-error").style.display = '';
+      });
+    });
+
+    // GEÄNDERT: Ticket 16 — Vault-Button-Handler für Konzept-Modal
+    document.getElementById("btn-concept-vault-create").addEventListener("click", function() {
+      var conceptId = this.getAttribute('data-concept-id');
+      if (!conceptId) return;
+      this.disabled = true;
+      fetch('/api/strategy/concepts/' + conceptId + '/vault-create', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) {
+            document.getElementById("concept-modal-error").textContent = "Vault-Fehler: " + json.error;
+            document.getElementById("concept-modal-error").style.display = '';
+            return;
+          }
+          var btnVault = document.getElementById("btn-concept-vault-create");
+          btnVault.disabled = true;
+          btnVault.className = 'btn btn-success';
+          btnVault.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M5 12l5 5l10 -10"/></svg> Obsidian-Dokumente vorhanden';
+          loadIterations(function() { _table.ajax.reload(); });
+        })
+        .catch(function(err) {
+          document.getElementById("concept-modal-error").textContent = "Fehler: " + err;
+          document.getElementById("concept-modal-error").style.display = '';
+          document.getElementById("btn-concept-vault-create").disabled = false;
+        });
+    });
+  });
+});
+</script>
+{% endblock %}

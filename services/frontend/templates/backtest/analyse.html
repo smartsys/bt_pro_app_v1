@@ -1,0 +1,965 @@
+{% extends "base.html" %}
+
+{% block title %}Analyse Run #{{ run.id }} - {{ run.strategy_name }} - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Analyse Run #{{ run.id }}</h2>
+
+        <div class="page-pretitle">Backtesting</div>
+      </div>
+      <div class="col-auto ms-auto text-muted">
+        <span class="badge bg-purple-lt">{{ run.strategy_name }}</span>
+        <span class="badge bg-azure-lt ms-1">{{ run.symbol }}</span>
+        <span class="badge bg-green-lt ms-1">{{ run.timeframe }}</span>
+        <span class="ms-2">{{ run.start_date.strftime('%d.%m.%Y') }} — {{ run.end_date.strftime('%d.%m.%Y') }}</span>
+        <span class="ms-2">{{ run.result_count | default(run.n_combinations) }} Results</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Zusammenfassung -->
+<div class="row g-3 mb-3" id="summary-cards">
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Results</div><div class="fw-bold" id="sum-total">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Profitabel</div><div class="fw-bold val-pos" id="sum-profitable">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Best Return</div><div class="fw-bold val-pos" id="sum-max-return">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Return</div><div class="fw-bold" id="sum-avg-return">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg DD</div><div class="fw-bold val-neg" id="sum-avg-dd">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Sharpe > 1</div><div class="fw-bold" id="sum-sharpe-gt1">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Best Sharpe</div><div class="fw-bold val-pos" id="sum-max-sharpe">—</div></div></div></div>
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Sharpe</div><div class="fw-bold" id="sum-avg-sharpe">—</div></div></div></div>
+</div>
+
+<!-- Metrik-Auswahl -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted small me-1">Metrik:</span>
+      <button class="btn btn-sm btn-outline-primary metric-btn active" data-metric="total_return_pct">Return %</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="total_trades">Trades</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="win_rate_pct">Win Rate %</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="profit_factor">PF</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="max_drawdown_pct">Max DD %</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="expectancy">Expectancy</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="omega_ratio">Omega</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="calmar_ratio">Calmar</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="sharpe_ratio">Sharpe</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="sortino_ratio">Sortino</button>
+    </div>
+  </div>
+</div>
+
+<!-- Analyse-Tabs -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-overview" data-bs-toggle="tab" data-bs-target="#pane-overview" type="button" role="tab">Übersicht</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-indicators" data-bs-toggle="tab" data-bs-target="#pane-indicators" type="button" role="tab">Indikatoren</button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- Tab: Übersicht -->
+  <div class="tab-pane fade show active" id="pane-overview" role="tabpanel">
+    <div class="row g-3 align-items-stretch">
+      <div class="col-md-4 d-flex">
+        <div class="card mb-3 w-100">
+          <div class="card-header py-2">
+            <h3 class="card-title mb-0">Total Return aller Backtests<span class="ms-1" style="vertical-align: baseline;" data-bs-toggle="tooltip" data-bs-placement="top" title="Total Return aller Backtests sortiert von schlecht nach gut"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted" style="vertical-align: -0.1em;"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg></span></h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-equity-overview" style="width:100%; height:300px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 d-flex">
+        <div class="card mb-3 w-100">
+          <div class="card-header py-2">
+            <h3 class="card-title mb-0">Verteilung Gewinn / Verlust Zonen<span class="ms-1" style="vertical-align: baseline;" data-bs-toggle="tooltip" data-bs-placement="top" title="Wie viel Prozent der Orders liegen in einer Gewinnspanne in % (z.B. 4,8% aller Orders machen 0-25% Total Return)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted" style="vertical-align: -0.1em;"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg></span></h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-distribution" style="width:100%; height:300px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 d-flex">
+        <div class="card mb-3 w-100">
+          <div class="card-header py-2">
+            <h3 class="card-title mb-0">Top 10 Results <small class="text-muted ms-2" id="top-metric-label">Total Return %</small></h3>
+          </div>
+          <div class="card-body p-0" id="top-content">
+            <div class="text-muted p-3">Wird geladen...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Indikatoren (Parameter-Sensitivität) -->
+  <div class="tab-pane fade" id="pane-indicators" role="tabpanel">
+    {% for ind_key, ind_val in run.indicators_config.items() %}
+    <div class="card mb-3 indicator-card" data-indicator="{{ ind_val.get('indicator', ind_key) | lower }}">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0">{{ ind_val.get('indicator', ind_key) }}
+          <span class="badge bg-green-lt ms-1">{{ ind_val.get('tf', '') }}</span>
+          {% if ind_val.get('enabled') is sameas true %}<span class="badge bg-success-lt ms-1">enabled</span>{% elif ind_val.get('enabled') is sameas false %}<span class="badge bg-secondary-lt ms-1">disabled</span>{% endif %}
+          <small class="text-muted ms-2">
+            {% for param_key, param_val in ind_val.items() %}
+              {% if param_val is mapping and param_val.get('start') is not none %}
+                {{ param_key }}: {{ param_val.start }}–{{ param_val.stop }} (step {{ param_val.step }}){% if not loop.last %} | {% endif %}
+              {% endif %}
+            {% endfor %}
+          </small>
+        </h3>
+      </div>
+      <div class="card-body" data-params='{{ ind_val | tojson }}'>
+        <div class="text-muted">Wird geladen...</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+
+
+<!-- Heatmap -->
+<div class="row g-3 mb-3">
+<div class="col-md-6">
+<div class="card">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0">Heatmap <small class="text-muted ms-2" id="heatmap-metric-label">Total Return %</small></h3>
+    <div class="card-actions d-flex gap-2 align-items-center">
+      <select id="heatmap-x" class="form-select form-select-sm" style="width:auto"></select>
+      <span class="text-muted small">vs</span>
+      <select id="heatmap-y" class="form-select form-select-sm" style="width:auto"></select>
+      <span class="text-muted small ms-2">Slider:</span>
+      <select id="heatmap-z" class="form-select form-select-sm" style="width:auto">
+        <option value="">— keiner —</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="heatmap-chart" style="width:100%; height:500px;"></div>
+    <div id="heatmap-slider-wrap" class="mt-2" style="display:none">
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small" id="heatmap-slider-label"></span>
+        <input type="range" class="form-range flex-fill" id="heatmap-slider" min="0" max="0" value="0">
+        <span class="fw-bold small" id="heatmap-slider-value"></span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<div class="col-md-6">
+<div class="card">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0">Heatmap <small class="text-muted ms-2" id="heatmap2-metric-label">Total Return %</small></h3>
+    <div class="card-actions d-flex gap-2 align-items-center">
+      <select id="heatmap2-x" class="form-select form-select-sm" style="width:auto"></select>
+      <span class="text-muted small">vs</span>
+      <select id="heatmap2-y" class="form-select form-select-sm" style="width:auto"></select>
+      <span class="text-muted small ms-2">Slider:</span>
+      <select id="heatmap2-z" class="form-select form-select-sm" style="width:auto">
+        <option value="">— keiner —</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="heatmap2-chart" style="width:100%; height:500px;"></div>
+    <div id="heatmap2-slider-wrap" class="mt-2" style="display:none">
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small" id="heatmap2-slider-label"></span>
+        <input type="range" class="form-range flex-fill" id="heatmap2-slider" min="0" max="0" value="0">
+        <span class="fw-bold small" id="heatmap2-slider-value"></span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Hintergrund-Berechnung -->
+<div class="card mt-3" id="recompute-card">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-muted small">Berechnung:</span>
+      <button class="btn btn-sm btn-primary" id="btn-recompute-start">Start</button>
+      <button class="btn btn-sm btn-warning" id="btn-recompute-stop" disabled>Stop</button>
+      <button class="btn btn-sm btn-outline-danger" id="btn-recompute-reset">Reset</button>
+      <div class="flex-fill">
+        <div class="progress" style="height: 20px; background: #e9ecef;">
+          <div class="progress-bar bg-primary" id="pb-completed" style="width:0%"></div>
+          <div class="progress-bar bg-danger" id="pb-failed" style="width:0%"></div>
+        </div>
+      </div>
+      <span class="text-muted small text-nowrap" id="recompute-status">—</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var runId = {{ run.id }};
+  var currentMetric = 'total_return_pct';
+  var paramCharts = {};  // ECharts Instanzen
+  var paramNames = [];   // Verfügbare Parameter-Namen
+
+  // Zusammenfassung laden
+  fetch('/api/backtest/runs/' + runId + '/analyse/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById('sum-total').textContent = d.total_results ? d.total_results.toLocaleString('de-DE') : '—';
+      document.getElementById('sum-profitable').textContent = d.profitable_count ? d.profitable_count.toLocaleString('de-DE') : '0';
+      document.getElementById('sum-sharpe-gt1').textContent = d.sharpe_gt1_count ? d.sharpe_gt1_count.toLocaleString('de-DE') : '0';
+      document.getElementById('sum-avg-return').textContent = d.avg_return != null ? d.avg_return.toFixed(2) + '%' : '—';
+      document.getElementById('sum-avg-sharpe').textContent = d.avg_sharpe != null ? d.avg_sharpe.toFixed(2) : '—';
+      document.getElementById('sum-avg-dd').textContent = d.avg_drawdown != null ? d.avg_drawdown.toFixed(2) + '%' : '—';
+      document.getElementById('sum-max-return').textContent = d.max_return != null ? d.max_return.toFixed(2) + '%' : '—';
+      document.getElementById('sum-max-sharpe').textContent = d.max_sharpe != null ? d.max_sharpe.toFixed(2) : '—';
+      var avgRetEl = document.getElementById('sum-avg-return');
+      avgRetEl.className = 'fw-bold ' + (d.avg_return >= 0 ? 'val-pos' : 'val-neg');
+      var avgShEl = document.getElementById('sum-avg-sharpe');
+      avgShEl.className = 'fw-bold ' + (d.avg_sharpe >= 0 ? 'val-pos' : 'val-neg');
+
+      // Heatmap-Selects befüllen
+      paramNames = d.param_names || [];
+      var selX = document.getElementById('heatmap-x');
+      var selY = document.getElementById('heatmap-y');
+      var selZ = document.getElementById('heatmap-z');
+      var sel2X = document.getElementById('heatmap2-x');
+      var sel2Y = document.getElementById('heatmap2-y');
+      var sel2Z = document.getElementById('heatmap2-z');
+      paramNames.forEach(function(p) {
+        selX.add(new Option(p, p));
+        selY.add(new Option(p, p));
+        selZ.add(new Option(p, p));
+        sel2X.add(new Option(p, p));
+        sel2Y.add(new Option(p, p));
+        sel2Z.add(new Option(p, p));
+      });
+      if (paramNames.length >= 2) {
+        selX.value = paramNames[0];
+        selY.value = paramNames[1];
+      }
+      // Heatmap 2: naechste verfuegbare Parameter vorselektieren (generisch, keine Strategie-Bindung)
+      if (paramNames.length >= 4) {
+        sel2X.value = paramNames[2];
+        sel2Y.value = paramNames[3];
+        if (paramNames.length >= 5) sel2Z.value = paramNames[4];
+      } else if (paramNames.length >= 2) {
+        sel2X.value = paramNames[0];
+        sel2Y.value = paramNames[1];
+      }
+    });
+
+  // Metrik-Buttons
+  document.querySelectorAll('.metric-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.metric-btn').forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      currentMetric = this.getAttribute('data-metric');
+      // Ranking nur laden wenn Indikatoren-Tab aktiv ist
+      if (document.getElementById('pane-indicators').classList.contains('show')) {
+        loadRanking();
+      } else {
+        indicatorsLoaded = false;  // Beim nächsten Tab-Wechsel neu laden
+      }
+      loadTopResults();
+      loadHeatmap();
+      loadHeatmap2();
+    });
+  });
+
+  // Heatmap bei Select-Änderung
+  document.getElementById('heatmap-x').addEventListener('change', loadHeatmap);
+  document.getElementById('heatmap-y').addEventListener('change', loadHeatmap);
+  document.getElementById('heatmap-z').addEventListener('change', loadHeatmap);
+  document.getElementById('heatmap2-x').addEventListener('change', loadHeatmap2);
+  document.getElementById('heatmap2-y').addEventListener('change', loadHeatmap2);
+  document.getElementById('heatmap2-z').addEventListener('change', loadHeatmap2);
+
+  function fmtVal(v) {
+    if (v === null || v === undefined) return '—';
+    return parseFloat(v).toFixed(2);
+  }
+  function fmtColor(v) {
+    if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+    var n = parseFloat(v);
+    return '<span class="' + (n >= 0 ? 'val-pos' : 'val-neg') + '">' + n.toFixed(2) + '</span>';
+  }
+
+  // ========================================================================
+  // Gewinn/Verlust Verteilung (Histogramm)
+  // ========================================================================
+  var distChart = null;
+
+  function loadDistribution() {
+    fetch('/api/backtest/runs/' + runId + '/analyse/distribution')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.buckets || d.buckets.length === 0) return;
+
+        var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        var textColor = isDark ? '#e5e7eb' : '#333';
+
+        var labels = d.buckets.map(function(b) { return (b.from < 0 ? b.from : b.to) + '%'; });
+        var pctData = d.buckets.map(function(b) { return d.total > 0 ? Math.round(b.count / d.total * 10000) / 100 : 0; });
+        var colors = d.buckets.map(function(b) {
+          return b.to <= 0 ? 'rgba(214, 57, 57, 0.75)' : 'rgba(47, 179, 68, 0.75)';
+        });
+
+        var el = document.getElementById('chart-distribution');
+        if (!distChart) {
+          distChart = echarts.init(el);
+        } else {
+          distChart.clear();
+        }
+
+        distChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var p = params[0];
+              var b = d.buckets[p.dataIndex];
+              return b.label + '<br/>' + p.value + '% (' + b.count + ' von ' + d.total + ')';
+            }
+          },
+          grid: { left: 50, right: 16, top: 16, bottom: 60 },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: textColor, fontSize: 10, rotate: 45 },
+            axisLine: { lineStyle: { color: textColor } },
+            name: 'Total Return %',
+            nameLocation: 'center',
+            nameGap: 45,
+            nameTextStyle: { color: textColor, fontSize: 11 }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: textColor, fontSize: 10, formatter: '{value}%' },
+            axisLine: { lineStyle: { color: textColor } },
+            splitLine: { lineStyle: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' } },
+            name: 'Anteil Backtests',
+            nameTextStyle: { color: textColor, fontSize: 11 }
+          },
+          series: [{
+            type: 'bar',
+            data: pctData.map(function(v, i) {
+              return { value: v, itemStyle: { color: colors[i] } };
+            }),
+            barWidth: '90%'
+          }]
+        });
+      });
+  }
+
+  // ========================================================================
+  // Total Return aller Backtests (alle Endwerte sortiert)
+  // ========================================================================
+  var equityChart = null;
+
+  function loadEquityOverview() {
+    fetch('/api/backtest/runs/' + runId + '/analyse/equity-overview')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var el = document.getElementById('chart-equity-overview');
+        if (!d.buckets || d.buckets.length === 0) {
+          el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Keine Daten</div>';
+          return;
+        }
+
+        var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        var textColor = isDark ? '#e5e7eb' : '#333';
+        var gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+        var avgData = d.buckets.map(function(b) { return b.avg; });
+        var minData = d.buckets.map(function(b) { return b.min; });
+        var maxData = d.buckets.map(function(b) { return b.max; });
+        var xLabels = d.buckets.map(function(b, i) { return i + 1; });
+
+        // Avg in negativ/positiv splitten
+        var zeroIdx = avgData.findIndex(function(v) { return v >= 0; });
+        if (zeroIdx < 0) zeroIdx = avgData.length;
+        var avgNeg = avgData.map(function(v, i) { return i <= zeroIdx ? v : null; });
+        var avgPos = avgData.map(function(v, i) { return i >= Math.max(0, zeroIdx - 1) ? v : null; });
+
+        if (!equityChart) {
+          equityChart = echarts.init(el);
+        } else {
+          equityChart.clear();
+        }
+
+        equityChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+              var idx = params[0].dataIndex;
+              var step = d.total / d.buckets.length;
+              var fromTop = Math.round(d.total - (idx + 1) * step) + 1;
+              var toTop = Math.round(d.total - idx * step);
+              if (fromTop < 1) fromTop = 1;
+              var b = d.buckets[idx];
+              return 'Top ' + fromTop + '–' + toTop +
+                '<br/>Avg: ' + b.avg.toFixed(2) + '%' +
+                '<br/>Min: ' + b.min.toFixed(2) + '%' +
+                '<br/>Max: ' + b.max.toFixed(2) + '%';
+            }
+          },
+          legend: {
+            data: ['Avg', 'Min', 'Max'],
+            textStyle: { color: textColor, fontSize: 10 },
+            top: 0, right: 0, itemWidth: 12, itemHeight: 8
+          },
+          grid: { left: 50, right: 16, top: 28, bottom: 40 },
+          xAxis: {
+            type: 'category',
+            data: xLabels,
+            axisLabel: { color: textColor, fontSize: 10 },
+            axisLine: { lineStyle: { color: gridColor } },
+            name: 'Backtest (sortiert)',
+            nameLocation: 'center',
+            nameGap: 25,
+            nameTextStyle: { color: textColor, fontSize: 11 }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: textColor, fontSize: 10, formatter: '{value}%' },
+            splitLine: { lineStyle: { color: gridColor } }
+          },
+          series: [
+            {
+              name: 'Max',
+              type: 'line',
+              data: maxData,
+              symbol: 'none',
+              lineStyle: { width: 1, color: 'rgba(47, 179, 68, 0.4)', type: 'dashed' },
+              z: 1
+            },
+            {
+              name: 'Min',
+              type: 'line',
+              data: minData,
+              symbol: 'none',
+              lineStyle: { width: 1, color: 'rgba(214, 57, 57, 0.4)', type: 'dashed' },
+              z: 1
+            },
+            {
+              name: 'Avg',
+              type: 'line',
+              data: avgNeg,
+              symbol: 'none',
+              lineStyle: { width: 2, color: '#d63939' },
+              itemStyle: { color: '#d63939' },
+              areaStyle: { color: 'rgba(214, 57, 57, 0.2)' },
+              z: 3
+            },
+            {
+              name: 'Avg',
+              type: 'line',
+              data: avgPos,
+              symbol: 'none',
+              lineStyle: { width: 2, color: '#2fb344' },
+              itemStyle: { color: '#2fb344' },
+              areaStyle: { color: 'rgba(47, 179, 68, 0.2)' },
+              z: 3
+            }
+          ]
+        });
+      });
+  }
+
+  // ========================================================================
+  // Parameter-Sensitivität (Linien-Charts)
+  // ========================================================================
+  // Indikator-Config aus Jinja2 als JS-Objekt
+  var indicatorsConfig = {{ run.indicators_config | tojson }};
+
+  function loadRanking() {
+    fetch('/api/backtest/runs/' + runId + '/analyse/parameter-ranking?metric=' + currentMetric)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.parameters || Object.keys(d.parameters).length === 0) return;
+
+        // Bestehende Charts zerstören
+        for (var key in paramCharts) { paramCharts[key].dispose(); }
+        paramCharts = {};
+
+        var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        var textColor = isDark ? '#e5e7eb' : '#333';
+        var gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+        // Parameter den Indikator-Cards zuordnen
+        var allParamNames = Object.keys(d.parameters);
+        document.querySelectorAll('.indicator-card').forEach(function(card) {
+          var indName = card.getAttribute('data-indicator');
+          var matchedParams = allParamNames.filter(function(p) {
+            return p.toLowerCase().indexOf(indName.toLowerCase()) !== -1;
+          });
+          if (matchedParams.length === 0) {
+            card.querySelector('.card-body').innerHTML = '<div class="text-muted">Keine Parameter-Variation</div>';
+            return;
+          }
+
+          var cols = matchedParams.length <= 2 ? 'col-md-6' : 'col-md-4';
+          var html = '<div class="row g-3">';
+          matchedParams.forEach(function(name) {
+            var shortName = name.replace(new RegExp('^' + indName + '_?', 'i'), '') || name;
+            html += '<div class="' + cols + '"><h6 class="mb-1">' + shortName + ' <small class="text-muted">(' + d.metric_label + ')</small></h6><div class="chart-container" id="chart-' + name + '"></div></div>';
+          });
+          html += '</div>';
+          card.querySelector('.card-body').innerHTML = html;
+
+          // Charts erstellen
+          matchedParams.forEach(function(name) {
+            var values = d.parameters[name];
+            values.sort(function(a, b) { return (a.value || 0) - (b.value || 0); });
+
+            var xData = values.map(function(v) { return v.value != null ? parseFloat(v.value.toFixed(4)) : '?'; });
+            var avgData = values.map(function(v) { return v.avg; });
+            var minData = values.map(function(v) { return v.min; });
+            var maxData = values.map(function(v) { return v.max; });
+
+            var chart = echarts.init(document.getElementById('chart-' + name));
+            paramCharts[name] = chart;
+
+            chart.setOption({
+              tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                  var idx = params[0].dataIndex;
+                  var v = values[idx];
+                  var html = 'Wert: ' + xData[idx];
+                  params.forEach(function(p) { html += '<br/>' + p.marker + ' ' + p.seriesName + ': ' + fmtVal(p.value); });
+                  html += '<br/>Count: ' + v.count + ' | Std: ' + fmtVal(v.std);
+                  return html;
+                }
+              },
+              grid: { left: 45, right: 10, top: 10, bottom: 25 },
+              xAxis: {
+                type: 'category',
+                data: xData,
+                axisLabel: { color: textColor, fontSize: 10 },
+                axisLine: { lineStyle: { color: gridColor } }
+              },
+              yAxis: {
+                type: 'value',
+                axisLabel: { color: textColor, fontSize: 10 },
+                splitLine: { lineStyle: { color: gridColor } }
+              },
+              series: [
+                { name: 'Avg ' + d.metric_label, type: 'line', data: avgData, smooth: true, lineStyle: { width: 2, color: '#3b82f6' }, itemStyle: { color: '#3b82f6' }, symbolSize: 5 },
+                { name: 'Min', type: 'line', data: minData, smooth: true, lineStyle: { width: 1, color: 'rgba(214,57,57,0.4)', type: 'dashed' }, itemStyle: { color: 'rgba(214,57,57,0.4)' }, symbol: 'none' },
+                { name: 'Max', type: 'line', data: maxData, smooth: true, lineStyle: { width: 1, color: 'rgba(47,179,68,0.4)', type: 'dashed' }, itemStyle: { color: 'rgba(47,179,68,0.4)' }, symbol: 'none' }
+              ]
+            });
+          });
+        });
+      });
+  }
+
+  // ========================================================================
+  // Heatmap (ECharts) — generische Funktionen für mehrere Instanzen
+  // ========================================================================
+  var heatmapInstances = {};  // { prefix: { chart, sliderData } }
+
+  function buildHeatmapData(cells, xVals, yVals) {
+    var data = [];
+    var cellMap = {};
+    cells.forEach(function(c) { cellMap[c.x + '|' + c.y] = c.avg; });
+    for (var yi = 0; yi < yVals.length; yi++) {
+      for (var xi = 0; xi < xVals.length; xi++) {
+        var val = cellMap[xVals[xi] + '|' + yVals[yi]];
+        data.push([xi, yi, val != null ? val : '-']);
+      }
+    }
+    return data;
+  }
+
+  function renderHeatmapChart(prefix, data, xVals, yVals, paramX, paramY) {
+    var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    var textColor = isDark ? '#e5e7eb' : '#333';
+    var lowerIsBetter = (currentMetric === 'max_drawdown_pct');
+
+    var allVals = data.map(function(d) { return d[2]; }).filter(function(v) { return v !== '-'; });
+    var minV = allVals.length > 0 ? Math.min.apply(null, allVals) : 0;
+    var maxV = allVals.length > 0 ? Math.max.apply(null, allVals) : 1;
+
+    var inst = heatmapInstances[prefix] || {};
+    var el = document.getElementById(prefix + '-chart');
+    if (!inst.chart) {
+      inst.chart = echarts.init(el);
+    } else {
+      inst.chart.clear();
+    }
+    heatmapInstances[prefix] = inst;
+
+    var xLabels = xVals.map(function(v) { return parseFloat(v.toFixed(4)); });
+    var yLabels = yVals.map(function(v) { return parseFloat(v.toFixed(4)); });
+
+    inst.chart.setOption({
+      tooltip: {
+        position: 'top',
+        formatter: function(params) {
+          if (params.value[2] === '-') return '';
+          return paramX + ': ' + xLabels[params.value[0]] +
+            '<br/>' + paramY + ': ' + yLabels[params.value[1]] +
+            '<br/>' + document.querySelector('.metric-btn.active').textContent + ': ' + params.value[2];
+        }
+      },
+      grid: { left: 80, right: 60, top: 10, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        splitArea: { show: true },
+        axisLabel: { color: textColor, fontSize: 10, rotate: xLabels.length > 15 ? 45 : 0 },
+        name: paramX,
+        nameLocation: 'center',
+        nameGap: xLabels.length > 15 ? 45 : 30,
+        nameTextStyle: { color: textColor, fontSize: 11 }
+      },
+      yAxis: {
+        type: 'category',
+        data: yLabels,
+        splitArea: { show: true },
+        axisLabel: { color: textColor, fontSize: 10 },
+        name: paramY,
+        nameTextStyle: { color: textColor, fontSize: 11 }
+      },
+      visualMap: {
+        min: minV,
+        max: maxV,
+        calculable: true,
+        orient: 'vertical',
+        right: 0,
+        top: 'center',
+        itemHeight: 200,
+        textStyle: { color: textColor, fontSize: 10 },
+        inRange: {
+          color: lowerIsBetter
+            ? ['#2fb344', '#f0c020', '#d63939']
+            : ['#d63939', '#f0c020', '#2fb344']
+        }
+      },
+      series: [{
+        type: 'heatmap',
+        data: data,
+        label: {
+          show: xVals.length <= 20 && yVals.length <= 20,
+          fontSize: 9,
+          color: '#fff',
+          formatter: function(p) { return p.value[2] !== '-' ? parseFloat(p.value[2]).toFixed(1) : ''; }
+        },
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' }
+        }
+      }]
+    });
+  }
+
+  function loadHeatmapInstance(prefix) {
+    var paramX = document.getElementById(prefix + '-x').value;
+    var paramY = document.getElementById(prefix + '-y').value;
+    var paramZ = document.getElementById(prefix + '-z').value;
+    var inst = heatmapInstances[prefix] || {};
+
+    if (!paramX || !paramY || paramX === paramY) {
+      var el = document.getElementById(prefix + '-chart');
+      if (inst.chart) { inst.chart.clear(); }
+      el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Zwei verschiedene Parameter auswählen</div>';
+      inst.chart = null;
+      heatmapInstances[prefix] = inst;
+      return;
+    }
+    if (paramZ && (paramZ === paramX || paramZ === paramY)) {
+      document.getElementById(prefix + '-z').value = '';
+      paramZ = '';
+    }
+
+    document.getElementById(prefix + '-metric-label').textContent =
+      document.querySelector('.metric-btn.active').textContent;
+
+    var url = '/api/backtest/runs/' + runId + '/analyse/heatmap?metric=' + currentMetric + '&param_x=' + paramX + '&param_y=' + paramY;
+    if (paramZ) url += '&param_z=' + paramZ;
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var sliderWrap = document.getElementById(prefix + '-slider-wrap');
+
+        if (d.slices) {
+          var zVals = d.z_values;
+          inst.sliderData = d;
+          heatmapInstances[prefix] = inst;
+
+          sliderWrap.style.display = '';
+          var slider = document.getElementById(prefix + '-slider');
+          slider.max = zVals.length - 1;
+          slider.value = 0;
+          document.getElementById(prefix + '-slider-label').textContent = d.param_z + ':';
+          document.getElementById(prefix + '-slider-value').textContent = parseFloat(zVals[0].toFixed(4));
+
+          var firstCells = d.slices[zVals[0]] || [];
+          var data = buildHeatmapData(firstCells, d.x_values, d.y_values);
+          renderHeatmapChart(prefix, data, d.x_values, d.y_values, paramX, paramY);
+
+          slider.oninput = function() {
+            var sd = heatmapInstances[prefix].sliderData;
+            var zIdx = parseInt(this.value);
+            var zVal = sd.z_values[zIdx];
+            document.getElementById(prefix + '-slider-value').textContent = parseFloat(zVal.toFixed(4));
+            var cells = sd.slices[zVal] || [];
+            var data = buildHeatmapData(cells, sd.x_values, sd.y_values);
+            renderHeatmapChart(prefix, data, sd.x_values, sd.y_values, paramX, paramY);
+          };
+        } else {
+          sliderWrap.style.display = 'none';
+          inst.sliderData = null;
+          heatmapInstances[prefix] = inst;
+          if (!d.cells || d.cells.length === 0) {
+            if (inst.chart) { inst.chart.clear(); }
+            return;
+          }
+          var data = buildHeatmapData(d.cells, d.x_values, d.y_values);
+          renderHeatmapChart(prefix, data, d.x_values, d.y_values, paramX, paramY);
+        }
+      });
+  }
+
+  function loadHeatmap() { loadHeatmapInstance('heatmap'); }
+  function loadHeatmap2() { loadHeatmapInstance('heatmap2'); }
+
+  // ========================================================================
+  // Top Results
+  // ========================================================================
+  function loadTopResults() {
+    var direction = (currentMetric === 'max_drawdown_pct') ? 'asc' : 'desc';
+    fetch('/api/backtest/runs/' + runId + '/analyse/top-results?metric=' + currentMetric + '&direction=' + direction + '&limit=10')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        document.getElementById('top-metric-label').textContent = d.metric_label;
+        var container = document.getElementById('top-content');
+
+        if (!d.results || d.results.length === 0) {
+          container.innerHTML = '<div class="text-muted p-3">Keine Results</div>';
+          return;
+        }
+
+        var html = '<div class="table-responsive"><table class="table table-sm table-striped table-hover top-table mb-0"><thead><tr>';
+        var tipIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted" style="vertical-align:-0.1em"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg>';
+        html += '<th>#</th><th>Return %</th><th>Sharpe</th><th>DD %</th><th>Win %</th><th class="text-nowrap">PF<span class="ms-1" style="vertical-align:baseline" data-bs-toggle="tooltip" data-bs-placement="top" title="Profit Factor">' + tipIcon + '</span></th><th>Trades</th><th></th><th>Speichern</th>';
+        html += '</tr></thead><tbody>';
+
+        d.results.forEach(function(r, idx) {
+          html += '<tr>';
+          html += '<td>' + (idx + 1) + '</td>';
+          html += '<td>' + fmtColor(r.total_return_pct) + '</td>';
+          html += '<td>' + fmtColor(r.sharpe_ratio) + '</td>';
+          html += '<td>' + (r.max_drawdown_pct != null ? '<span class="val-neg">' + fmtVal(r.max_drawdown_pct) + '</span>' : '—') + '</td>';
+          html += '<td>' + fmtVal(r.win_rate_pct) + '</td>';
+          html += '<td>' + fmtColor(r.profit_factor) + '</td>';
+          html += '<td>' + (r.total_trades || '—') + '</td>';
+          // GEÄNDERT: Ticket 42 — Playground-Button (flüchtig, kein Setup)
+          html += '<td><a href="/backtest/results/' + r.id + '/chart" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1">Chart</a>'
+               + ' <a href="/chart-playground?resultid=' + r.id + '" target="_blank" class="btn btn-sm btn-outline-success py-0 px-1" title="Im Playground öffnen (flüchtig)">PG</a></td>';
+          html += '<td>'
+               + '<button class="btn btn-sm btn-outline-secondary btn-save-backtest-config py-0 px-1" data-id="' + r.id + '" title="Backtest-Config speichern">BC</button> '
+               + '<button class="btn btn-sm btn-outline-secondary btn-save-indicator-config py-0 px-1" data-id="' + r.id + '" title="Indikator-Config speichern">IC</button> '
+               + '<button class="btn btn-sm btn-outline-secondary btn-save-setup py-0 px-1" data-id="' + r.id + '" title="Setup speichern">Setup</button>'
+               + '</td>';
+          html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        // Tooltips für dynamisch eingefügte Elemente initialisieren
+        container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+          var tipText = el.getAttribute('title') || '';
+          el.removeAttribute('title');
+          el.setAttribute('data-tip', tipText);
+          el.addEventListener('mouseenter', function() {
+            var text = el.getAttribute('data-tip');
+            if (!text) return;
+            var rect = el.getBoundingClientRect();
+            var tip = document.createElement('div');
+            tip.className = 'tooltip bs-tooltip-top show';
+            tip.setAttribute('role', 'tooltip');
+            tip.innerHTML = '<div class="tooltip-arrow"></div><div class="tooltip-inner">' + text + '</div>';
+            document.body.appendChild(tip);
+            tip.style.position = 'fixed';
+            tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+            tip.style.top = (rect.top - tip.offsetHeight - 4) + 'px';
+            el._tip = tip;
+          });
+          el.addEventListener('mouseleave', function() {
+            if (el._tip) { el._tip.remove(); el._tip = null; }
+          });
+        });
+      });
+  }
+
+  // ========================================================================
+  // Hintergrund-Berechnung Steuerung
+  // ========================================================================
+  var recomputePolling = null;
+
+  document.getElementById('btn-recompute-start').addEventListener('click', function() {
+    var btn = this;
+    btn.disabled = true;
+    fetch('/api/backtest/runs/' + runId + '/analyse/start', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        console.log('[ANALYSE] Jobs gestartet:', d.queued);
+        startRecomputePolling();
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Bei Fehler Button wieder freigeben, sonst bleibt er dauerhaft gesperrt
+        console.error('[ANALYSE] Start fehlgeschlagen:', e);
+        btn.disabled = false;
+        document.getElementById('recompute-status').textContent = 'Start fehlgeschlagen — bitte erneut versuchen.';
+      });
+  });
+
+  document.getElementById('btn-recompute-stop').addEventListener('click', function() {
+    fetch('/api/backtest/runs/' + runId + '/analyse/stop', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        console.log('[ANALYSE] Jobs gestoppt:', d.cancelled);
+        pollRecomputeProgress();
+      })
+      .catch(function(e) {
+        console.error('[ANALYSE] Stop fehlgeschlagen:', e);
+        document.getElementById('recompute-status').textContent = 'Stop fehlgeschlagen — bitte erneut versuchen.';
+      });
+  });
+
+  document.getElementById('btn-recompute-reset').addEventListener('click', function() {
+    if (!confirm('Alle Jobs für diesen Run löschen?')) return;
+    fetch('/api/backtest/runs/' + runId + '/analyse/reset', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        console.log('[ANALYSE] Jobs gelöscht:', d.deleted);
+        stopRecomputePolling();
+        updateProgressUI({queued: 0, running: 0, completed: 0, failed: 0, total: 0, is_active: false});
+      })
+      .catch(function(e) {
+        console.error('[ANALYSE] Reset fehlgeschlagen:', e);
+        document.getElementById('recompute-status').textContent = 'Reset fehlgeschlagen — bitte erneut versuchen.';
+      });
+  });
+
+  function startRecomputePolling() {
+    if (recomputePolling) return;
+    recomputePolling = setInterval(pollRecomputeProgress, 2000);
+    pollRecomputeProgress();
+  }
+
+  function stopRecomputePolling() {
+    if (recomputePolling) { clearInterval(recomputePolling); recomputePolling = null; }
+  }
+
+  function pollRecomputeProgress() {
+    fetch('/api/backtest/runs/' + runId + '/analyse/progress')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        updateProgressUI(d);
+        if (!d.is_active && recomputePolling) stopRecomputePolling();
+        if (d.is_active && !recomputePolling) startRecomputePolling();
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Polling-Fehler sichtbar machen statt stumm weiterlaufen zu lassen.
+        // Intervall läuft weiter (transienter Fehler kann sich erholen).
+        console.error('[ANALYSE] Fortschritt-Abfrage fehlgeschlagen:', e);
+      });
+  }
+
+  function updateProgressUI(d) {
+    var total = d.total || 1;
+    var pctDone = d.completed / total * 100;
+    var pctFail = d.failed / total * 100;
+
+    document.getElementById('pb-completed').style.width = pctDone + '%';
+    document.getElementById('pb-failed').style.width = pctFail + '%';
+
+    var statusText = d.total > 0
+      ? d.completed + ' / ' + d.total + ' (' + pctDone.toFixed(1) + '%)' +
+        (d.failed > 0 ? ', ' + d.failed + ' Fehler' : '') +
+        (d.eta ? ' — fertig ca. ' + d.eta : '')
+      : 'Keine Jobs';
+    document.getElementById('recompute-status').textContent = statusText;
+
+    document.getElementById('btn-recompute-start').disabled = d.is_active || (d.completed >= d.total && d.total > 0);
+    document.getElementById('btn-recompute-stop').disabled = !d.is_active;
+  }
+
+  // Beim Laden: einmal prüfen ob Jobs aktiv sind
+  pollRecomputeProgress();
+
+  // Charts neu rendern wenn Indikatoren-Tab sichtbar wird
+  var indicatorsTabEl = document.getElementById('tab-indicators');
+  var indicatorsLoaded = false;
+  indicatorsTabEl.addEventListener('shown.bs.tab', function() {
+    if (!indicatorsLoaded) {
+      loadRanking();
+      indicatorsLoaded = true;
+    } else {
+      // Charts bei Tab-Wechsel resizen (ECharts braucht resize nach hidden->visible)
+      for (var key in paramCharts) { paramCharts[key].resize(); }
+    }
+  });
+
+  // Metrik-Wechsel: Charts nur neu laden wenn Tab aktiv
+  var origLoadRanking = loadRanking;
+
+  // Alle ECharts bei Fenster-Resize aktualisieren
+  window.addEventListener('resize', function() {
+    if (distChart) distChart.resize();
+    if (equityChart) equityChart.resize();
+    for (var hp in heatmapInstances) { if (heatmapInstances[hp].chart) heatmapInstances[hp].chart.resize(); }
+    for (var key in paramCharts) { paramCharts[key].resize(); }
+  });
+
+  // Initial laden (ohne Ranking — das kommt erst beim Tab-Wechsel)
+  loadDistribution();
+  loadEquityOverview();
+  loadTopResults();
+  // Heatmap erst nach Summary (weil paramNames gebraucht werden)
+  setTimeout(function() { loadHeatmap(); loadHeatmap2(); }, 500);
+
+  /* Speichern-Aktionen aus Result in Top-Results-Tabelle (Ticket 43) */
+  function _saveFromResult(endpoint, label, id) {
+    fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          alert('Fehler beim Speichern (' + label + '): ' + data.error);
+        } else {
+          alert(label + ' gespeichert: ' + (data.data && data.data.name ? data.data.name : 'OK'));
+        }
+      })
+      .catch(function() { alert('Netzwerkfehler beim Speichern (' + label + ').'); });
+  }
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-save-backtest-config');
+    if (btn) { _saveFromResult('config/backtest', 'Backtest-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-indicator-config');
+    if (btn) { _saveFromResult('config/indicator', 'Indikator-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-setup');
+    if (btn) { _saveFromResult('chart-playground/setups', 'Setup', btn.getAttribute('data-id')); return; }
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,1467 @@
+{% extends "base.html" %}
+
+{% block title %}Chart #{{ result.id }} - {{ run.symbol }} - BT Pro{% endblock %}
+
+{% block head %}
+<style>
+  /* Chart-Seite: kein Page-Body-Padding, stattdessen minimaler Abstand oben */
+  .page-body { padding-top: 0; margin-top: 0.5rem; }
+  #chartContainer { width: 100%; height: 600px; }
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<!-- Metriken + Chart-Toolbar -->
+<div class="d-flex align-items-center mb-2">
+  <div class="d-flex align-items-center gap-1 me-3">
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Return</div><div class="metric-value {% if result.total_return_pct and result.total_return_pct >= 0 %}val-pos{% else %}val-neg{% endif %}" style="font-size:0.85em">{{ "%.2f"|format(result.total_return_pct or 0) }}%</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Benchmark</div><div class="metric-value" id="benchmark-value" style="font-size:0.85em">—</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Profitfaktor</div><div class="metric-value" style="font-size:0.85em">{{ "%.2f"|format(result.profit_factor or 0) }}</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Sharpe</div><div class="metric-value {% if result.sharpe_ratio and result.sharpe_ratio >= 0 %}val-pos{% else %}val-neg{% endif %}" style="font-size:0.85em">{{ "%.2f"|format(result.sharpe_ratio or 0) }}</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Max DD</div><div class="metric-value val-neg" style="font-size:0.85em">{{ "%.2f"|format(result.max_drawdown_pct or 0) }}%</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Trades</div><div class="metric-value" style="font-size:0.85em">{{ result.total_trades or 0 }}</div></div></div>
+    <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Win Rate</div><div class="metric-value" style="font-size:0.85em">{{ "%.1f"|format(result.win_rate_pct or 0) }}%</div></div></div>
+  </div>
+  <div class="chart-toolbar">
+    {% set all_tfs = [('5m', 300), ('15m', 900), ('30m', 1800), ('1h', 3600), ('4h', 14400), ('12h', 43200), ('1d', 86400), ('1w', 604800)] %}
+    {% set tf_minutes = {'5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '12h': 43200, '1d': 86400, '1w': 604800} %}
+    {% set base_sec = tf_minutes.get(run.timeframe, 3600) %}
+    {% for tf_label, tf_sec in all_tfs %}
+      {% if tf_sec >= base_sec %}
+    <button type="button" class="tf-btn" data-timeframe="{{ tf_label }}">{{ tf_label }}</button>
+      {% endif %}
+    {% endfor %}
+    <span class="tf-separator"></span>
+    <button type="button" class="tf-btn nav-btn" id="navEndBtn" title="Zum Anfang springen">&laquo;|</button>
+    <button type="button" class="tf-btn nav-btn" id="navStartBtn" title="Zum Ende springen">|&raquo;</button>
+    <span class="tf-separator"></span>
+    <button type="button" class="tf-btn nav-btn" id="fitBtn" title="Alles anzeigen">Fit</button>
+    <span class="tf-separator"></span>
+    <button type="button" class="tf-btn" id="rulerBtn" title="Preis-Differenz messen (Prozent)">Lineal</button>
+  </div>
+  <div class="ms-auto text-muted d-flex align-items-center">
+    <button class="btn btn-sm btn-ghost-secondary p-0 me-2" id="chartFavBtn" title="Favorit">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+        fill="{{ 'currentColor' if result.is_favorite else 'none' }}" stroke="currentColor" stroke-width="2"
+        class="{{ 'text-warning' if result.is_favorite else 'text-muted' }}">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </button>
+    Result #{{ result.id }}
+    <span class="badge bg-purple-lt ms-2">{{ run.strategy_name }}</span>
+    <span class="badge bg-azure-lt ms-1">{{ run.symbol }}</span>
+    <span class="badge bg-green-lt ms-1">{{ run.timeframe }}</span>
+    <span class="ms-2">{{ run.start_date.strftime('%d.%m.%Y') }} — {{ run.end_date.strftime('%d.%m.%Y') }}</span>
+    <div class="ms-3 d-flex align-items-center gap-1">
+      <button class="btn btn-sm btn-outline-success" id="btnOpenInPlayground" title="Diese Konfiguration als Playground-Setup speichern und öffnen">In Playground öffnen</button>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Walk Forward</button>
+        <div class="dropdown-menu">
+          <a class="dropdown-item walk-forward-btn" href="#" data-months="3">Nächste 3 Monate</a>
+          <a class="dropdown-item walk-forward-btn" href="#" data-months="6">Nächste 6 Monate</a>
+          <a class="dropdown-item walk-forward-btn" href="#" data-months="12">Nächste 12 Monate</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart -->
+<div class="card mb-3">
+  <div class="card-body p-0">
+    <div class="position-relative">
+      <!-- Lade-Indikator: wird angezeigt bis Chart-Daten fertig berechnet sind -->
+      <div id="chartLoading" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:100;background:rgba(255,255,255,0.85);backdrop-filter:blur(2px);">
+        <div class="text-center">
+          <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
+          <div id="chartLoadingText" class="text-muted fw-medium">Backtest-Daten werden berechnet...</div>
+        </div>
+      </div>
+      <div id="chartContainer"></div>
+      <svg id="rulerOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;display:none;"></svg>
+      <div id="rulerLabel" class="ruler-label" style="display:none;"></div>
+      <div id="orderTooltip" class="order-tooltip" style="display:none;"></div>
+      <div id="equityTooltip" style="display:none;position:absolute;z-index:1002;background:rgba(59,130,246,0.95);color:#fff;border-radius:4px;padding:4px 8px;font-size:12px;font-weight:600;pointer-events:none;white-space:nowrap;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="card">
+  <div class="card-header">
+    <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs" role="tablist">
+      <li class="nav-item"><a class="nav-link active" href="#tab-indikator" data-bs-toggle="tab" role="tab">Indikator</a></li>
+      <li class="nav-item"><a class="nav-link" href="#tab-stats" data-bs-toggle="tab" role="tab">Stats</a></li>
+      <li class="nav-item"><a class="nav-link" href="#tab-trades" data-bs-toggle="tab" role="tab">Trades / Orders / Positions</a></li>
+      <li class="nav-item ms-auto"><span id="chart-status" class="text-muted small py-2 d-inline-block"></span></li>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="tab-content">
+
+      <!-- Tab 1: Indikator-Einstellungen + Metriken-Cards + Trade-Analyse -->
+      <div class="tab-pane active" id="tab-indikator" role="tabpanel">
+        <div class="row">
+          <div class="col-auto">
+            <div class="border-end pe-3">
+              <h6 class="mb-2">Chart-Optionen</h6>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-candles" checked>
+                <label class="form-check-label small" for="toggle-candles">Candles anzeigen</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-orders" checked>
+                <label class="form-check-label small" for="toggle-orders">Long anzeigen</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-equity" checked>
+                <label class="form-check-label small" for="toggle-equity">Equity anzeigen</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-drawdown">
+                <label class="form-check-label small" for="toggle-drawdown">Drawdown anzeigen</label>
+              </div>
+            </div>
+          </div>
+          <!-- GEÄNDERT: Alle Indikatoren — inkl. Supertrend (Flächen-Rendering) — werden
+               generisch über initExtraIndicators als Panel erzeugt. Kein hartcodiertes
+               Panel pro Indikator mehr. -->
+        </div>
+      </div>
+
+      <!-- Tab 2: Stats (zwei Spalten, per AJAX geladen) -->
+      <div class="tab-pane" id="tab-stats" role="tabpanel">
+        <!-- GEÄNDERT: Vollanalyse-Button -->
+        <div id="full-metrics-bar" class="mb-3" style="display:none!important">
+          <button id="btn-full-metrics" class="btn btn-primary">
+            Vollanalyse starten
+          </button>
+        </div>
+        <div id="tab-stats-content">
+          <div class="text-muted">Stats werden geladen...</div>
+        </div>
+        <!-- Erweiterte Metriken innerhalb Stats-Tab -->
+        <div id="extended-metrics" style="display:none;" class="mt-3">
+          <h4 class="mb-3">Erweiterte Metriken</h4>
+          <div class="row g-4" id="extended-metrics-content"></div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Trades / Orders / Positions -->
+      <div class="tab-pane" id="tab-trades" role="tabpanel">
+        <div id="tab-trades-content">
+          <div class="text-muted">Daten werden geladen...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Trade-Analyse -->
+<div class="card mt-3" id="trade-analysis" style="display:none;">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0">Trade-Analyse</h3>
+  </div>
+  <div class="card-body py-3">
+    <!-- Zeile 1: Stunden-Histogramme -->
+    <div class="row g-4 align-items-end">
+      <div class="col-md-4">
+        <h6 class="mb-2">Exit-Verteilung</h6>
+        <div id="exit-dist"></div>
+      </div>
+      <div class="col-md-4">
+        <h6 class="mb-2">Trade-Dauer</h6>
+        <div id="trade-duration"></div>
+      </div>
+      <div class="col-md-4">
+        <h6 class="mb-2">Pause zwischen Trades</h6>
+        <div id="trade-gaps"></div>
+      </div>
+    </div>
+    <!-- Zeile 2: Kerzen-Histogramme + Aktivität -->
+    <div class="row g-4 align-items-end mt-2">
+      <div class="col-md-4">
+        <h6 class="mb-2">Aktivität</h6>
+        <div id="trade-activity"></div>
+      </div>
+      <div class="col-md-4">
+        <h6 class="mb-2">Trade-Dauer in Kerzen</h6>
+        <div id="trade-duration-candles"></div>
+      </div>
+      <div class="col-md-4">
+        <h6 class="mb-2">Pause zwischen Trades in Kerzen</h6>
+        <div id="trade-gaps-candles"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
+<script src="/static/js/result/tabs.js"></script>
+<script src="/static/js/result/overlay.js"></script>
+<script>
+// GEÄNDERT: vollständige Indikator-Config vom Server — für generisches Rendering aller Indikatoren
+var IND_CONFIG = {{ ind_config | tojson }};
+// GEÄNDERT: aufgelöste Parameter je Indikator — für die vollständige Anzeige in den Panels
+var IND_PARAMS = {{ ind_params | tojson }};
+document.addEventListener("DOMContentLoaded", function() {
+  var container = document.getElementById("chartContainer");
+  var statusEl = document.getElementById("chart-status");
+  var tooltipEl = document.getElementById("orderTooltip");
+
+  var themes = {
+    light: { bg: '#ffffff', text: '#333', grid: '#f0f0f0', border: '#ddd' },
+    dark: { bg: '#1f2937', text: '#e5e7eb', grid: '#374151', border: '#4b5563' }
+  };
+  var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+  var t = isDark ? themes.dark : themes.light;
+
+  var chart = LightweightCharts.createChart(container, {
+    width: container.clientWidth, height: 600,
+    layout: { background: { type: 'solid', color: t.bg }, textColor: t.text },
+    grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: t.border, autoScale: true, scaleMargins: { top: 0.1, bottom: 0.1 } },
+    timeScale: { borderColor: t.border, timeVisible: true, secondsVisible: false },
+    localization: { dateFormat: 'dd.MM.yyyy' },
+  });
+
+  var candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+    upColor: '#2fb344', downColor: '#d63939',
+    borderDownColor: '#d63939', borderUpColor: '#2fb344',
+    wickDownColor: '#d63939', wickUpColor: '#2fb344',
+  });
+
+  var equitySeries = null;
+  var drawdownPrimitive = null;  // Custom Primitive für Drawdown-Bänder
+  var chartData = null, originalCandles = null, currentCandles = null;
+  var orderPrimitive = null;  // Custom Primitive für Orders (lokal verwaltet)
+  // GEÄNDERT: Basis-Timeframe des Runs als Konstante — Referenz für das Resampling
+  // der einzelnen Serien beim Toggle-On (siehe resampleForActiveTf).
+  var BASE_TF = "{{ run.timeframe }}";
+
+  // ========================================================================
+  // Custom Primitive: Order-Rechtecke + Pfeile
+  // ========================================================================
+  var tradeDataCache = null; // Gecachte Trade-Daten
+
+  // OrderRectanglePrimitive — Order-Rechtecke mit Pfeil-Markern
+  function OrderPrimitive(trades) {
+    this._trades = trades || [];
+    this._hitAreas = [];
+  }
+  OrderPrimitive.prototype.paneViews = function() {
+    return [new OrderPaneView(this._trades, this)];
+  };
+  OrderPrimitive.prototype.setHitAreas = function(areas) { this._hitAreas = areas; };
+  OrderPrimitive.prototype.getHitAreas = function() { return this._hitAreas; };
+
+  function OrderPaneView(trades, primitive) {
+    this._trades = trades;
+    this._primitive = primitive;
+  }
+  OrderPaneView.prototype.renderer = function() {
+    return new OrderRenderer(this._trades, this._primitive);
+  };
+
+  function OrderRenderer(trades, primitive) {
+    this._trades = trades;
+    this._primitive = primitive;
+  }
+  OrderRenderer.prototype.draw = function(target) {
+    var trades = this._trades;
+    var primitive = this._primitive;
+    target.useBitmapCoordinateSpace(function(scope) {
+      if (!scope.horizontalPixelRatio || !scope.verticalPixelRatio) return;
+      var ctx = scope.context;
+      var pr = scope.horizontalPixelRatio;
+      var vr = scope.verticalPixelRatio;
+      var ts = chart.timeScale();
+      var series = candleSeries;
+      var visibleRange = ts.getVisibleRange();
+      var hitAreas = [];
+
+      trades.forEach(function(t, tIdx) {
+        // Sichtbarkeits-Check
+        if (visibleRange && (t.entry_time > visibleRange.to || t.exit_time < visibleRange.from)) return;
+
+        var startX = ts.timeToCoordinate(t.entry_time);
+        var endX = ts.timeToCoordinate(t.exit_time);
+        if (startX === null || endX === null) return;
+
+        // Y-Koordinaten via priceToCoordinate
+        var entryY = series.priceToCoordinate(t.entry_price);
+        var exitY = series.priceToCoordinate(t.exit_price);
+        if (entryY === null || exitY === null) return;
+
+        var isProfit = t.pnl && t.pnl >= 0;
+        var borderColor = isProfit ? '#2fb344' : '#d63939';
+
+        // Bitmap-Koordinaten
+        var x = Math.round(Math.max(0, startX) * pr);
+        var entryYB = Math.round(entryY * vr);
+        var exitYB = Math.round(exitY * vr);
+        var width = Math.round((Math.min(scope.bitmapSize.width / pr, endX) - Math.max(0, startX)) * pr);
+        if (width <= 2) return;
+
+        // TP/SL Y-Koordinaten
+        var tpYB = null, slYB = null;
+        if (t.tp_price) { var tpY = series.priceToCoordinate(t.tp_price); if (tpY !== null) tpYB = Math.round(tpY * vr); }
+        if (t.sl_price) { var slY = series.priceToCoordinate(t.sl_price); if (slY !== null) slYB = Math.round(slY * vr); }
+
+        ctx.save();
+
+        // Order-Hintergrund (grün/rot zwischen Entry und Exit)
+        var topY = Math.min(entryYB, exitYB);
+        var bgH = Math.abs(exitYB - entryYB);
+        if (bgH < 4) bgH = 4; // Mindesthöhe
+        ctx.fillStyle = isProfit ? 'rgba(47, 179, 68, 0.12)' : 'rgba(214, 57, 57, 0.12)';
+        ctx.fillRect(x, topY, width, bgH);
+
+        // Gestrichelte Linien
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 1.5 * pr;
+        ctx.setLineDash([6 * pr, 4 * pr]);
+
+        // Entry-Linie (EK) — schwarz
+        ctx.strokeStyle = isDark ? '#e5e7eb' : '#000000';
+        ctx.beginPath(); ctx.moveTo(x, entryYB); ctx.lineTo(x + width, entryYB); ctx.stroke();
+
+        // TP-Linie — grün gestrichelt
+        if (tpYB !== null) {
+          ctx.strokeStyle = '#2fb344';
+          ctx.beginPath(); ctx.moveTo(x, tpYB); ctx.lineTo(x + width, tpYB); ctx.stroke();
+        }
+
+        // SL-Linie — rot gestrichelt
+        if (slYB !== null) {
+          ctx.strokeStyle = '#d63939';
+          ctx.beginPath(); ctx.moveTo(x, slYB); ctx.lineTo(x + width, slYB); ctx.stroke();
+        }
+
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1.0;
+
+        // Entry-Marker (schwarzer Kreis mit weißem Ring + weißer Innenpunkt)
+        var mr = 5 * pr;
+        ctx.beginPath(); ctx.arc(x, entryYB, mr, 0, 2 * Math.PI);
+        ctx.fillStyle = isDark ? '#e5e7eb' : '#000000'; ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * pr; ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, entryYB, 2 * pr, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+
+        // Exit-Marker (farbiger Kreis mit weißem Ring)
+        ctx.beginPath(); ctx.arc(x + width, exitYB, mr, 0, 2 * Math.PI);
+        ctx.fillStyle = borderColor; ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * pr; ctx.stroke();
+
+        ctx.restore();
+
+        // P&L-Text rechts neben Exit (mit Hintergrund für Kontrast)
+        if (t.return_pct !== null && t.return_pct !== undefined) {
+          var pnlText = (t.return_pct >= 0 ? '+' : '') + t.return_pct.toFixed(2) + '%';
+          ctx.font = 'bold ' + (11 * pr) + 'px Arial';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          var textX = x + width + 6 * pr;
+          var textW = ctx.measureText(pnlText).width;
+          var textH = 14 * vr;
+          // Hintergrund-Pill
+          ctx.fillStyle = isProfit ? 'rgba(47, 179, 68, 0.9)' : 'rgba(214, 57, 57, 0.9)';
+          var pillX = textX - 3 * pr;
+          var pillY = exitYB - textH / 2;
+          var pillW = textW + 6 * pr;
+          var pillR = 3 * pr;
+          ctx.beginPath();
+          ctx.moveTo(pillX + pillR, pillY);
+          ctx.lineTo(pillX + pillW - pillR, pillY);
+          ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
+          ctx.lineTo(pillX + pillW, pillY + textH - pillR);
+          ctx.quadraticCurveTo(pillX + pillW, pillY + textH, pillX + pillW - pillR, pillY + textH);
+          ctx.lineTo(pillX + pillR, pillY + textH);
+          ctx.quadraticCurveTo(pillX, pillY + textH, pillX, pillY + textH - pillR);
+          ctx.lineTo(pillX, pillY + pillR);
+          ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+          ctx.fill();
+          // Weißer Text
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(pnlText, textX, exitYB);
+        }
+
+        // Hitboxen für Tooltip
+        var hitRadius = 12;
+        hitAreas.push({
+          cx: startX, cy: entryY, radius: hitRadius,
+          type: 'Entry', tradeIdx: tIdx, trade: t
+        });
+        hitAreas.push({
+          cx: endX, cy: exitY, radius: hitRadius,
+          type: 'Exit', tradeIdx: tIdx, trade: t
+        });
+      });
+
+      if (primitive) primitive.setHitAreas(hitAreas);
+    });
+  };
+
+  // ========================================================================
+  // Order-Tooltip mit Hover und Klick-Fixierung
+  // ========================================================================
+  var tooltipPinned = false;
+
+  function buildTooltipHtml(hit) {
+    var t = hit.trade;
+    var isEntry = hit.type === 'Entry';
+    var time = isEntry ? t.entry_time : t.exit_time;
+    var price = isEntry ? t.entry_price : t.exit_price;
+    var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
+    var side = isEntry ? 'Buy' : 'Sell';
+    var tradeId = t.trade_id !== undefined ? t.trade_id : t.trade_idx;
+    var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
+
+    var date = new Date(time * 1000);
+    var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+    var priceStr = price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec});
+    var sizeStr = t.size.toFixed(8);
+
+    var html = '<b>' + side + ' #' + tradeId + '</b> | ' + (t.direction || 'Long') + '<br>';
+    html += '<span style="color:#888">Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + ' | Spalte: ' + (t.column || '-') + '</span><br>';
+    html += 'Preis: ' + priceStr + '<br>';
+    html += 'Menge: ' + sizeStr + '<br>';
+    html += 'Zeit: ' + dateStr;
+    if (!isEntry && t.return_pct !== null && t.return_pct !== undefined) {
+      var plStr = (t.return_pct >= 0 ? '+' : '') + t.return_pct.toFixed(2) + '%';
+      var plColor = t.return_pct >= 0 ? '#a6e3a1' : '#f38ba8';
+      html += '<br>P&L: <span style="color:' + plColor + '">' + plStr + '</span>';
+    }
+    if (!isEntry && t.exit_stop_type && t.exit_stop_type !== 'None') {
+      html += ' | Exit: ' + t.exit_stop_type;
+    }
+    return html;
+  }
+
+  function findHitArea(mouseX, mouseY) {
+    if (!orderPrimitive) return null;
+    var hitAreas = orderPrimitive.getHitAreas();
+    if (!hitAreas || hitAreas.length === 0) return null;
+    for (var i = 0; i < hitAreas.length; i++) {
+      var a = hitAreas[i];
+      var dx = mouseX - a.cx, dy = mouseY - a.cy;
+      if (dx * dx + dy * dy <= a.radius * a.radius) return a;
+    }
+    return null;
+  }
+
+  // Hover-Tooltip
+  container.addEventListener('mousemove', function(e) {
+    if (tooltipPinned) return;
+    var rect = container.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hit = findHitArea(mx, my);
+    if (hit) {
+      tooltipEl.innerHTML = buildTooltipHtml(hit);
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.borderColor = '#585b70';
+      // Über dem Marker positionieren
+      tooltipEl.style.left = '0'; tooltipEl.style.top = '0'; tooltipEl.style.display = 'block';
+      var ttW = tooltipEl.offsetWidth, ttH = tooltipEl.offsetHeight;
+      var ttX = mx - ttW / 2, ttY = hit.cy - ttH - 15;
+      if (ttX < 5) ttX = 5; if (ttX + ttW > rect.width - 5) ttX = rect.width - ttW - 5; if (ttY < 5) ttY = hit.cy + 15;
+      tooltipEl.style.left = ttX + 'px'; tooltipEl.style.top = ttY + 'px';
+      container.style.cursor = 'pointer';
+    } else {
+      tooltipEl.style.display = 'none';
+      container.style.cursor = 'default';
+    }
+  });
+
+  // Klick: Fixieren oder lösen + in Zwischenablage kopieren
+  function buildClipboardText(hit) {
+    var t = hit.trade;
+    var isEntry = hit.type === 'Entry';
+    var time = isEntry ? t.entry_time : t.exit_time;
+    var price = isEntry ? t.entry_price : t.exit_price;
+    var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
+    var side = isEntry ? 'Buy' : 'Sell';
+    var tradeId = t.trade_id !== undefined ? t.trade_id : t.trade_idx;
+    var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
+    var date = new Date(time * 1000);
+    var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+    var text = side + ' #' + tradeId + ' | ' + (t.direction || 'Long') + '\n';
+    text += 'Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + '\n';
+    text += 'Preis: ' + price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec}) + '\n';
+    text += 'Menge: ' + t.size.toFixed(8) + '\n';
+    text += 'Zeit: ' + dateStr;
+    if (!isEntry && t.return_pct !== null && t.return_pct !== undefined) {
+      text += '\nP&L: ' + (t.return_pct >= 0 ? '+' : '') + t.return_pct.toFixed(2) + '%';
+    }
+    if (!isEntry && t.exit_stop_type && t.exit_stop_type !== 'None') {
+      text += ' | Exit: ' + t.exit_stop_type;
+    }
+    return text;
+  }
+
+  container.addEventListener('click', function(e) {
+    var rect = container.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hit = findHitArea(mx, my);
+    if (tooltipPinned) {
+      tooltipPinned = false; tooltipEl.style.display = 'none'; container.style.cursor = 'default';
+    } else if (hit) {
+      tooltipPinned = true;
+      tooltipEl.innerHTML = buildTooltipHtml(hit);
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.borderColor = '#3b82f6';
+      // In Zwischenablage kopieren
+      navigator.clipboard.writeText(buildClipboardText(hit)).catch(function() {});
+    }
+  });
+
+  container.addEventListener('mouseleave', function() {
+    if (!tooltipPinned) tooltipEl.style.display = 'none';
+  });
+
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") { tooltipPinned = false; tooltipEl.style.display = 'none'; }
+  });
+
+  // ========================================================================
+  // Daten laden
+  // ========================================================================
+  fetch("/api/backtest/results/{{ result.id }}/ohlcv")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      originalCandles = data.candles;
+      currentCandles = data.candles;
+      candleSeries.setData(data.candles);
+
+      // Senkrechte Linie am Backtest-Start
+      (function() {
+        function StartLinePrimitive(time) { this._time = time; }
+        StartLinePrimitive.prototype.paneViews = function() { return [new StartLinePaneView(this._time)]; };
+        function StartLinePaneView(time) { this._time = time; }
+        StartLinePaneView.prototype.renderer = function() { var t = this._time; return { draw: function(target) {
+          target.useBitmapCoordinateSpace(function(scope) {
+            var ts = chart.timeScale();
+            var x = ts.timeToCoordinate(t);
+            if (x === null) return;
+            var ctx = scope.context;
+            var px = Math.round(x * scope.horizontalPixelRatio);
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(99, 102, 241, 0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, scope.bitmapSize.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          });
+        }}; };
+        candleSeries.attachPrimitive(new StartLinePrimitive(backtestStartTime));
+      })();
+
+      // GEÄNDERT: Beim Öffnen vorläufig alle Daten anzeigen (Fit). Der finale
+      // Default-Timeframe (1D) wird gesetzt, sobald Chart-Daten und Trades
+      // vollständig geladen sind (siehe applyDefaultTimeframe im Promise.all).
+      chart.timeScale().fitContent();
+
+      // Dynamische Dezimalstellen
+      if (data.candles.length > 0) {
+        var minPrice = Infinity;
+        data.candles.forEach(function(c) { if (c.low < minPrice) minPrice = c.low; });
+        var precision = 2;
+        if (minPrice < 0.001) precision = 8;
+        else if (minPrice < 0.01) precision = 6;
+        else if (minPrice < 0.1) precision = 5;
+        else if (minPrice < 1) precision = 4;
+        else if (minPrice < 100) precision = 3;
+        candleSeries.applyOptions({ priceFormat: { type: 'price', precision: precision, minMove: Math.pow(10, -precision) } });
+      }
+
+      // Chart-Daten und Trades parallel laden
+      var loadingEl = document.getElementById("chartLoading");
+      var loadingTextEl = document.getElementById("chartLoadingText");
+      loadingTextEl.textContent = "Chart-Daten werden geladen...";
+
+      var chartDataPromise = loadChartData();
+      var tradesPromise = fetch("/api/backtest/results/{{ result.id }}/trades").then(function(r) { return r.json(); });
+
+      function showTrades(td) {
+        tradeDataCache = td.trades;
+        if (td.trades.length > 0) {
+          if (orderPrimitive) candleSeries.detachPrimitive(orderPrimitive);
+          orderPrimitive = new OrderPrimitive(td.trades);
+          candleSeries.attachPrimitive(orderPrimitive);
+          buildTradeAnalysis(td.trades);
+          // Redraw erzwingen: detach/attach simuliert Toggle
+          candleSeries.detachPrimitive(orderPrimitive);
+          candleSeries.attachPrimitive(orderPrimitive);
+        }
+      }
+
+      Promise.all([chartDataPromise, tradesPromise]).then(function(results) {
+        var cd = results[0];
+        var td = results[1];
+        console.log('[CHART] chart-data:', cd ? 'OK' : 'NULL', 'recomputed:', cd && cd.recomputed, 'equity:', cd ? (cd.equity || []).length : 0);
+        console.log('[CHART] trades:', td.trades ? td.trades.length : 0);
+
+        // Equity aktivieren
+        document.getElementById("toggle-equity").dispatchEvent(new Event("change"));
+
+        // Trades anzeigen
+        showTrades(td);
+
+        // Bei Recompute: Trades wurden erst während chart-data gespeichert,
+        // der parallele Trades-Fetch war zu früh — nochmal laden
+        if (cd && cd.recomputed) {
+          console.log('[CHART] Recompute erkannt, lade Trades neu...');
+          fetch("/api/backtest/results/{{ result.id }}/trades")
+            .then(function(r) { return r.json(); })
+            .then(function(td2) {
+              console.log('[CHART] Trades reload:', td2.trades ? td2.trades.length : 0);
+              showTrades(td2);
+              // GEÄNDERT: Nach dem Trade-Reload erneut auf den Default-Timeframe
+              // snappen, damit die neu geladenen Orders zum 1D-Raster passen.
+              applyDefaultTimeframe();
+            });
+        }
+
+        // Lade-Indikator ausblenden
+        loadingEl.style.display = 'none';
+        loadStatsTab();
+
+        // GEÄNDERT: Default-Timeframe (1D) anwenden, nachdem Candles, Equity,
+        // Indikatoren und Trades vollständig geladen sind — damit alle Serien
+        // und Orders gemeinsam auf 1D resampled werden.
+        applyDefaultTimeframe();
+      });
+    });
+
+  // Chart-Daten laden
+  function loadChartData() {
+    if (chartData) return Promise.resolve(chartData);
+    statusEl.textContent = "Erstelle Chart-Daten...";
+    return fetch("/api/backtest/results/{{ result.id }}/chart-data")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        chartData = data;
+        statusEl.textContent = "";
+        // GEÄNDERT: alle Indikatoren generisch rendern (inkl. Supertrend als Flächen-Rendering)
+        initExtraIndicators(data);
+        return data;
+      })
+      .catch(function(err) { statusEl.textContent = "Fehler: " + err.message; return null; });
+  }
+
+  // ========================================================================
+  // Toggles
+  // ========================================================================
+
+  // Candles ein/ausblenden (transparent statt entfernen, damit Primitives sichtbar bleiben)
+  document.getElementById("toggle-candles").addEventListener("change", function() {
+    if (this.checked) {
+      candleSeries.applyOptions({ upColor: '#2fb344', downColor: '#d63939', wickUpColor: '#2fb344', wickDownColor: '#d63939', borderVisible: false });
+    } else {
+      candleSeries.applyOptions({ upColor: 'transparent', downColor: 'transparent', wickUpColor: 'transparent', wickDownColor: 'transparent', borderVisible: false });
+    }
+  });
+
+  // Equity
+  document.getElementById("toggle-equity").addEventListener("change", function() {
+    if (this.checked) {
+      loadChartData().then(function(data) {
+        if (!data || !data.equity) return;
+        equitySeries = chart.addSeries(LightweightCharts.LineSeries, { color: '#3b82f6', lineWidth: 2, priceScaleId: 'equity', title: 'Equity', lastValueVisible: true, priceLineVisible: false });
+        chart.priceScale('equity').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
+        // Equity auf OHLCV-Zeitbereich filtern (Lightweight Charts crasht bei Timestamps außerhalb)
+        var minTime = originalCandles && originalCandles.length > 0 ? originalCandles[0].time : 0;
+        var eqFiltered = data.equity.filter(function(e) { return e.value != null && e.time >= minTime; });
+        // GEÄNDERT: auf das aktuell aktive TF resamplen (sonst bliebe die Equity im Basis-TF)
+        equitySeries.setData(resampleForActiveTf(eqFiltered));
+      });
+    } else { if (equitySeries) { chart.removeSeries(equitySeries); equitySeries = null; } }
+  });
+
+  // ========================================================================
+  // Custom Primitive: Drawdown-Bänder (vertikale Rechtecke über dem Chart)
+  // Analog zu OrderPrimitive, zeichnet pro Drawdown-Periode ein farbiges
+  // Rechteck von start bis end über die komplette Chart-Höhe.
+  // ========================================================================
+  function DrawdownBandPrimitive(periods) {
+    this._periods = periods || [];
+  }
+  DrawdownBandPrimitive.prototype.paneViews = function() {
+    return [new DrawdownBandPaneView(this._periods)];
+  };
+  function DrawdownBandPaneView(periods) { this._periods = periods; }
+  DrawdownBandPaneView.prototype.renderer = function() { return new DrawdownBandRenderer(this._periods); };
+
+  function DrawdownBandRenderer(periods) { this._periods = periods; }
+  DrawdownBandRenderer.prototype.draw = function(target) {
+    var periods = this._periods;
+    target.useBitmapCoordinateSpace(function(scope) {
+      if (!scope.horizontalPixelRatio || !scope.verticalPixelRatio) return;
+      var ctx = scope.context;
+      var pr = scope.horizontalPixelRatio;
+      var ts = chart.timeScale();
+      var visibleRange = ts.getVisibleRange();
+      var bitmapH = scope.bitmapSize.height;
+      var bitmapW = scope.bitmapSize.width;
+
+      periods.forEach(function(p) {
+        if (visibleRange && (p.start > visibleRange.to || p.end < visibleRange.from)) return;
+        var startX = ts.timeToCoordinate(p.start);
+        var endX = ts.timeToCoordinate(p.end);
+        if (startX === null || endX === null) return;
+        var x1 = Math.round(Math.max(0, startX) * pr);
+        var x2 = Math.round(Math.min(bitmapW / pr, endX) * pr);
+        var width = x2 - x1;
+        if (width < 1) return;
+
+        var fill = p.status === 'active'
+          ? 'rgba(247, 193, 73, 0.35)'   // Gelb/orange für aktiven Drawdown
+          : 'rgba(214, 57, 57, 0.30)';   // Rot für erholte Drawdowns
+        ctx.fillStyle = fill;
+        ctx.fillRect(x1, 0, width, bitmapH);
+      });
+    });
+  };
+
+  // Snappt Drawdown-Perioden auf die Kerzen-Timestamps, die aktuell auf
+  // candleSeries gesetzt sind. Ohne Snap scheitert timeToCoordinate() bei
+  // Timestamps, die nicht exakt zu einer Kerze passen (z.B. nach einem
+  // Wechsel von 4h auf 1w - epochbasiertes Floor trifft die tatsächlichen
+  // Wochen-Anfänge nicht).
+  function _snapPeriodsToCandleTimes(periods) {
+    var arr = currentCandles;
+    if (!arr || arr.length === 0) return periods;
+    var times = new Array(arr.length);
+    for (var i = 0; i < arr.length; i++) times[i] = arr[i].time;
+    var first = times[0], last = times[times.length - 1];
+    function nearest(t, roundDown) {
+      if (t <= first) return first;
+      if (t >= last) return last;
+      // Binary Search nach erstem Index mit times[idx] >= t
+      var lo = 0, hi = times.length - 1;
+      while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (times[mid] < t) lo = mid + 1; else hi = mid;
+      }
+      if (roundDown && lo > 0 && times[lo] > t) return times[lo - 1];
+      return times[lo];
+    }
+    return periods.map(function(p) {
+      var s = nearest(p.start, true);
+      var e = nearest(p.end, false);
+      if (e <= s) {
+        // Gleiches Bucket - eine Position weiterschieben
+        var idx = times.indexOf(s);
+        e = (idx >= 0 && idx + 1 < times.length) ? times[idx + 1] : s;
+      }
+      return Object.assign({}, p, { start: s, end: e });
+    });
+  }
+
+  function _applyDrawdownBands() {
+    if (drawdownPrimitive) {
+      candleSeries.detachPrimitive(drawdownPrimitive);
+      drawdownPrimitive = null;
+    }
+    if (!chartData || !chartData.drawdown_periods) return;
+    var filtered = chartData.drawdown_periods.filter(function(p) { return Math.abs(p.dd_pct || 0) >= 0.5; });
+    if (!filtered.length) return;
+    var snapped = _snapPeriodsToCandleTimes(filtered);
+    drawdownPrimitive = new DrawdownBandPrimitive(snapped);
+    candleSeries.attachPrimitive(drawdownPrimitive);
+    // Redraw erzwingen - gleiche Technik wie bei orderPrimitive
+    candleSeries.detachPrimitive(drawdownPrimitive);
+    candleSeries.attachPrimitive(drawdownPrimitive);
+  }
+
+  document.getElementById("toggle-drawdown").addEventListener("change", function() {
+    if (this.checked) {
+      loadChartData().then(_applyDrawdownBands);
+    } else if (drawdownPrimitive) {
+      candleSeries.detachPrimitive(drawdownPrimitive);
+      drawdownPrimitive = null;
+    }
+  });
+
+  // Equity-Tooltip bei Klick
+  var eqTooltip = document.getElementById("equityTooltip");
+  var lastCrosshairParam = null;
+  chart.subscribeCrosshairMove(function(param) {
+    lastCrosshairParam = param;
+  });
+  container.addEventListener("click", function(e) {
+    if (!equitySeries || !lastCrosshairParam || !lastCrosshairParam.time || !lastCrosshairParam.point) {
+      eqTooltip.style.display = 'none';
+      return;
+    }
+    var eqData = lastCrosshairParam.seriesData.get(equitySeries);
+    if (!eqData || eqData.value === undefined) {
+      eqTooltip.style.display = 'none';
+      return;
+    }
+    // Nur anzeigen wenn Klick nahe an der Equity-Linie (max 10px Abstand)
+    var eqY = equitySeries.priceToCoordinate(eqData.value);
+    if (eqY === null || Math.abs(lastCrosshairParam.point.y - eqY) > 10) {
+      eqTooltip.style.display = 'none';
+      return;
+    }
+    eqTooltip.textContent = 'Equity: ' + eqData.value.toFixed(2);
+    eqTooltip.style.display = 'block';
+    var x = lastCrosshairParam.point.x + 12;
+    var y = lastCrosshairParam.point.y - 24;
+    if (x + eqTooltip.offsetWidth > container.clientWidth) x = lastCrosshairParam.point.x - eqTooltip.offsetWidth - 12;
+    if (y < 0) y = lastCrosshairParam.point.y + 12;
+    eqTooltip.style.left = x + 'px';
+    eqTooltip.style.top = y + 'px';
+  });
+
+  // Orders
+  document.getElementById("toggle-orders").addEventListener("change", function() {
+    if (this.checked) {
+      if (orderPrimitive) {
+        // GEÄNDERT: attachPrimitive allein löst keinen Repaint aus - die Marker
+        // erschienen erst beim nächsten Chart-Invalidate (Pan/Zoom/Resize). Redraw
+        // erzwingen mit derselben detach/attach-Technik wie showTrades/_applyDrawdownBands.
+        candleSeries.attachPrimitive(orderPrimitive);
+        candleSeries.detachPrimitive(orderPrimitive);
+        candleSeries.attachPrimitive(orderPrimitive);
+      }
+    } else {
+      if (orderPrimitive) { candleSeries.detachPrimitive(orderPrimitive); }
+      tooltipEl.style.display = 'none';
+    }
+  });
+
+  // ========================================================================
+  // GEÄNDERT: Generisches Rendering für ALLE Indikatoren — inkl. Supertrend.
+  // Pro Indikator wird ein Toggle-Panel erzeugt. Der Render-Modus folgt der
+  // Daten-Struktur: Punkte mit "direction"-Feld -> Richtungs-Flächen (Bänder),
+  // sonst -> Linie. Kein hartcodierter Indikator-Name mehr.
+  // ========================================================================
+  var _EXTRA_COLORS = ['#0ea5e9', '#ec4899', '#14b8a6', '#f97316', '#a855f7', '#6366f1', '#84cc16', '#fb923c'];
+  var extraIndSeries = {};     // name -> LineSeries oder null (Linien-Indikatoren)
+  var extraBandSeries = {};    // name -> Array von AreaSeries (Richtungs-Indikatoren)
+  var extraIndsInitialized = false;
+
+  // Richtungs-Indikator, wenn die Datenpunkte ein direction-Feld tragen.
+  function _isDirectional(arr) {
+    return !!(arr && arr.length && arr[0].direction !== undefined);
+  }
+
+  // Richtungs-Flächen (grün = direction 1, sonst rot) für einen Indikator zeichnen.
+  // Liest den Shift-Status (Strategy-Sicht: direction um 1 Kerze verschoben) aus dem
+  // zugehörigen Toggle.
+  function renderBands(indName, data) {
+    (extraBandSeries[indName] || []).forEach(function(s) { chart.removeSeries(s); });
+    extraBandSeries[indName] = [];
+    var arr = (data && data.indicators) ? data.indicators[indName] : null;
+    if (!arr || !arr.length) return;
+    var shiftEl = document.getElementById('toggle-shift-' + indName);
+    var shiftActive = shiftEl && shiftEl.checked;
+    var shiftedData = arr.map(function(p, i) {
+      if (shiftActive && i > 0) return { time: p.time, value: p.value, direction: arr[i - 1].direction };
+      return p;
+    });
+    var areas = [], currentDir = null, currentStart = null;
+    shiftedData.forEach(function(p) {
+      if (p.direction !== currentDir) {
+        if (currentStart !== null) areas.push({ startTime: currentStart, endTime: p.time, direction: currentDir });
+        currentDir = p.direction; currentStart = p.time;
+      }
+    });
+    if (currentStart !== null) { var last = arr[arr.length - 1]; areas.push({ startTime: currentStart, endTime: last.time, direction: currentDir }); }
+    var candleData = candleSeries.data(); var maxPrice = 0;
+    candleData.forEach(function(c) { if (c.high > maxPrice) maxPrice = c.high; });
+    maxPrice = maxPrice * 10;
+    areas.forEach(function(area) {
+      var color = area.direction === 1.0 ? 'rgba(47, 179, 68, 0.15)' : 'rgba(214, 57, 57, 0.15)';
+      var s = chart.addSeries(LightweightCharts.AreaSeries, { topColor: color, bottomColor: color, lineColor: 'transparent', lineWidth: 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: function() { return { priceRange: { minValue: 0, maxValue: 0 } }; } });
+      s.setData([{ time: area.startTime, value: maxPrice }, { time: area.endTime, value: maxPrice }]);
+      extraBandSeries[indName].push(s);
+    });
+  }
+
+  function initExtraIndicators(data) {
+    if (extraIndsInitialized) return;
+    extraIndsInitialized = true;
+    if (!data || !data.indicators) return;
+    var extraNames = Object.keys(data.indicators);
+    if (extraNames.length === 0) return;
+
+    var row = document.querySelector('#tab-indikator .row');
+    var colorIdx = 0;
+
+    extraNames.forEach(function(name) {
+      var directional = _isDirectional(data.indicators[name]);
+      var color = _EXTRA_COLORS[colorIdx % _EXTRA_COLORS.length];
+      if (!directional) colorIdx++;
+
+      var cfg = (IND_CONFIG && IND_CONFIG[name]) ? IND_CONFIG[name] : {};
+      var tf = cfg.tf || '';
+      var indId = (cfg.indicator || name).replace(/^(custom:|talib:|vbt:)/i, '');
+
+      var panel = document.createElement('div');
+      panel.className = 'col-auto';
+      panel.id = 'panel-extra-' + name;
+      var tfBadge = tf ? '<span class="badge bg-green-lt ms-1">' + tf + '</span>' : '';
+      // Aufgelöste Parameter generisch als Anzeige rendern (Label: Wert).
+      var paramsObj = (IND_PARAMS && IND_PARAMS[name]) ? IND_PARAMS[name] : null;
+      var paramsStr = paramsObj ? Object.keys(paramsObj).map(function(k) {
+        var label = k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ');
+        return label + ': ' + paramsObj[k];
+      }).join(', ') : '';
+      var paramsHtml = paramsStr ? '<small class="text-muted">' + paramsStr + '</small>' : '';
+      // Farbpunkt: Linie = Serienfarbe, Richtungs-Indikator = grün/rot geteilt.
+      var dot = directional
+        ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,#2fb344 50%,#d63939 50%);flex-shrink:0"></span>'
+        : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0"></span>';
+      // Shift-Toggle nur für Richtungs-Indikatoren (Strategy-Sicht).
+      var shiftToggle = directional
+        ? '<div class="form-check form-switch mb-2">' +
+            '<input class="form-check-input" type="checkbox" id="toggle-shift-' + name + '">' +
+            '<label class="form-check-label small" for="toggle-shift-' + name + '">Shift (Strategy-Sicht)</label>' +
+          '</div>'
+        : '';
+      panel.innerHTML =
+        '<div class="border-end pe-3">' +
+          '<h6 class="mb-2 d-flex align-items-center gap-1">' + dot + indId + tfBadge + '</h6>' +
+          '<div class="form-check form-switch mb-2">' +
+            '<input class="form-check-input" type="checkbox" id="toggle-extra-' + name + '">' +
+            '<label class="form-check-label small" for="toggle-extra-' + name + '">Aktiviert</label>' +
+          '</div>' +
+          shiftToggle +
+          paramsHtml +
+        '</div>';
+      row.appendChild(panel);
+
+      if (directional) {
+        extraBandSeries[name] = [];
+        (function(indName) {
+          document.getElementById('toggle-extra-' + indName).addEventListener('change', function() {
+            if (this.checked) {
+              loadChartData().then(function(d) { if (d) renderBands(indName, d); });
+            } else {
+              (extraBandSeries[indName] || []).forEach(function(s) { chart.removeSeries(s); });
+              extraBandSeries[indName] = [];
+            }
+          });
+          var shiftEl = document.getElementById('toggle-shift-' + indName);
+          if (shiftEl) shiftEl.addEventListener('change', function() {
+            var t = document.getElementById('toggle-extra-' + indName);
+            if (t && t.checked) loadChartData().then(function(d) { if (d) renderBands(indName, d); });
+          });
+        })(name);
+      } else {
+        extraIndSeries[name] = null;
+        (function(indName, indColor) {
+          document.getElementById('toggle-extra-' + indName).addEventListener('change', function() {
+            if (this.checked) {
+              loadChartData().then(function(d) {
+                if (!d || !d.indicators || !d.indicators[indName]) return;
+                var s = chart.addSeries(LightweightCharts.LineSeries, {
+                  color: indColor, lineWidth: 1, title: indName,
+                  lastValueVisible: true, priceLineVisible: false,
+                });
+                // Auf das aktuell aktive TF resamplen
+                s.setData(resampleForActiveTf(d.indicators[indName]));
+                extraIndSeries[indName] = s;
+              });
+            } else {
+              if (extraIndSeries[indName]) {
+                chart.removeSeries(extraIndSeries[indName]);
+                extraIndSeries[indName] = null;
+              }
+            }
+          });
+        })(name, color);
+      }
+    });
+  }
+
+  // ========================================================================
+  // Toolbar: Responsive, Theme, Timeframe, Fit, Navigation, Lineal
+  // ========================================================================
+  window.addEventListener("resize", function() { chart.applyOptions({ width: container.clientWidth }); });
+
+  var themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", function() {
+      setTimeout(function() {
+        isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        var tc = isDark ? themes.dark : themes.light;
+        chart.applyOptions({ layout: { background: { type: 'solid', color: tc.bg }, textColor: tc.text }, grid: { vertLines: { color: tc.grid }, horzLines: { color: tc.grid } }, rightPriceScale: { borderColor: tc.border }, timeScale: { borderColor: tc.border } });
+      }, 50);
+    });
+  }
+
+  // Timeframe
+  var tfButtons = document.querySelectorAll(".tf-btn[data-timeframe]");
+  tfButtons.forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      tfButtons.forEach(function(b) { b.classList.remove("active"); }); this.classList.add("active"); document.getElementById("fitBtn").classList.remove("active");
+      var tf = this.getAttribute("data-timeframe"); if (!originalCandles) return;
+      var baseTf = "{{ run.timeframe }}"; var isBase = (tf === baseTf);
+      // Orders und Drawdown-Bänder vor dem Resampling detachen
+      var ordersVisible = document.getElementById("toggle-orders").checked;
+      var drawdownVisible = document.getElementById("toggle-drawdown").checked;
+      if (orderPrimitive && ordersVisible) candleSeries.detachPrimitive(orderPrimitive);
+      if (drawdownPrimitive) { candleSeries.detachPrimitive(drawdownPrimitive); drawdownPrimitive = null; }
+
+      currentCandles = isBase ? originalCandles : resampleOHLCV(originalCandles, tf);
+      candleSeries.setData(currentCandles);
+      chart.timeScale().applyOptions({ timeVisible: (tf !== "1d" && tf !== "1w") });
+      if (equitySeries && chartData && chartData.equity) equitySeries.setData(isBase ? chartData.equity : resampleLine(chartData.equity, tf));
+      // GEÄNDERT: alle Indikatoren generisch beim TF-Wechsel resamplen
+      Object.keys(extraIndSeries).forEach(function(name) {
+        var s = extraIndSeries[name];
+        if (s && chartData && chartData.indicators && chartData.indicators[name]) {
+          s.setData(isBase ? chartData.indicators[name] : resampleLine(chartData.indicators[name], tf));
+        }
+      });
+
+      // Bucket-Sekunden für das gewählte TF (für Snapping)
+      var targetSec = ({ "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "12h": 720, "1d": 1440, "1w": 10080 }[tf] || 240) * 60;
+
+      // Orders mit angepassten Zeiten neu erstellen
+      if (tradeDataCache && tradeDataCache.length > 0 && ordersVisible) {
+        var snappedTrades = tradeDataCache.map(function(t) {
+          if (isBase) return t;
+          var snapped = Object.assign({}, t);
+          snapped.entry_time = Math.floor(t.entry_time / targetSec) * targetSec;
+          snapped.exit_time = Math.floor(t.exit_time / targetSec) * targetSec;
+          // Entry und Exit im selben Bucket: Exit um einen Bucket verschieben
+          if (snapped.entry_time === snapped.exit_time) snapped.exit_time += targetSec;
+          return snapped;
+        });
+        orderPrimitive = new OrderPrimitive(snappedTrades);
+        candleSeries.attachPrimitive(orderPrimitive);
+      }
+
+      // Drawdown-Bänder auf das neue TF snappen (nutzt die aktuellen
+      // candleSeries-Timestamps, damit auch unregelmäßige Bucket-Alignments
+      // wie 1w korrekt getroffen werden).
+      if (drawdownVisible) _applyDrawdownBands();
+
+      chart.timeScale().fitContent();
+    });
+  });
+
+  // GEÄNDERT: Default-Timeframe beim Öffnen — 1D, sonst der kleinste verfügbare
+  // TF (= Basis-TF bei Results, deren Basis gröber als 1D ist). Wiederverwendung
+  // des bestehenden TF-Button-Handlers: er resampled alle Serien/Orders, markiert
+  // den Button aktiv und macht Fit.
+  function applyDefaultTimeframe() {
+    var btn = document.querySelector('.tf-btn[data-timeframe="1d"]')
+           || document.querySelector('.tf-btn[data-timeframe]');
+    if (btn) { btn.click(); }
+    else { chart.timeScale().fitContent(); }
+    // GEÄNDERT: Beim Laden zusätzlich den Fit-Button hervorheben — gewünschter
+    // Zustand ist „1D UND Fit aktiv". (Der TF-Klick entfernt Fit-Aktiv, daher hier
+    // wieder setzen.) Der Fit-Klick selbst lässt den TF-Button aktiv.
+    document.getElementById("fitBtn").classList.add("active");
+    console.log('[CHART] Default-TF:', btn ? btn.getAttribute('data-timeframe') : 'keiner',
+      '| Candles original:', originalCandles ? originalCandles.length : 0,
+      '| aktuell:', currentCandles ? currentCandles.length : 0);
+  }
+
+  function resampleOHLCV(candles, targetTf) {
+    var minutes = { "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "12h": 720, "1d": 1440, "1w": 10080 };
+    var targetSec = (minutes[targetTf] || 240) * 60;
+    var result = [], currentGroup = [], currentBucket = null;
+    candles.forEach(function(c) {
+      var bt = Math.floor(c.time / targetSec) * targetSec;
+      if (currentBucket === null) currentBucket = bt;
+      if (bt !== currentBucket) {
+        if (currentGroup.length > 0) result.push({ time: currentBucket, open: currentGroup[0].open, high: Math.max.apply(null, currentGroup.map(function(b){return b.high})), low: Math.min.apply(null, currentGroup.map(function(b){return b.low})), close: currentGroup[currentGroup.length-1].close });
+        currentGroup = [c]; currentBucket = bt;
+      } else { currentGroup.push(c); }
+    });
+    if (currentGroup.length > 0) result.push({ time: currentBucket, open: currentGroup[0].open, high: Math.max.apply(null, currentGroup.map(function(b){return b.high})), low: Math.min.apply(null, currentGroup.map(function(b){return b.low})), close: currentGroup[currentGroup.length-1].close });
+    return result;
+  }
+
+  function resampleLine(points, targetTf) {
+    var targetSec = ({ "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "12h": 720, "1d": 1440, "1w": 10080 }[targetTf] || 240) * 60;
+    var result = [], cb = null, lv = null;
+    points.forEach(function(p) { var bt = Math.floor(p.time / targetSec) * targetSec; if (cb !== null && bt !== cb) result.push({ time: cb, value: lv }); cb = bt; lv = p.value; });
+    if (cb !== null) result.push({ time: cb, value: lv });
+    return result;
+  }
+
+  // GEÄNDERT: Aktuell aktives Timeframe aus dem aktiven TF-Button lesen.
+  function getActiveTf() {
+    var active = document.querySelector('.tf-btn[data-timeframe].active');
+    return active ? active.getAttribute('data-timeframe') : null;
+  }
+
+  // GEÄNDERT: Line-Serien-Daten auf das aktuell aktive TF resamplen. Wird in den
+  // Toggle-On-Handlern genutzt, damit eine spät aktivierte Serie (z.B. Equity, die
+  // erst nach applyDefaultTimeframe angelegt wird) auf demselben TF landet wie die
+  // Candles — sonst bliebe sie im rohen Basis-TF.
+  function resampleForActiveTf(points) {
+    var tf = getActiveTf();
+    return (tf && tf !== BASE_TF) ? resampleLine(points, tf) : points;
+  }
+
+  document.getElementById("fitBtn").addEventListener("click", function(e) { e.stopPropagation(); this.blur(); chart.timeScale().fitContent(); this.classList.add("active"); });
+  // Backtest-Start als Unix-Timestamp (nicht ohlc_start)
+  var backtestStartTime = Math.floor(new Date("{{ run.start_date.isoformat() }}T00:00:00Z").getTime() / 1000);
+
+  document.getElementById("navEndBtn").addEventListener("click", function(e) {
+    e.stopPropagation(); this.blur();
+    var ts = chart.timeScale();
+    var r = ts.getVisibleLogicalRange();
+    var visibleBars = r ? Math.round(r.to - r.from) : 100;
+    var startIdx = ts.timeToCoordinate(backtestStartTime);
+    var logicalStart = ts.coordinateToLogical(startIdx);
+    if (logicalStart !== null) {
+      // 20 Kerzen vor dem Start anzeigen
+      ts.setVisibleLogicalRange({ from: logicalStart - 20, to: logicalStart - 20 + visibleBars });
+    } else {
+      ts.setVisibleLogicalRange({ from: -2, to: visibleBars });
+    }
+  });
+  document.getElementById("navStartBtn").addEventListener("click", function(e) { e.stopPropagation(); this.blur(); chart.timeScale().scrollToRealTime(); });
+
+  // Lineal
+  (function() {
+    var rulerBtn = document.getElementById("rulerBtn"), rulerLabel = document.getElementById("rulerLabel"), rulerOverlay = document.getElementById("rulerOverlay"), chartEl = container;
+    var rulerActive = false, rulerStart = null, rulerEnd = null;
+    function clearRuler() { rulerOverlay.innerHTML = ""; rulerOverlay.style.display = "none"; rulerLabel.style.display = "none"; rulerStart = null; rulerEnd = null; }
+    function drawRulerLine() {
+      if (!rulerStart || !rulerEnd) return;
+      var ts = chart.timeScale(), x1 = ts.timeToCoordinate(rulerStart.time), y1 = candleSeries.priceToCoordinate(rulerStart.price), x2 = ts.timeToCoordinate(rulerEnd.time), y2 = candleSeries.priceToCoordinate(rulerEnd.price);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) { rulerOverlay.style.display = "none"; rulerLabel.style.display = "none"; return; }
+      rulerOverlay.style.display = "block"; rulerOverlay.setAttribute("width", chartEl.clientWidth); rulerOverlay.setAttribute("height", chartEl.clientHeight);
+      rulerOverlay.innerHTML = '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="6,3" /><circle cx="'+x1+'" cy="'+y1+'" r="4" fill="#60a5fa" /><circle cx="'+x2+'" cy="'+y2+'" r="4" fill="#60a5fa" />';
+      var diff = rulerEnd.price - rulerStart.price, pct = (diff / rulerStart.price) * 100, isPos = diff >= 0, sign = isPos ? "+" : "";
+      var barCount = "-", data = candleSeries.data();
+      if (data && data.length > 0) { var tMin = Math.min(rulerStart.time, rulerEnd.time), tMax = Math.max(rulerStart.time, rulerEnd.time), sIdx = -1, eIdx = -1; for (var i = 0; i < data.length; i++) { if (sIdx === -1 && data[i].time >= tMin) sIdx = i; if (data[i].time >= tMax) { eIdx = i; break; } } if (sIdx !== -1 && eIdx !== -1) barCount = Math.abs(eIdx - sIdx); }
+      rulerLabel.innerHTML = '<div class="ruler-percent '+(isPos?"positive":"negative")+'">'+sign+pct.toFixed(2)+'%</div><div class="ruler-details">'+sign+diff.toFixed(rulerStart.price>100?2:6)+' | '+barCount+' Kerzen</div>';
+      var lx = (x1+x2)/2+10, ly = (y1+y2)/2-20; if (lx > chartEl.clientWidth-150) lx = chartEl.clientWidth-150; if (lx < 10) lx = 10; if (ly < 10) ly = 10; if (ly > chartEl.clientHeight-50) ly = chartEl.clientHeight-50;
+      rulerLabel.style.display = "block"; rulerLabel.style.left = lx+"px"; rulerLabel.style.top = ly+"px";
+    }
+    rulerBtn.addEventListener("click", function(e) { e.stopPropagation(); rulerActive = !rulerActive; if (rulerActive) { rulerBtn.classList.add("active"); chartEl.classList.add("ruler-active"); clearRuler(); } else { rulerBtn.classList.remove("active"); chartEl.classList.remove("ruler-active"); clearRuler(); } });
+    document.addEventListener("keydown", function(e) { if (e.key === "Escape" && (rulerActive || rulerStart)) { rulerActive = false; rulerBtn.classList.remove("active"); chartEl.classList.remove("ruler-active"); clearRuler(); } });
+    chart.subscribeClick(function(param) {
+      if (!rulerActive) return; if (!param.point || !param.time) return;
+      var price = candleSeries.coordinateToPrice(param.point.y); if (price === null || isNaN(price)) return;
+      if (!rulerStart) { rulerStart = { time: param.time, price: price }; rulerOverlay.style.display = "block"; rulerOverlay.setAttribute("width", chartEl.clientWidth); rulerOverlay.setAttribute("height", chartEl.clientHeight); rulerOverlay.innerHTML = '<circle cx="'+param.point.x+'" cy="'+param.point.y+'" r="4" fill="#60a5fa"><animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" /></circle>'; }
+      else if (!rulerEnd) { rulerEnd = { time: param.time, price: price }; drawRulerLine(); rulerActive = false; rulerBtn.classList.remove("active"); chartEl.classList.remove("ruler-active"); }
+      else { clearRuler(); rulerStart = { time: param.time, price: price }; rulerOverlay.style.display = "block"; rulerOverlay.setAttribute("width", chartEl.clientWidth); rulerOverlay.setAttribute("height", chartEl.clientHeight); rulerOverlay.innerHTML = '<circle cx="'+param.point.x+'" cy="'+param.point.y+'" r="4" fill="#60a5fa"><animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" /></circle>'; }
+    });
+    chart.timeScale().subscribeVisibleLogicalRangeChange(function() { if (rulerStart && rulerEnd) drawRulerLine(); });
+    window.addEventListener("resize", function() { if (rulerStart && rulerEnd) drawRulerLine(); });
+  })();
+  // Favorit umschalten
+  document.getElementById("chartFavBtn").addEventListener("click", function() {
+    var btn = this;
+    fetch("/api/backtest/results/{{ result.id }}/favorite", { method: "POST" })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var svg = btn.querySelector("svg");
+        if (data.is_favorite) {
+          svg.setAttribute("fill", "currentColor");
+          svg.setAttribute("class", "text-warning");
+        } else {
+          svg.setAttribute("fill", "none");
+          svg.setAttribute("class", "text-muted");
+        }
+      });
+  });
+
+  // In-Playground-öffnen Button: Setup anlegen und zum Playground navigieren
+  document.getElementById("btnOpenInPlayground").addEventListener("click", function() {
+    var btn = this;
+    var origText = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Speichere...';
+    fetch("/api/chart-playground/setups/from-result/{{ result.id }}", { method: "POST" })
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.error || !j.data) {
+          alert('Fehler: ' + (j.detail || j.error || 'Setup konnte nicht erstellt werden'));
+          btn.disabled = false; btn.textContent = origText;
+          return;
+        }
+        window.location.href = j.data.url;
+      })
+      .catch(function(e) {
+        alert('Fehler: ' + e.message);
+        btn.disabled = false; btn.textContent = origText;
+      });
+  });
+
+  // Walk-Forward Button
+  document.querySelectorAll('.walk-forward-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var months = parseInt(this.getAttribute('data-months'));
+      if (!confirm('Walk Forward: Backtest mit diesen Parametern für die nächsten ' + months + ' Monate starten?')) return;
+      this.closest('.dropdown').querySelector('.dropdown-toggle').textContent = 'Wird gestartet...';
+      fetch('/api/backtest/walk-forward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result_id: {{ result.id }}, months: months, metric: 'total_return_pct' })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.error) { alert('Fehler: ' + d.error); return; }
+          window.location.href = '/backtest/runs/' + d.data.run_id + '/analyse';
+        });
+    });
+  });
+
+  // ========================================================================
+  // Trade-Analyse
+  // ========================================================================
+  function buildTradeAnalysis(trades) {
+    if (!trades || trades.length === 0) return;
+    document.getElementById("trade-analysis").style.display = "";
+
+    // Hilfsfunktion: Balken-Zeile
+    function bar(label, value, total, color) {
+      var pct = total > 0 ? (value / total * 100) : 0;
+      return '<div class="d-flex align-items-center mb-1">' +
+        '<small class="text-muted" style="width:80px">' + label + '</small>' +
+        '<div class="flex-fill rounded" style="height:16px;position:relative;background:var(--tblr-bg-surface-secondary, rgba(0,0,0,0.05))">' +
+        '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + color + ';border-radius:4px;min-width:1px"></div>' +
+        '</div>' +
+        '<small class="ms-2 text-nowrap" style="width:70px;text-align:right"><b>' + value + '</b> (' + pct.toFixed(1) + '%)</small></div>';
+    }
+
+    // Timeframe in Stunden umrechnen
+    var tfMap = {'5m':5/60,'15m':0.25,'30m':0.5,'1h':1,'4h':4,'12h':12,'1d':24,'1w':168};
+    var tfHours = tfMap["{{ run.timeframe }}"] || 1;
+
+    // Hilfsfunktion: Stunden formatieren
+    function fmtH(hours) {
+      if (hours < 48) return Math.round(hours) + 'h';
+      var d = Math.floor(hours / 24);
+      var h = Math.round(hours % 24);
+      return h > 0 ? d + 'd ' + h + 'h' : d + 'd';
+    }
+
+    // Einheitliche Analyse: EINE Berechnung, zwei Ausgaben (Stunden + Kerzen)
+    // Gibt {hoursHtml, candlesHtml} zurück — garantiert gleiche Zahlen
+    function buildDualHistogram(hourValues, total, color) {
+      if (hourValues.length === 0) return {hoursHtml: '', candlesHtml: ''};
+      // In Kerzen umrechnen
+      var candleVals = hourValues.map(function(v) { return Math.round(v / tfHours); });
+      // Kerzen-Werte zählen
+      var counts = {};
+      candleVals.forEach(function(c) { counts[c] = (counts[c] || 0) + 1; });
+      var keys = Object.keys(counts).map(Number).sort(function(a,b){return a-b});
+      // Max 5 Gruppen
+      var groups = [];
+      if (keys.length <= 5) {
+        keys.forEach(function(k) { groups.push({keys: [k], count: counts[k]}); });
+      } else {
+        var groupSize = Math.ceil(keys.length / 5);
+        for (var i = 0; i < keys.length; i += groupSize) {
+          var g = keys.slice(i, Math.min(i + groupSize, keys.length));
+          var c = 0;
+          g.forEach(function(k) { c += counts[k]; });
+          groups.push({keys: g, count: c});
+        }
+      }
+      // HTML für beide Ansichten aus denselben Gruppen
+      var hoursHtml = '', candlesHtml = '';
+      groups.forEach(function(g) {
+        var loK = g.keys[0], hiK = g.keys[g.keys.length - 1];
+        // Kerzen-Label
+        var cLabel = loK === hiK ? loK + ' K' : loK + '-' + hiK + ' K';
+        candlesHtml += bar(cLabel, g.count, total, color);
+        // Stunden-Label
+        var hLabel = loK === hiK ? fmtH(loK * tfHours) : fmtH(loK * tfHours) + '-' + fmtH(hiK * tfHours);
+        hoursHtml += bar(hLabel, g.count, total, color);
+      });
+      return {hoursHtml: hoursHtml, candlesHtml: candlesHtml};
+    }
+
+    var total = trades.length;
+
+    // 1. Exit-Verteilung (TP, SL, TD, Sonstige)
+    var exits = { TP: 0, SL: 0, TD: 0, Andere: 0 };
+    var tpReturns = [], slReturns = [], tdReturns = [];
+    trades.forEach(function(t) {
+      var st = (t.exit_stop_type || '').toUpperCase();
+      if (st.indexOf('TAKEPROFIT') >= 0 || st === 'TP') { exits.TP++; tpReturns.push(t.return_pct); }
+      else if (st.indexOf('STOPLOSS') >= 0 || st === 'SL') { exits.SL++; slReturns.push(t.return_pct); }
+      else if (st.indexOf('TIMEDELTA') >= 0 || st === 'TD') { exits.TD++; tdReturns.push(t.return_pct); }
+      else { exits.Andere++; }
+    });
+
+    var avgTp = tpReturns.length > 0 ? (tpReturns.reduce(function(a,b){return a+b},0) / tpReturns.length) : 0;
+    var avgSl = slReturns.length > 0 ? (slReturns.reduce(function(a,b){return a+b},0) / slReturns.length) : 0;
+    var avgTd = tdReturns.length > 0 ? (tdReturns.reduce(function(a,b){return a+b},0) / tdReturns.length) : 0;
+
+    var exitHtml = bar('TP', exits.TP, total, '#2fb344') +
+      bar('SL', exits.SL, total, '#d63939') +
+      bar('TD', exits.TD, total, '#6c7a89');
+    if (exits.Andere > 0) exitHtml += bar('Andere', exits.Andere, total, '#888');
+    exitHtml += '<hr class="my-2">' +
+      '<small class="text-muted">Avg Return: ' +
+      '<span class="val-pos">TP ' + avgTp.toFixed(1) + '%</span> | ' +
+      '<span class="val-neg">SL ' + avgSl.toFixed(1) + '%</span> | ' +
+      'TD ' + avgTd.toFixed(1) + '%</small>';
+    document.getElementById("exit-dist").innerHTML = exitHtml;
+
+    // 2. Trade-Dauer (in Stunden)
+    var durations = [];
+    trades.forEach(function(t) {
+      if (t.entry_time && t.exit_time) durations.push((t.exit_time - t.entry_time) / 3600);
+    });
+    if (durations.length > 0) {
+      durations.sort(function(a,b){return a-b});
+      var minD = durations[0], maxD = durations[durations.length-1];
+      var avgD = durations.reduce(function(a,b){return a+b},0) / durations.length;
+      var medD = durations[Math.floor(durations.length/2)];
+
+      // Histogramm: dynamische Buckets
+      var durResult = buildDualHistogram(durations, total, '#3b82f6');
+      document.getElementById("trade-duration").innerHTML = durResult.hoursHtml +
+        '<hr class="my-2"><small class="text-muted">' +
+        'Min ' + fmtH(minD) + ' | Median ' + fmtH(medD) + ' | Max ' + fmtH(maxD) + '</small>';
+      document.getElementById("trade-duration-candles").innerHTML = durResult.candlesHtml +
+        '<hr class="my-2"><small class="text-muted">' +
+        'Min ' + Math.round(minD / tfHours) + ' K | Median ' + Math.round(medD / tfHours) + ' K | Max ' + Math.round(maxD / tfHours) + ' K</small>';
+    }
+
+    // 3. Pause zwischen Trades (Exit → nächster Entry)
+    var gaps = [];
+    var sorted = trades.slice().sort(function(a,b){return a.entry_time - b.entry_time});
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i-1].exit_time && sorted[i].entry_time) {
+        var gap = (sorted[i].entry_time - sorted[i-1].exit_time) / 3600;
+        if (gap > 0) gaps.push(gap);
+      }
+    }
+    if (gaps.length > 0) {
+      gaps.sort(function(a,b){return a-b});
+      var minG = gaps[0], maxG = gaps[gaps.length-1];
+      var avgG = gaps.reduce(function(a,b){return a+b},0) / gaps.length;
+      var medG = gaps[Math.floor(gaps.length/2)];
+
+      // Feste Bucket-Grenzen in Stunden — saubere Labels
+      var gapEdges = [0, 12, 24, 72, 168, Infinity];
+      var gapLabelsH = ['< 12h', '12-24h', '1-3d', '3-7d', '> 7d'];
+      // Dieselben Grenzen in Kerzen
+      var gapLabelsK = gapEdges.slice(0, -1).map(function(e, i) {
+        var loK = Math.round(e / tfHours);
+        var hiK = gapEdges[i+1] === Infinity ? null : Math.round(gapEdges[i+1] / tfHours);
+        if (hiK === null) return '> ' + loK + ' K';
+        return loK + '-' + hiK + ' K';
+      });
+      // Zählen — EINE Zählung für beide
+      var gapCounts = new Array(gapLabelsH.length).fill(0);
+      gaps.forEach(function(g) {
+        for (var i = 0; i < gapEdges.length - 1; i++) {
+          if (g < gapEdges[i+1] || i === gapEdges.length - 2) { gapCounts[i]++; break; }
+        }
+      });
+      var gapHtml = '', gapCandleHtml = '';
+      for (var i = 0; i < gapLabelsH.length; i++) {
+        if (gapCounts[i] > 0) {
+          gapHtml += bar(gapLabelsH[i], gapCounts[i], gaps.length, '#8b5cf6');
+          gapCandleHtml += bar(gapLabelsK[i], gapCounts[i], gaps.length, '#8b5cf6');
+        }
+      }
+      document.getElementById("trade-gaps").innerHTML = gapHtml +
+        '<hr class="my-2"><small class="text-muted">' +
+        'Min ' + fmtH(minG) + ' | Median ' + fmtH(medG) + ' | Max ' + fmtH(maxG) + '</small>';
+      document.getElementById("trade-gaps-candles").innerHTML = gapCandleHtml +
+        '<hr class="my-2"><small class="text-muted">' +
+        'Min ' + Math.round(minG / tfHours) + ' K | Median ' + Math.round(medG / tfHours) + ' K | Max ' + Math.round(maxG / tfHours) + ' K</small>';
+    }
+
+    // 4. Aktivität: Zeitraum mit/ohne offene Position
+    if (sorted.length > 0) {
+      var firstEntry = sorted[0].entry_time;
+      var lastExit = sorted[sorted.length - 1].exit_time || sorted[sorted.length - 1].entry_time;
+      var totalSpan = (lastExit - firstEntry) / 3600;
+      // GEÄNDERT: In Position = Vereinigung der Trade-Intervalle, nicht die stumpfe Summe.
+      // Bei überlappenden Positionen (mehrere gleichzeitig offen) zählte die Summe die Zeit
+      // mehrfach -> Werte über 100 % (z.B. 300 %) und der Balken lief über die volle Breite hinaus.
+      var inTrade = 0;
+      var mergeStart = null, mergeEnd = null;
+      sorted.forEach(function(t) {
+        if (!t.entry_time || !t.exit_time) return;
+        if (mergeStart === null) {
+          mergeStart = t.entry_time; mergeEnd = t.exit_time;
+        } else if (t.entry_time <= mergeEnd) {
+          if (t.exit_time > mergeEnd) mergeEnd = t.exit_time;
+        } else {
+          inTrade += (mergeEnd - mergeStart) / 3600;
+          mergeStart = t.entry_time; mergeEnd = t.exit_time;
+        }
+      });
+      if (mergeStart !== null) inTrade += (mergeEnd - mergeStart) / 3600;
+      var outTrade = totalSpan - inTrade;
+      if (outTrade < 0) outTrade = 0;
+
+      var actHtml = bar('In Position', Math.round(inTrade), Math.round(totalSpan), '#2fb344') +
+        bar('Ohne Position', Math.round(outTrade), Math.round(totalSpan), '#e5e7eb') +
+        '<hr class="my-2"><small class="text-muted">' +
+        'Gesamt ' + fmtH(totalSpan) + ' | In Position ' + fmtH(inTrade) + ' (' + (totalSpan > 0 ? (inTrade/totalSpan*100).toFixed(1) : 0) + '%)</small>';
+      document.getElementById("trade-activity").innerHTML = actHtml;
+    }
+  }
+  // ========================================================================
+  // Tab 2 + 3: Werden per ResultTabs-Modul geladen (result/tabs.js)
+  // ========================================================================
+  // GEÄNDERT: Ticket 17 — Inline-Duplikate durch Modul-Aufrufe ersetzt
+  var statsTabLoaded = false;
+  var resultId_rc = {{ result.id }};
+
+  function loadStatsTab() {
+    if (statsTabLoaded) return;
+    statsTabLoaded = true;
+    ResultTabs.loadStatsTab(resultId_rc, {
+      contentEl: document.getElementById('tab-stats-content'),
+      fullMetricsBarEl: document.getElementById('full-metrics-bar'),
+      extendedMetricsEl: document.getElementById('extended-metrics'),
+      extendedMetricsContentEl: document.getElementById('extended-metrics-content'),
+      benchmarkValueEl: document.getElementById('benchmark-value'),
+    });
+  }
+
+  // GEÄNDERT: Ticket 17 — Vollanalyse-Button via ResultTabs-Modul (result/tabs.js)
+  // Der Vollanalyse-Button in result_chart.html hat das Attribut data-full-metrics-btn,
+  // damit ResultTabs.startFullMetrics ihn findet.
+  document.getElementById('btn-full-metrics').setAttribute('data-full-metrics-btn', '1');
+  document.getElementById('btn-full-metrics').addEventListener('click', function() {
+    var statsOpts = {
+      contentEl: document.getElementById('tab-stats-content'),
+      fullMetricsBarEl: document.getElementById('full-metrics-bar'),
+      extendedMetricsEl: document.getElementById('extended-metrics'),
+      extendedMetricsContentEl: document.getElementById('extended-metrics-content'),
+      benchmarkValueEl: document.getElementById('benchmark-value'),
+    };
+    ResultTabs.startFullMetrics(resultId_rc, statsOpts);
+  });
+
+  // Stats laden wenn Tab geklickt wird
+  document.querySelector('a[href="#tab-stats"]').addEventListener('shown.bs.tab', loadStatsTab);
+
+  // Trades-Tab: lazy laden via ResultTabs-Modul
+  var tradesTabLoaded = false;
+  document.querySelector('a[href="#tab-trades"]').addEventListener('shown.bs.tab', function() {
+    if (tradesTabLoaded) return;
+    tradesTabLoaded = true;
+    ResultTabs.loadTradesTab(resultId_rc, {
+      contentEl: document.getElementById('tab-trades-content'),
+    });
+  });
+});
+</script>
+{% endblock %}

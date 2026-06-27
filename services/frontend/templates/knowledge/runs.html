@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Reindex-Verlauf - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Reindex-Verlauf</h2>
+        <div class="page-pretitle">Wissens-Index</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button id="btn-refresh" class="btn btn-outline-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+          Aktualisieren
+        </button>
+        <button id="btn-reindex" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M7 4v16l13 -8z"/></svg>
+          Reindex starten
+        </button>
+        <button id="btn-reset" class="btn btn-danger">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          Knowledge-DB leeren
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Toast-Container -->
+<div id="toast-container" style="position:fixed;top:1.5rem;right:1.5rem;z-index:9999;min-width:280px;"></div>
+
+<!-- GEÄNDERT: Ticket 33 — Bestätigungs-Modal für Knowledge-DB-Reset (Tabler-Modal) -->
+<div class="modal modal-blur fade" id="modal-reset" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="modal-title">Knowledge-DB leeren</div>
+        <div>Alle Vault-Chunks und Reindex-Historie werden gelöscht. Nächster Reindex baut alles neu auf. Fortfahren?</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link link-secondary me-auto" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-danger" id="btn-reset-confirm">Löschen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Alle Reindex-Läufe (<span id="runs-total">...</span>)</h3>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="knowledge-runs-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th>Gestartet</th>
+            <th>Dauer</th>
+            <th>Trigger</th>
+            <th>Scope</th>
+            <th>Status</th>
+            <th>Dateien</th>
+            <th>Chunks</th>
+            <th style="min-width:60px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var pollTimer = null;
+
+  function fmtDateDe(iso) {
+    if (!iso) return '-';
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+           ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  }
+
+  function fmtDuration(secs) {
+    if (secs === null || secs === undefined) return '-';
+    return secs.toFixed(1) + ' s';
+  }
+
+  function statusBadge(s) {
+    var map = {queued: 'bg-secondary-lt', running: 'bg-primary-lt', success: 'bg-success-lt', failed: 'bg-danger-lt'};
+    return '<span class="badge ' + (map[s] || 'bg-secondary-lt') + '">' + s + '</span>';
+  }
+
+  function scopeBadge(scope, targetPath) {
+    var cls = scope === 'full' ? 'bg-blue-lt' : 'bg-purple-lt';
+    var label = scope === 'full' ? 'full' : 'single-file';
+    var title = targetPath ? ' title="' + targetPath + '"' : '';
+    return '<span class="badge ' + cls + '"' + title + '>' + label + '</span>';
+  }
+
+  function triggerBadge(trigger) {
+    var map = {api: 'bg-cyan-lt', scheduler: 'bg-teal-lt', cli: 'bg-yellow-lt'};
+    return '<span class="badge ' + (map[trigger] || 'bg-secondary-lt') + '">' + trigger + '</span>';
+  }
+
+  function hasActiveRuns(data) {
+    return data.some(function(r) { return r.status === 'queued' || r.status === 'running'; });
+  }
+
+  function showToast(msg, type) {
+    var container = document.getElementById('toast-container');
+    var div = document.createElement('div');
+    var bgClass = type === 'error' ? 'bg-danger' : 'bg-success';
+    div.className = 'alert ' + bgClass + ' text-white mb-2 shadow';
+    div.style.opacity = '1';
+    div.style.transition = 'opacity 0.5s';
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(function() {
+      div.style.opacity = '0';
+      setTimeout(function() { container.removeChild(div); }, 500);
+    }, 4000);
+  }
+
+  var tableData = [];
+
+  var table = new DataTable("#knowledge-runs-table", {
+    ajax: {
+      url: "/api/knowledge/runs?limit=200",
+      dataSrc: function(json) {
+        tableData = json.runs || [];
+        document.getElementById("runs-total").textContent = json.total;
+
+        // Auto-Refresh steuern
+        if (hasActiveRuns(tableData)) {
+          startPoll();
+        } else {
+          stopPoll();
+        }
+
+        return tableData;
+      }
+    },
+    columns: [
+      {
+        data: null,
+        render: function(d) {
+          var ts = d.started_at || d.created_at;
+          return '<span class="text-secondary">' + fmtDateDe(ts) + '</span>';
+        }
+      },
+      {
+        data: "duration_seconds",
+        render: function(d) { return fmtDuration(d); }
+      },
+      {
+        data: "trigger",
+        render: function(d) { return triggerBadge(d); }
+      },
+      {
+        data: null,
+        render: function(d) { return scopeBadge(d.scope, d.target_path); }
+      },
+      {
+        data: "status",
+        render: function(d) { return statusBadge(d); }
+      },
+      {
+        data: null,
+        render: function(d) {
+          if (d.files_reindexed === null && d.files_scanned === null) return '-';
+          var ri = d.files_reindexed !== null ? d.files_reindexed : '-';
+          var sc = d.files_scanned !== null ? d.files_scanned : '-';
+          return ri + ' / ' + sc;
+        }
+      },
+      {
+        data: "chunks_written",
+        render: function(d) { return d !== null ? d : '-'; }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(id) {
+          return '<div class="text-end">' +
+            '<a href="/knowledge/runs/' + id + '" class="btn btn-sm btn-outline-primary" title="Details">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg>' +
+            '</a>' +
+            '</div>';
+        }
+      }
+    ],
+    pageLength: 25,
+    order: [[0, "desc"]],
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    language: {
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_ Einträgen",
+      infoEmpty: "Keine Reindex-Läufe",
+      zeroRecords: "Keine Reindex-Läufe gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  function startPoll() {
+    if (pollTimer !== null) return;
+    pollTimer = setInterval(function() {
+      table.ajax.reload(null, false);
+    }, 10000);
+  }
+
+  function stopPoll() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // Aktualisieren-Button
+  document.getElementById('btn-refresh').addEventListener('click', function() {
+    table.ajax.reload(null, false);
+  });
+
+  // GEÄNDERT: Ticket 33 — Reset-Button öffnet Bestätigung-Modal (Tabler-Modal)
+  var resetModal = new tabler.Modal(document.getElementById('modal-reset'));
+
+  document.getElementById('btn-reset').addEventListener('click', function() {
+    resetModal.show();
+  });
+
+  document.getElementById('btn-reset-confirm').addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    resetModal.hide();
+    try {
+      var resp = await fetch('/api/knowledge/reset', { method: 'DELETE' });
+      if (!resp.ok) {
+        var err = await resp.text();
+        showToast('Fehler beim Leeren: ' + err, 'error');
+        return;
+      }
+      var data = await resp.json();
+      var counts = data.data || {};
+      showToast(
+        'Knowledge-DB geleert. Reindex anstoßen um neu aufzubauen.' +
+        ' (' + (counts.vault_chunks_deleted || 0) + ' Chunks, ' +
+        (counts.vault_reindex_runs_deleted || 0) + ' Runs gelöscht)',
+        'success'
+      );
+      table.ajax.reload(null, false);
+    } catch (e) {
+      showToast('Netzwerkfehler: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Reindex starten
+  document.getElementById('btn-reindex').addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var resp = await fetch('/api/knowledge/reindex', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+      });
+      if (!resp.ok) {
+        var err = await resp.text();
+        showToast('Fehler: ' + err, 'error');
+        return;
+      }
+      var data = await resp.json();
+      showToast('Reindex gestartet. Job-ID: ' + data.job_id, 'success');
+      table.ajax.reload(null, false);
+    } catch (e) {
+      showToast('Netzwerkfehler: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+});
+</script>
+{% endblock %}

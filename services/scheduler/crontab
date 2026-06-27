@@ -1,0 +1,1 @@
+*/5 * * * * root cd /app && python3 services/api/enqueue_reindex.py >> /var/log/cron.log 2>&1

@@ -1,0 +1,701 @@
+{% extends "base.html" %}
+
+{% macro tip(text) %}<span class="ms-1" style="vertical-align: baseline;" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ text }}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted" style="vertical-align: -0.1em;"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg></span>{% endmacro %}
+
+{% block title %}Leaderboard - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Leaderboard</h2>
+
+        <div class="page-pretitle">Strategie-Vergleich</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <label class="form-label mb-0">Test-Set</label>
+      </div>
+      <div class="col-sm-3">
+        <select class="form-select" id="test-set-select">
+          <option value="">Alle Test-Sets</option>
+          {% for ts in testsets %}
+          <option value="{{ ts.id }}">{{ ts.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0">Strategie</label>
+      </div>
+      <div class="col-sm-2">
+        <select class="form-select" id="strategy-select">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0">Iteration</label>
+      </div>
+      <div class="col-sm-2">
+        <select class="form-select" id="iteration-select">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <span class="text-muted" id="entries-total"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="leaderboard-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="w-1"></th>
+            <th class="text-center">ID</th>
+            <th>KT{{ tip("Strategie-Familie / Konzept dieses Leaderboard-Eintrags.") }}</th>
+            <th class="text-center">ITER{{ tip("Konkreter Strategie-Name / Iterations-Bezeichner dieses Eintrags.") }}</th>
+            <th>TestSet{{ tip("Name des TestSets aus dem Snapshot — bündelt die zugrundeliegenden Backtest-Konfigurationen (Symbole, Timeframes, Zeiträume).") }}</th>
+            <th>Indikator-Config{{ tip("Name der zugrundeliegenden IndicatorConfig. Hover zeigt alle Indikatoren mit ihrer Konfiguration.") }}</th>
+            <th class="text-center">Configs{{ tip("Anzahl der Konfigurationen (Symbol/Param-Kombinationen) in diesem Run.") }}</th>
+            <th class="text-center">Gewinn{{ tip("Anzahl Configs mit positivem Total Return (> 0 %).") }}</th>
+            <th class="text-center">Verlust{{ tip("Anzahl Configs mit nicht-positivem Total Return (≤ 0 %).") }}</th>
+            <th class="text-end">Ø MaxDD %{{ tip("Durchschnittlicher Maximum Drawdown in Prozent über alle Configs.") }}</th>
+            <th class="text-end">Ø Sharpe{{ tip("Durchschnittliche Sharpe-Ratio über alle Configs.") }}</th>
+            <th class="text-end">Ø PF{{ tip("Durchschnittlicher Profit-Faktor (Brutto-Gewinne / Brutto-Verluste) über alle Configs.") }}</th>
+            <th class="text-end">Ø Return %{{ tip("Arithmetischer Mittelwert des Total Return % über alle Configs.") }}</th>
+            <th class="text-end">Sum Return %{{ tip("Summe der Total Returns % über alle Configs (nicht kapitalgewichtet).") }}</th>
+            <th class="text-end">Tage{{ tip("Anzahl Test-Tage als Vereinigung aller Backtest-Zeitfenster der Winning-Results. Überlappende Fenster werden nur einmal gezählt. Badge erscheint, wenn Überlappungen vorliegen.") }}</th>
+            <th class="text-end">R/T %{{ tip("Return pro Tag: Sum Return % geteilt durch die Test-Tage (Intervall-Union).") }}</th>
+            <th class="text-end w-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="17" class="text-center text-muted py-4">Lade…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Drill-Down -->
+<div class="modal modal-blur fade" id="modal-drilldown" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="drilldown-title">Drill-Down</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <div id="drilldown-executive-summary" class="mb-3" style="display:none;">
+          <h6>Executive Summary</h6>
+          <p id="drilldown-executive-summary-text" class="text-muted"></p>
+        </div>
+        <div id="drilldown-mini-report" class="mb-3" style="display:none;">
+          <h6>Mini-Report</h6>
+          <pre id="drilldown-mini-report-text" class="bg-light p-2 rounded" style="white-space:pre-wrap;font-size:0.85em;"></pre>
+        </div>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0">Pro-Config-Ergebnisse</h6>
+          <div class="dt-search-input">
+            <span class="dt-search-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+            </span>
+            <input type="search" id="drilldown-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+            <button type="button" class="dt-search-clear" data-clear-for="drilldown-search" aria-label="Suche leeren">&times;</button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table id="drilldown-table" class="table table-sm table-vcenter">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Result-ID</th>
+                <th>Symbol</th>
+                <th>Zeitraum</th>
+                <th class="text-end">Return %</th>
+                <th class="text-end">MaxDD %</th>
+                <th class="text-end">Sharpe</th>
+                <th class="text-end">Winrate %</th>
+                <th class="text-end">Profit-Faktor</th>
+                <th class="text-end">Trades</th>
+              </tr>
+            </thead>
+            <tbody id="drilldown-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-bs-dismiss="modal">Schließen</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var table = null;
+  var currentData = [];
+
+  function formatNum(v, digits) {
+    if (v === null || v === undefined) return '—';
+    return parseFloat(v).toFixed(digits !== undefined ? digits : 2);
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    return d.replace('T', ' ').substring(0, 16);
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function renderChildRow(data) {
+    var missing = '<span class="text-muted fst-italic">— nicht vorhanden —</span>';
+    var runnerHtml = data.spec_runner_version ? escapeHtml(data.spec_runner_version) : missing;
+    var createdHtml = data.created_at ? escapeHtml(formatDate(data.created_at)) : missing;
+    var hintHtml = data.hint ? escapeHtml(data.hint) : missing;
+    var sumHtml = data.executive_summary ? escapeHtml(data.executive_summary) : missing;
+    var miniHtml = data.mini_report ? escapeHtml(data.mini_report) : missing;
+    return ''
+      + '<div class="leaderboard-child-block"><h6>Runner-Version</h6><div class="content">' + runnerHtml + '</div></div>'
+      + '<div class="leaderboard-child-block"><h6>Erstellt am</h6><div class="content">' + createdHtml + '</div></div>'
+      + '<div class="leaderboard-child-block"><h6>Hint</h6><div class="content">' + hintHtml + '</div></div>'
+      + '<div class="leaderboard-child-block"><h6>Executive Summary</h6><div class="content">' + sumHtml + '</div></div>'
+      + '<div class="leaderboard-child-block"><h6>Mini-Report</h6>'
+      + (data.mini_report ? '<pre class="content">' + miniHtml + '</pre>' : '<div class="content">' + miniHtml + '</div>')
+      + '</div>';
+  }
+
+  function renderIndicatorConfigLink(name, indicators) {
+    var hasIndicators = indicators && typeof indicators === 'object' && Object.keys(indicators).length > 0;
+    // Label: IndicatorConfig-Name; Fallback auf die Indikator-Slots, sonst —
+    var slots = hasIndicators ? Object.keys(indicators).sort() : [];
+    var label;
+    if (name) label = escapeHtml(name);
+    else if (slots.length) label = escapeHtml(slots.join(', '));
+    else return '<span class="text-muted">—</span>';
+    if (!hasIndicators) return label;
+    // Hover-HTML: pro Indikator ein Block — Name als Überschrift, Parameter als Key/Value-Zeilen.
+    // Statisches Markup nutzt einfache Anführungszeichen (kollidiert nicht mit dem title="..."-Attribut);
+    // dynamische Werte via escapeHtml. Die fertige HTML-Zeichenkette wird fürs Attribut nur noch
+    // an '&' maskiert (einfache Decodierung durch getAttribute -> innerHTML in Bootstrap).
+    var blocks = slots.map(function(slot) {
+      var params = indicators[slot] || {};
+      var rows = Object.keys(params).sort().map(function(k) {
+        var v = params[k];
+        if (v === null || v === undefined) v = '—';
+        else if (typeof v === 'object') v = JSON.stringify(v);
+        return "<div class='ind-param'><span class='ind-key'>" + escapeHtml(k)
+          + "</span><span class='ind-val'>" + escapeHtml(String(v)) + "</span></div>";
+      }).join('');
+      return "<div class='ind-block'><div class='ind-name'>" + escapeHtml(slot) + "</div>"
+        + (rows || "<div class='ind-param ind-empty'>keine Parameter</div>") + "</div>";
+    }).join('');
+    var tipAttr = blocks.replace(/&/g, '&amp;');
+    return '<span class="indicator-config-link"'
+      + ' data-bs-toggle="tooltip" data-bs-html="true"'
+      + ' data-bs-placement="top" data-bs-custom-class="indicator-tooltip"'
+      + ' title="' + tipAttr + '">' + label + '</span>';
+  }
+
+  function initTable(items) {
+    currentData = items;
+    if (table) {
+      table.destroy();
+      document.querySelector('#leaderboard-table tbody').innerHTML = '';
+    }
+    table = new DataTable('#leaderboard-table', {
+      data: items,
+      columns: [
+        {
+          data: null,
+          orderable: false,
+          className: 'dt-control',
+          defaultContent: ''
+        },
+        {
+          data: 'id',
+          className: 'text-center text-muted',
+          render: function(d) { return d; }
+        },
+        {
+          data: 'strategy_family',
+          render: function(d, type) {
+            if (type !== 'display') return d || '';
+            return '<strong>' + (d || '—') + '</strong>';
+          }
+        },
+        {
+          data: 'strategy_name',
+          className: 'text-center',
+          render: function(d, type, row) {
+            if (type !== 'display') return d || '';
+            if (!d) return '—';
+            var name = escapeHtml(d);
+            var desc = row && row.iteration_description;
+            if (desc) {
+              return '<span data-bs-toggle="tooltip" data-bs-placement="top" title="' + escapeHtml(desc) + '">' + name + '</span>';
+            }
+            return name;
+          }
+        },
+        {
+          data: 'testset_name',
+          render: function(d) { return d ? escapeHtml(d) : '<span class="text-muted">—</span>'; }
+        },
+        {
+          data: 'indicator_config_name',
+          render: function(d, type, row) {
+            if (type !== 'display') return d || '';
+            return renderIndicatorConfigLink(d, row.indicators);
+          }
+        },
+        {
+          data: 'configs_total',
+          className: 'text-center',
+          render: function(d) { return '<span class="badge bg-blue-lt">' + d + '</span>'; }
+        },
+        {
+          data: 'configs_win',
+          className: 'text-center',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            return '<span class="text-success">' + d + '</span>';
+          }
+        },
+        {
+          data: 'configs_loss',
+          className: 'text-center',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            return '<span class="text-danger">' + d + '</span>';
+          }
+        },
+        {
+          data: 'max_drawdown_avg',
+          className: 'text-end',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            return '<span class="text-danger">' + parseFloat(d).toFixed(2) + '%</span>';
+          }
+        },
+        {
+          data: 'sharpe_avg',
+          className: 'text-end',
+          render: function(d) { return d !== null && d !== undefined ? parseFloat(d).toFixed(3) : '—'; }
+        },
+        {
+          data: 'profit_factor_avg',
+          className: 'text-end',
+          render: function(d) { return d !== null && d !== undefined ? parseFloat(d).toFixed(2) : '—'; }
+        },
+        {
+          data: 'total_return_avg',
+          className: 'text-end',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            var cls = d >= 0 ? 'text-success' : 'text-danger';
+            return '<span class="' + cls + '">' + parseFloat(d).toFixed(2) + '%</span>';
+          }
+        },
+        {
+          data: 'total_return_sum',
+          className: 'text-end',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            var cls = d >= 0 ? 'text-success' : 'text-danger';
+            return '<span class="' + cls + '">' + parseFloat(d).toFixed(2) + '%</span>';
+          }
+        },
+        {
+          data: 'span_days',
+          className: 'text-end',
+          render: function(d, type, row) {
+            if (type !== 'display') {
+              return (d === null || d === undefined) ? 0 : d;
+            }
+            if (d === null || d === undefined) return '—';
+            var txt = parseFloat(d).toFixed(1);
+            if (row && row.has_overlap) {
+              txt += ' <span class="badge bg-yellow-lt ms-1" data-bs-toggle="tooltip" title="Backtest-Zeitfenster überschneiden sich — Tage zählen nur als Union.">overlap</span>';
+            }
+            return txt;
+          }
+        },
+        {
+          data: 'return_per_day_pct',
+          className: 'text-end',
+          render: function(d) {
+            if (d === null || d === undefined) return '—';
+            var cls = d >= 0 ? 'text-success' : 'text-danger';
+            return '<span class="' + cls + '">' + parseFloat(d).toFixed(4) + '%</span>';
+          }
+        },
+        {
+          data: 'id',
+          orderable: false,
+          className: 'text-end',
+          render: function(d) {
+            return '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-entry" title="Löschen" data-id="' + d + '">'
+              + '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+              + '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/>'
+              + '<path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/>'
+              + '<path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>'
+              + '</button>';
+          }
+        }
+      ],
+      order: [[13, 'desc']],
+      pageLength: 25,
+      dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+      language: { url: '/static/datatables-de.json' },
+      drawCallback: function() {
+        // Indikator-Badge-Tooltips bei jedem Draw neu initialisieren
+        var TooltipCtor = (window.tabler && tabler.Tooltip) || (window.bootstrap && bootstrap.Tooltip);
+        if (!TooltipCtor) return;
+        document.querySelectorAll('#leaderboard-table tbody [data-bs-toggle="tooltip"]').forEach(function(el) {
+          var existing = TooltipCtor.getInstance ? TooltipCtor.getInstance(el) : null;
+          if (!existing) new TooltipCtor(el);
+        });
+      }
+    });
+
+    document.getElementById('entries-total').textContent = items.length + ' Einträge';
+
+    // Tooltips in Header-Spalten (re-)initialisieren — DataTables klont die thead-Inhalte,
+    // sodass die Tabler-Auto-Init die geklonten Knoten nicht erfasst.
+    var TooltipCtor = (window.tabler && tabler.Tooltip) || (window.bootstrap && bootstrap.Tooltip);
+    if (TooltipCtor) {
+      document.querySelectorAll('#leaderboard-table thead [data-bs-toggle="tooltip"]').forEach(function(el) {
+        var existing = TooltipCtor.getInstance ? TooltipCtor.getInstance(el) : null;
+        if (!existing) new TooltipCtor(el);
+      });
+    }
+
+    // Filter-Dropdowns aus den geladenen Daten füllen und aktive Auswahl erneut anwenden
+    populateFilterOptions();
+    applyFilters();
+  }
+
+  // --- Client-seitige Filter: Strategie (Spalte 2) + Iteration (Spalte 3) ---
+  function escapeRegex(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function uniqueSorted(values) {
+    var seen = values.filter(function(v) { return v !== null && v !== undefined && v !== ''; });
+    return Array.from(new Set(seen)).sort();
+  }
+
+  function fillSelect(select, values) {
+    var prev = select.value;
+    select.innerHTML = '<option value="">Alle</option>';
+    values.forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    });
+    // vorherige Auswahl wiederherstellen, falls noch in der Liste
+    select.value = (prev && values.indexOf(prev) !== -1) ? prev : '';
+  }
+
+  function populateFilterOptions() {
+    var stratSel = document.getElementById('strategy-select');
+    var iterSel = document.getElementById('iteration-select');
+    fillSelect(stratSel, uniqueSorted(currentData.map(function(r) { return r.strategy_family; })));
+    // Iterationen abhängig von der gewählten Strategie
+    var chosen = stratSel.value;
+    var source = chosen ? currentData.filter(function(r) { return r.strategy_family === chosen; }) : currentData;
+    fillSelect(iterSel, uniqueSorted(source.map(function(r) { return r.strategy_name; })));
+  }
+
+  function applyFilters() {
+    if (!table) return;
+    var strat = document.getElementById('strategy-select').value;
+    var iter = document.getElementById('iteration-select').value;
+    // Exakte Spalten-Suche per verankerter Regex
+    table.column(2).search(strat ? '^' + escapeRegex(strat) + '$' : '', true, false);
+    table.column(3).search(iter ? '^' + escapeRegex(iter) + '$' : '', true, false);
+    table.draw();
+  }
+
+  document.getElementById('strategy-select').addEventListener('change', function() {
+    populateFilterOptions(); // Iterationsliste an Strategie anpassen
+    applyFilters();
+  });
+  document.getElementById('iteration-select').addEventListener('change', applyFilters);
+
+  function loadLeaderboard(testSetId) {
+    var url = '/api/leaderboard' + (testSetId ? '?testset_id=' + testSetId : '');
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) {
+          alert('Fehler: ' + json.error);
+          return;
+        }
+        initTable(json.data.items || []);
+      })
+      .catch(function(err) {
+        console.error('Leaderboard-Ladefehler:', err);
+      });
+  }
+
+  document.getElementById('test-set-select').addEventListener('change', function() {
+    loadLeaderboard(this.value);
+  });
+
+  // X-Clear-Handler für Suchfelder (Design-Guide-Pattern)
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.dt-search-clear');
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  // Initial: alle Einträge laden
+  loadLeaderboard('');
+
+  // Drill-Down bei Zeilenklick / Löschen via Icon
+  document.getElementById('leaderboard-table').addEventListener('click', function(e) {
+    var delBtn = e.target.closest('.btn-delete-entry');
+    if (delBtn) {
+      e.stopPropagation();
+      var entryId = delBtn.getAttribute('data-id');
+      if (!confirm('Leaderboard-Eintrag #' + entryId + ' wirklich löschen?')) return;
+      fetch('/api/leaderboard/' + entryId, { method: 'DELETE' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+        .then(function(res) {
+          if (!res.ok || res.json.error) {
+            alert('Fehler beim Löschen: ' + (res.json.error || res.json.detail || 'unbekannt'));
+            return;
+          }
+          var sel = document.getElementById('test-set-select');
+          loadLeaderboard(sel.value);
+        })
+        .catch(function(err) { alert('Netzwerkfehler: ' + err.message); });
+      return;
+    }
+    var tr = e.target.closest('tr');
+    if (!tr || !tr.parentElement || tr.parentElement.tagName !== 'TBODY') return;
+    if (!table) return;
+    // Klick auf Chevron-Spalte: Child-Row togglen statt Drilldown
+    if (e.target.closest('td.dt-control')) {
+      e.stopPropagation();
+      var row = table.row(tr);
+      if (row.child.isShown()) {
+        row.child.hide();
+        tr.classList.remove('dt-hasChild');
+      } else {
+        var data = row.data() || {};
+        var html = renderChildRow(data);
+        row.child(html, 'child-row').show();
+        tr.classList.add('dt-hasChild');
+      }
+      return;
+    }
+    var rowData = table.row(tr).data();
+    if (!rowData) return;
+    openDrilldown(rowData);
+  });
+
+  var drilldownTable = null;
+
+  function formatDateDe(s) {
+    if (!s) return '';
+    var d = s.substring(0, 10).split('-');
+    if (d.length !== 3) return s.substring(0, 10);
+    return d[2] + '.' + d[1] + '.' + d[0];
+  }
+
+  function renderDrilldownTable(results) {
+    if (drilldownTable) {
+      drilldownTable.destroy();
+      document.querySelector('#drilldown-table tbody').innerHTML = '';
+    }
+    drilldownTable = new DataTable('#drilldown-table', {
+      data: results,
+      columns: [
+        {
+          data: 'position',
+          render: function(d) { return (d + 1); }
+        },
+        {
+          data: 'result_id',
+          render: function(d, type, row) {
+            if (row.missing) return '<span class="text-muted fst-italic">—</span>';
+            return '<a href="/backtest/results/' + d + '/chart" target="_blank">#' + d + '</a>';
+          }
+        },
+        {
+          data: 'symbol',
+          render: function(d, type, row) {
+            if (row.missing) return '<span class="text-muted fst-italic">keine Results</span>';
+            return d || '—';
+          }
+        },
+        {
+          data: null,
+          render: function(_, type, row) {
+            if (row.missing) return '—';
+            if (row.start_index && row.end_index) {
+              var raw = row.start_index + ' – ' + row.end_index;
+              if (type === 'sort' || type === 'type') return raw;
+              return formatDateDe(row.start_index) + ' – ' + formatDateDe(row.end_index);
+            }
+            return '—';
+          }
+        },
+        {
+          data: 'total_return_pct',
+          className: 'text-end',
+          render: function(d, type) {
+            if (d === null || d === undefined) return '—';
+            if (type === 'sort' || type === 'type') return d;
+            var cls = d >= 0 ? 'text-success' : 'text-danger';
+            return '<span class="' + cls + '">' + parseFloat(d).toFixed(2) + '%</span>';
+          }
+        },
+        {
+          data: 'max_drawdown_pct',
+          className: 'text-end',
+          render: function(d, type) {
+            if (d === null || d === undefined) return '—';
+            if (type === 'sort' || type === 'type') return d;
+            return '<span class="text-danger">' + parseFloat(d).toFixed(2) + '%</span>';
+          }
+        },
+        {
+          data: 'sharpe_ratio',
+          className: 'text-end',
+          render: function(d, type) {
+            if (d === null || d === undefined) return '—';
+            if (type === 'sort' || type === 'type') return d;
+            return parseFloat(d).toFixed(3);
+          }
+        },
+        {
+          data: 'win_rate_pct',
+          className: 'text-end',
+          render: function(d, type) {
+            if (d === null || d === undefined) return '—';
+            if (type === 'sort' || type === 'type') return d;
+            return parseFloat(d).toFixed(2) + '%';
+          }
+        },
+        {
+          data: 'profit_factor',
+          className: 'text-end',
+          render: function(d, type) {
+            if (d === null || d === undefined) return '—';
+            if (type === 'sort' || type === 'type') return d;
+            return parseFloat(d).toFixed(2);
+          }
+        },
+        {
+          data: 'n_trades',
+          className: 'text-end',
+          render: function(d) { return d !== null && d !== undefined ? d : '—'; }
+        }
+      ],
+      order: [[0, 'asc']],
+      pageLength: 25,
+      lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'Alle']],
+      dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+      language: { url: '/static/datatables-de.json' },
+      rowCallback: function(rowEl, rowData) {
+        if (rowData.missing) {
+          rowEl.classList.add('table-warning');
+        }
+      }
+    });
+
+    // Custom-Suchfeld an die DataTable binden (Design-Guide-Pattern)
+    var searchInput = document.getElementById('drilldown-search');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.oninput = function() { drilldownTable.search(this.value).draw(); };
+    }
+  }
+
+  function openDrilldown(row) {
+    document.getElementById('drilldown-title').textContent =
+      'Drill-Down: ' + row.strategy_family + ' / ' + row.strategy_name;
+
+    var sumEl = document.getElementById('drilldown-executive-summary');
+    var sumText = document.getElementById('drilldown-executive-summary-text');
+    if (row.executive_summary) {
+      sumEl.style.display = '';
+      sumText.textContent = row.executive_summary;
+    } else {
+      sumEl.style.display = 'none';
+    }
+
+    if (drilldownTable) {
+      drilldownTable.destroy();
+      drilldownTable = null;
+    }
+    document.querySelector('#drilldown-table tbody').innerHTML =
+      '<tr><td colspan="10" class="text-center text-muted">Lade...</td></tr>';
+
+    var modal = new tabler.Modal(document.getElementById('modal-drilldown'));
+    modal.show();
+
+    fetch('/api/leaderboard/' + row.id + '/drilldown')
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) {
+          document.querySelector('#drilldown-table tbody').innerHTML =
+            '<tr><td colspan="10" class="text-danger">Fehler: ' + json.error + '</td></tr>';
+          return;
+        }
+        var data = json.data;
+
+        var miniEl = document.getElementById('drilldown-mini-report');
+        var miniText = document.getElementById('drilldown-mini-report-text');
+        if (data.mini_report) {
+          miniEl.style.display = '';
+          miniText.textContent = data.mini_report;
+        } else {
+          miniEl.style.display = 'none';
+        }
+
+        if (!data.results || data.results.length === 0) {
+          document.querySelector('#drilldown-table tbody').innerHTML =
+            '<tr><td colspan="10" class="text-center text-muted">Keine Ergebnisse vorhanden.</td></tr>';
+          return;
+        }
+
+        renderDrilldownTable(data.results);
+      })
+      .catch(function(err) {
+        document.querySelector('#drilldown-table tbody').innerHTML =
+          '<tr><td colspan="10" class="text-danger">Netzwerkfehler: ' + err.message + '</td></tr>';
+      });
+  }
+
+});
+</script>
+{% endblock %}

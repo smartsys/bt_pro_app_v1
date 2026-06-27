@@ -1,0 +1,15 @@
+fastapi==0.135.2
+uvicorn==0.42.0
+jinja2
+python-dotenv
+sqlalchemy
+alembic==1.18.4
+psycopg2-binary
+rq
+numpy
+pandas
+pydantic
+pydantic-settings
+tables
+# Für Datei-Uploads der FastAPI-Endpunkte (Strategie-/Config-Import)
+python-multipart==0.0.22

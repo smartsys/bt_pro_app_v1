@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block title %}OHLC-Daten - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">OHLC-Daten verwalten</h2>
+
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto">
+        <button id="btn-refresh" class="btn btn-outline-secondary">Neu laden</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Download-Bereich -->
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="card-title">Neue Symbole herunterladen (Binance)</h3>
+  </div>
+  <div class="card-body">
+    <form id="download-form">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Exchange</label>
+          <select class="form-select" id="dl-exchange">
+            <option value="binance" selected>Binance</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Timeframe</label>
+          <select class="form-select" id="dl-timeframe">
+            {% for tf in ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'] %}
+            <option value="{{ tf }}" {{ 'selected' if tf == '4h' else '' }}>{{ tf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Symbole <small class="text-muted">(Komma-getrennt, z.B. BTCUSDT,ETHUSDT)</small></label>
+          <input type="text" class="form-control" id="dl-symbols" placeholder="BTCUSDT, ETHUSDT" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Start</label>
+          <input type="date" class="form-control" id="dl-start" value="2019-12-01" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">End <small class="text-muted">(leer = jetzt)</small></label>
+          <input type="date" class="form-control" id="dl-end">
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary">Download starten</button>
+          <span id="dl-status" class="ms-3"></span>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Jobs -->
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="card-title">Laufende / letzte Jobs</h3>
+  </div>
+  <div class="card-body">
+    <div id="jobs-list"><div class="text-muted">Lädt...</div></div>
+  </div>
+</div>
+
+<!-- Dateien + Symbole -->
+<div id="files-container">
+  <div class="text-muted">Lädt...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  // Europäisches Format. Werte ohne Uhrzeit (z.B. '2024-01-01') werden ohne HH:MM ausgegeben.
+  function fmtDate(iso) {
+    if (!iso) return "-";
+    var s = String(iso);
+    var hasTime = s.indexOf("T") !== -1 || s.indexOf(" ") !== -1;
+    var dt = new Date(s);
+    if (isNaN(dt.getTime())) return s;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    var datePart = pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear();
+    if (!hasTime) return datePart;
+    return datePart + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  }
+
+  // Rendert die vom Backend gelieferte Datenqualität als farbige Prozentzahl
+  // (grün >=99,5 / gelb >=90 / rot darunter). q ist Prozent (0..100) oder null.
+  function qualityBadge(q) {
+    if (q == null) return '<span class="text-muted">–</span>';
+    var cls = q >= 99.5 ? 'text-green' : (q >= 90 ? 'text-yellow' : 'text-red');
+    return '<span class="' + cls + '">' + q.toFixed(1).replace('.', ',') + ' %</span>';
+  }
+
+  function statusBadge(status) {
+    // GEÄNDERT: Light-Varianten (bg-*-lt) gemäß Design-Guide — solide bg-* erzeugen
+    // graue/unlesbare Schrift auf farbigem Grund.
+    var cls = {
+      'queued': 'bg-secondary-lt',
+      'running': 'bg-primary-lt',
+      'completed': 'bg-success-lt',
+      'failed': 'bg-danger-lt',
+    }[status] || 'bg-secondary-lt';
+    return '<span class="badge ' + cls + '">' + status + '</span>';
+  }
+
+  // Fortschritt in Intervallen (Bars): geladen / gesamt (Prozent), noch übrig.
+  function progressText(j) {
+    if (j.intervals_total == null) return "";
+    var total = j.intervals_total;
+    var done = j.intervals_done || 0;
+    var remaining = Math.max(total - done, 0);
+    var pct = total > 0 ? Math.round(done / total * 100) : 0;
+    return '<br><small class="text-muted">' + done.toLocaleString() + ' / '
+      + total.toLocaleString() + ' Intervalle (' + pct + ' %), noch '
+      + remaining.toLocaleString() + '</small>';
+  }
+
+  function loadFiles() {
+    document.getElementById("files-container").innerHTML =
+      '<div class="d-flex align-items-center text-muted">'
+      + '<span class="spinner-border spinner-border-sm me-2" role="status"></span>'
+      + 'Lade Dateien…</div>';
+    fetch('/api/config/data/files')
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var c = document.getElementById("files-container");
+        var files = (json.data && json.data.files) || [];
+        if (files.length === 0) {
+          c.innerHTML = '<div class="alert alert-info">Keine HDF5-Dateien gefunden.</div>';
+          return;
+        }
+        c.innerHTML = files.map(function(f) {
+          var rows = (f.symbols || []).map(function(s) {
+            return '<tr>'
+              + '<td><strong>' + s.symbol + '</strong></td>'
+              + '<td>' + (s.bars || 0).toLocaleString() + '</td>'
+              + '<td>' + fmtDate(s.start) + '</td>'
+              + '<td>' + fmtDate(s.end) + '</td>'
+              + '<td data-order="' + (s.quality == null ? -1 : s.quality) + '">' + qualityBadge(s.quality) + '</td>'
+              + '<td class="text-end">'
+              +   '<button class="btn btn-sm btn-outline-danger btn-delete-symbol" '
+              +     'data-exchange="' + f.exchange + '" '
+              +     'data-timeframe="' + f.timeframe + '" '
+              +     'data-symbol="' + s.symbol + '">Löschen</button>'
+              + '</td>'
+              + '</tr>';
+          }).join("");
+          return ''
+            + '<div class="card mb-3">'
+            + '  <div class="card-header d-flex align-items-center">'
+            + '    <h3 class="card-title mb-0">' + f.exchange + ' / ' + f.timeframe + '</h3>'
+            + '    <span class="text-muted ms-3">' + f.file + ' (' + f.size_mb + ' MB)</span>'
+            + '    <div class="ms-auto d-flex gap-2">'
+            + '      <button class="btn btn-sm btn-primary btn-update-file" '
+            + '        data-exchange="' + f.exchange + '" '
+            + '        data-timeframe="' + f.timeframe + '">Aktualisierung</button>'
+            + '      <button class="btn btn-sm btn-outline-primary btn-reload-file" '
+            + '        data-exchange="' + f.exchange + '" '
+            + '        data-timeframe="' + f.timeframe + '" '
+            + '        data-symbols="' + (f.symbols || []).map(function(s) { return s.symbol; }).join(',') + '">Neu einlesen</button>'
+            + '    </div>'
+            + '  </div>'
+            + '  <div class="table-responsive">'
+            + '    <table class="table table-vcenter datatable-files">'
+            + '      <thead><tr><th>Symbol</th><th>Bars</th><th>Start</th><th>End</th><th>Qualität</th><th class="no-sort"></th></tr></thead>'
+            + '      <tbody>' + rows + '</tbody>'
+            + '    </table>'
+            + '  </div>'
+            + '</div>';
+        }).join("");
+
+        // DataTables für sortierbare Spalten initialisieren
+        if (window.jQuery && jQuery.fn.DataTable) {
+          jQuery("#files-container table.datatable-files").each(function() {
+            if (jQuery.fn.DataTable.isDataTable(this)) {
+              jQuery(this).DataTable().destroy();
+            }
+            jQuery(this).DataTable({
+              paging: false,
+              info: false,
+              searching: false,
+              order: [[0, 'asc']],
+              columnDefs: [{ targets: 'no-sort', orderable: false }],
+            });
+          });
+        }
+
+        // Event-Handler binden
+        document.querySelectorAll(".btn-delete-symbol").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            var sym = btn.getAttribute("data-symbol");
+            if (!confirm("Symbol " + sym + " wirklich aus Datei löschen?")) return;
+            fetch("/api/config/data/delete-symbol", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                exchange: btn.getAttribute("data-exchange"),
+                timeframe: btn.getAttribute("data-timeframe"),
+                symbol: sym,
+              }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(json) {
+              if (json.error) { alert("Fehler: " + json.error); return; }
+              loadFiles();
+            });
+          });
+        });
+
+        document.querySelectorAll(".btn-update-file").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            fetch("/api/config/data/update", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                exchange: btn.getAttribute("data-exchange"),
+                timeframe: btn.getAttribute("data-timeframe"),
+              }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(json) {
+              if (json.error) { alert("Fehler: " + json.error); return; }
+              loadJobs();
+            });
+          });
+        });
+
+        // Neu einlesen: bestehende Symbole der Datei komplett neu herunterladen.
+        // Start = Wert aus dem Download-Formular (dl-start), Ende = jetzt (end_date null).
+        document.querySelectorAll(".btn-reload-file").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            var symbols = (btn.getAttribute("data-symbols") || "")
+              .split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+            if (symbols.length === 0) { alert("Keine Symbole in der Datei."); return; }
+            var startDate = document.getElementById("dl-start").value;
+            if (!startDate) { alert("Bitte oben im Formular ein Startdatum setzen."); return; }
+            if (!confirm("Alle " + symbols.length + " Symbole ab " + startDate
+                + " neu einlesen? Bestehende Bars werden überschrieben.")) return;
+            fetch("/api/config/data/download", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                exchange: btn.getAttribute("data-exchange"),
+                timeframe: btn.getAttribute("data-timeframe"),
+                symbols: symbols,
+                start_date: startDate,
+                end_date: null,
+              }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(json) {
+              if (json.error) { alert("Fehler: " + json.error); return; }
+              loadJobs();
+            })
+            .catch(function(e) {
+              console.error("[DATA] Neu einlesen fehlgeschlagen:", e);
+              alert("Fehler beim Einreihen — bitte erneut versuchen.");
+            });
+          });
+        });
+      })
+      .catch(function(err) {
+        document.getElementById("files-container").innerHTML =
+          '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+      });
+  }
+
+  // Aktions-Icon je Job-Status: bei abgeschlossen/fehlgeschlagen ein Papierkorb (nur Zeile löschen),
+  // bei queued/running ein X (Job abbrechen + Zeile löschen).
+  function jobActionCell(j) {
+    var trashSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>';
+    var xSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>';
+    var cancellable = (j.status === 'queued' || j.status === 'running');
+    var icon = cancellable ? xSvg : trashSvg;
+    var title = cancellable ? 'Job abbrechen und entfernen' : 'Zeile löschen';
+    return '<td class="text-end">'
+      + '<button class="btn btn-sm btn-icon btn-ghost-danger btn-cancel-job" '
+      +   'data-id="' + j.id + '" data-status="' + j.status + '" title="' + title + '">'
+      +   icon
+      + '</button>'
+      + '</td>';
+  }
+
+  function loadJobs() {
+    fetch("/api/config/data/jobs?limit=10")
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) || [];
+        var el = document.getElementById("jobs-list");
+        if (items.length === 0) {
+          el.innerHTML = '<div class="text-muted">Keine Jobs</div>';
+          return;
+        }
+        var rows = items.map(function(j) {
+          var symbolsTxt = Array.isArray(j.symbols) ? j.symbols.join(", ") : "";
+          // GEÄNDERT: Fallback nicht nur bei leerem end_date, sondern auch bei nicht-parsebaren
+          // Werten wie "now UTC" (Update-Job): dann das tatsächliche Abschlussdatum (completed_at)
+          // anzeigen statt des relativen Platzhalters, damit der Range das echte aktualisierte Datum zeigt.
+          // Range bewusst nur Datum, ohne Uhrzeit — Start und Ende sollen gleich formatiert sein.
+          var endParseable = j.end_date && !isNaN(new Date(j.end_date).getTime());
+          var endValue = endParseable
+            ? j.end_date
+            : (j.completed_at ? String(j.completed_at).substring(0, 10) : null);
+          var range = fmtDate(j.start_date) + ' – ' + fmtDate(endValue);
+          var msg = j.message ? ('<br><small class="text-muted">' + j.message + '</small>') : "";
+          var prog = (j.status === 'running') ? progressText(j) : "";
+          return '<tr>'
+            + '<td>#' + j.id + '</td>'
+            + '<td>' + j.job_type + '</td>'
+            + '<td>' + j.exchange + '/' + j.timeframe + '</td>'
+            + '<td>' + symbolsTxt + '</td>'
+            + '<td class="text-nowrap">' + range + '</td>'
+            + '<td>' + statusBadge(j.status) + prog + msg + '</td>'
+            + '<td class="text-nowrap">' + fmtDate(j.created_at) + '</td>'
+            + jobActionCell(j)
+            + '</tr>';
+        }).join("");
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm table-vcenter">'
+          + '<thead><tr><th>ID</th><th>Typ</th><th>Markt</th><th>Symbole</th><th>Range</th><th>Status</th><th>Erstellt</th><th class="text-end"></th></tr></thead>'
+          + '<tbody>' + rows + '</tbody></table></div>';
+
+        // Klick-Handler für Löschen/Abbrechen binden (Tabelle wird bei jedem Poll neu gerendert).
+        el.querySelectorAll(".btn-cancel-job").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            var id = btn.getAttribute("data-id");
+            var status = btn.getAttribute("data-status");
+            // Sicherheitsabfrage je nach Status: bei running zusätzlich der Hinweis,
+            // dass der laufende Job abgebrochen wird.
+            var msg;
+            if (status === 'running') {
+              msg = "Job #" + id + " läuft gerade und wird abgebrochen. "
+                + "Bereits geladene Kerzen bleiben erhalten.\n\nWirklich abbrechen und entfernen?";
+            } else if (status === 'queued') {
+              msg = "Job #" + id + " wartet in der Warteschlange und wird storniert.\n\nWirklich abbrechen und entfernen?";
+            } else {
+              msg = "Zeile für Job #" + id + " wirklich löschen?";
+            }
+            if (!confirm(msg)) return;
+            btn.disabled = true;
+            fetch("/api/config/data/jobs/" + id, { method: "DELETE" })
+              .then(function(r) { return r.json(); })
+              .then(function(json) {
+                if (json.error) { alert("Fehler: " + json.error); btn.disabled = false; return; }
+                loadJobs();
+              })
+              .catch(function(e) {
+                console.error("[DATA] Job löschen fehlgeschlagen:", e);
+                alert("Fehler beim Löschen — bitte erneut versuchen.");
+                btn.disabled = false;
+              });
+          });
+        });
+
+        // Wenn noch Jobs laufen/queued, weiter pollen und Dateien danach neu laden
+        var running = items.some(function(j) { return j.status === 'queued' || j.status === 'running'; });
+        if (running) {
+          setTimeout(loadJobs, 2000);
+        } else {
+          // Einmal nach dem letzten Abschluss die Dateien aktualisieren
+          loadFiles();
+        }
+      });
+  }
+
+  document.getElementById("download-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+    var symbolsRaw = document.getElementById("dl-symbols").value;
+    var symbols = symbolsRaw.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    if (symbols.length === 0) {
+      document.getElementById("dl-status").innerHTML =
+        '<span class="text-danger">Mindestens ein Symbol angeben</span>';
+      return;
+    }
+    var payload = {
+      exchange: document.getElementById("dl-exchange").value,
+      timeframe: document.getElementById("dl-timeframe").value,
+      symbols: symbols,
+      start_date: document.getElementById("dl-start").value,
+      end_date: document.getElementById("dl-end").value || null,
+    };
+    document.getElementById("dl-status").innerHTML =
+      '<span class="text-muted">Job wird eingereiht...</span>';
+    fetch("/api/config/data/download", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (json.error) {
+        document.getElementById("dl-status").innerHTML =
+          '<span class="text-danger">Fehler: ' + json.error + '</span>';
+        return;
+      }
+      var n = (json.data && json.data.count) || 1;
+      document.getElementById("dl-status").innerHTML =
+        '<span class="text-success">' + n + ' Job(s) eingereiht</span>';
+      loadJobs();
+    })
+    .catch(function(e) {
+      // GEÄNDERT: Bei Fehler den hängenden "wird eingereiht..."-Text durch Fehlermeldung ersetzen
+      console.error("[DATA] Download-Job einreihen fehlgeschlagen:", e);
+      document.getElementById("dl-status").innerHTML =
+        '<span class="text-danger">Fehler beim Einreihen — bitte erneut versuchen.</span>';
+    });
+  });
+
+  document.getElementById("btn-refresh").addEventListener("click", function() {
+    loadFiles();
+    loadJobs();
+  });
+
+  loadFiles();
+  loadJobs();
+});
+</script>
+{% endblock %}

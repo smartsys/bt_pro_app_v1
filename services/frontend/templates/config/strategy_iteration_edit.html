@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}{% if iteration %}Iteration bearbeiten: {{ iteration.version_name or iteration.version }}{% else %}Neue Iteration{% endif %} - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto d-flex align-items-center gap-2">
+        {% if iteration %}
+        <button type="button" id="btn-toggle-favorite" class="btn btn-icon btn-ghost-{{ 'warning text-warning' if iteration.is_favorite else 'secondary text-muted' }}" title="{{ 'Favorit entfernen' if iteration.is_favorite else 'Als Favorit markieren' }}" data-is-favorite="{{ '1' if iteration.is_favorite else '0' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="{{ 'currentColor' if iteration.is_favorite else 'none' }}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/></svg>
+        </button>
+        {# GEÄNDERT: Doku-Favorit-Button (roter Stern), direkt neben gelbem Stern #}
+        <button type="button" id="btn-toggle-doc-favorite" class="btn btn-icon btn-ghost-{{ 'danger text-danger' if iteration.is_doc_favorite else 'secondary text-muted' }}" title="{{ 'Doku-Favorit entfernen' if iteration.is_doc_favorite else 'Als Doku-Favorit markieren' }}" data-is-doc-favorite="{{ '1' if iteration.is_doc_favorite else '0' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="{{ 'currentColor' if iteration.is_doc_favorite else 'none' }}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/></svg>
+        </button>
+        {% endif %}
+        <div>
+          <h2 class="page-title mb-0">{% if iteration %}Iteration bearbeiten: {{ iteration.version_name or iteration.version }}{% else %}Neue Iteration{% endif %}</h2>
+          <div class="page-pretitle">Konfiguration / Strategie-Konzepte / {{ concept.name }}</div>
+        </div>
+      </div>
+      {# GEÄNDERT: Ticket 16 — Button "Obsidian-Dokumente anlegen" im Page-Header rechts #}
+      <div class="col-auto ms-auto d-flex gap-2">
+        {% if iteration %}
+          {% if iteration.vault_exists %}
+            <button type="button" class="btn btn-success" id="btn-vault-create" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M5 12l5 5l10 -10"/></svg>
+              Obsidian-Dokumente vorhanden
+            </button>
+          {% else %}
+            <button type="button" class="btn btn-primary" id="btn-vault-create">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+              Obsidian-Dokumente anlegen
+            </button>
+          {% endif %}
+        {% endif %}
+        {% if iteration %}
+          <button type="button" class="btn btn-danger" id="btn-iteration-delete">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+            Löschen
+          </button>
+        {% endif %}
+        <a href="/config/strategy-concepts" class="btn btn-outline-secondary">Abbrechen</a>
+        <button type="submit" form="iteration-form" class="btn btn-primary">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="iteration-form">
+
+  <!-- Stammdaten -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Stammdaten</h3></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label required">Name</label>
+          <input type="text" class="form-control" id="it-version-name" value="{{ (iteration.version_name or iteration.version) if iteration else '' }}" required placeholder="z.B. Teststrategie dyn v1">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Version (Slug)</label>
+          <div class="input-group">
+            <input type="text" class="form-control" id="it-version-slug" value="{{ iteration.version if iteration else '' }}" readonly disabled>
+            {% if iteration %}
+            <button type="button" class="btn btn-outline-primary d-none" id="btn-sync-slug" title="Slug an Name anpassen und Obsidian-Ordner ggf. umbenennen">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+              Slug anpassen
+            </button>
+            {% endif %}
+          </div>
+          <small class="text-muted">Wird als Obsidian-Ordner verwendet.</small>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="it-status">
+            <option value="active" {% if not iteration or iteration.status == 'active' %}selected{% endif %}>active</option>
+            <option value="draft" {% if iteration and iteration.status == 'draft' %}selected{% endif %}>draft</option>
+            <option value="archived" {% if iteration and iteration.status == 'archived' %}selected{% endif %}>archived</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Eltern-Iteration ID</label>
+          <input type="number" class="form-control" id="it-parent-id" value="{{ iteration.parent_iteration_id if iteration and iteration.parent_iteration_id else '' }}" placeholder="optional">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label required">Typ</label>
+          <select class="form-select" id="it-type">
+            <option value="generic" {% if not iteration or iteration.type == 'generic' %}selected{% endif %}>generic (Spec-Runner)</option>
+            <option value="hardcoded" {% if iteration and iteration.type == 'hardcoded' %}selected{% endif %}>hardcoded</option>
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label" id="it-import-path-label">Import-Pfad (nur bei hardcoded)</label>
+          <input type="text" class="form-control" id="it-import-path" value="{{ iteration.import_path if iteration and iteration.import_path else '' }}" placeholder="z.B. user_data.strategies.teststrategie.v1.teststrategie_4h_range.teststrategie_4h_range">
+        </div>
+        {# GEÄNDERT: Ticket 16 — Obsidian-Pfad-Feld entfernt (wird deterministisch abgeleitet) #}
+        <div class="col-md-4">
+          <label class="form-label">Erstellt von</label>
+          <input type="text" class="form-control" id="it-created-by" value="{{ iteration.created_by if iteration and iteration.created_by else '' }}" placeholder="optional">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Kurzbeschreibung</label>
+          <textarea class="form-control" id="it-description" rows="3" placeholder="Was hat sich in dieser Iteration geändert?">{{ iteration.description if iteration and iteration.description else '' }}</textarea>
+          <small class="text-muted">Direkt hier hinterlegen, unabhängig vom Obsidian-Eintrag.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec JSON -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Spec JSON</h3></div>
+    <div class="card-body">
+      <textarea class="form-control font-monospace" id="it-spec-json" rows="20" placeholder="{}">{{ spec_json_str }}</textarea>
+      <small class="text-muted">Gültiges JSON oder leer lassen</small>
+    </div>
+  </div>
+
+</form>
+
+<div id="save-status" class="mt-2"></div>
+
+{% if iteration %}
+<div class="modal modal-blur fade" id="modal-iteration-delete" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Iteration löschen?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <p>Iteration <strong>{{ iteration.version_name or iteration.version }}</strong> wird aus der Datenbank entfernt. Diese Aktion kann nicht rückgängig gemacht werden.</p>
+        {% if iteration.vault_exists %}
+        <label class="form-check">
+          <input type="checkbox" class="form-check-input" id="chk-delete-vault">
+          <span class="form-check-label">Auch den Obsidian-Ordner samt allen Dateien löschen</span>
+        </label>
+        <div class="text-muted small mt-2">Pfad: <code>30_Trading/strategies/{{ concept.slug }}/iterations/{{ iteration.version }}/</code></div>
+        {% else %}
+        <div class="text-muted small">Kein Obsidian-Ordner für diese Iteration vorhanden.</div>
+        {% endif %}
+        <div id="modal-delete-blockers" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-danger ms-auto" id="btn-iteration-delete-confirm">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          Endgültig löschen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Import-Path-Feld an Typ koppeln — bei generic deaktivieren und leeren
+  var typeEl = document.getElementById("it-type");
+  var pathEl = document.getElementById("it-import-path");
+  function syncImportPathState() {
+    var isHardcoded = typeEl.value === "hardcoded";
+    pathEl.disabled = !isHardcoded;
+    if (!isHardcoded) {
+      pathEl.value = "";
+    }
+  }
+  typeEl.addEventListener("change", syncImportPathState);
+  syncImportPathState();
+
+  // GEÄNDERT: Slug aus Name ableiten (gleiche Normalisierung wie backend normalize_version)
+  function normalizeVersion(raw) {
+    var s = (raw || '').trim().toLowerCase();
+    s = s.replace(/\s+/g, '-');
+    s = s.replace(/[^a-z0-9._-]/g, '');
+    return s;
+  }
+  var nameEl = document.getElementById("it-version-name");
+  var slugEl = document.getElementById("it-version-slug");
+  {% if not iteration %}
+  // Im Create-Modus Slug live aktualisieren
+  nameEl.addEventListener("input", function() {
+    slugEl.value = normalizeVersion(nameEl.value);
+  });
+  {% else %}
+  // Im Edit-Modus: Sync-Button zeigen, wenn Name-Slug vom aktuellen Slug abweicht
+  var btnSyncSlug = document.getElementById("btn-sync-slug");
+  function updateSyncSlugButton() {
+    if (!btnSyncSlug) return;
+    var derived = normalizeVersion(nameEl.value);
+    var current = slugEl.value;
+    if (derived && derived !== current) {
+      btnSyncSlug.classList.remove("d-none");
+      btnSyncSlug.title = "Slug auf '" + derived + "' setzen und Obsidian-Ordner ggf. umbenennen";
+    } else {
+      btnSyncSlug.classList.add("d-none");
+    }
+  }
+  nameEl.addEventListener("input", updateSyncSlugButton);
+  updateSyncSlugButton();
+  if (btnSyncSlug) {
+    btnSyncSlug.addEventListener("click", function() {
+      var derived = normalizeVersion(nameEl.value);
+      if (!confirm("Slug auf '" + derived + "' setzen?\nFalls Obsidian-Dokumente existieren, wird der Ordner umbenannt.")) return;
+      btnSyncSlug.disabled = true;
+      // Erst Name speichern, dann sync-slug aufrufen
+      fetch("/api/strategy/iterations/{{ iteration.id }}", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version_name: nameEl.value.trim() })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) throw new Error(json.error);
+        return fetch("/api/strategy/iterations/{{ iteration.id }}/sync-slug", { method: "POST" });
+      })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+      .then(function(res) {
+        if (!res.ok) {
+          var msg = (res.json && (res.json.detail || res.json.error)) || "Slug-Sync fehlgeschlagen.";
+          document.getElementById("save-status").innerHTML =
+            '<div class="alert alert-danger">' + msg + '</div>';
+          btnSyncSlug.disabled = false;
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function(err) {
+        document.getElementById("save-status").innerHTML =
+          '<div class="alert alert-danger">Fehler: ' + err.message + '</div>';
+        btnSyncSlug.disabled = false;
+      });
+    });
+  }
+  {% endif %}
+
+  {% if iteration %}
+  // GEÄNDERT: Ticket 16 — Vault-Button-State-Verwaltung (version ist immutable, nur is-exists matters)
+  var _vaultExists = {{ 'true' if iteration.vault_exists else 'false' }};
+  var btnVault = document.getElementById("btn-vault-create");
+
+  function updateVaultButtonState() {
+    if (!btnVault) return;
+    if (_vaultExists) {
+      btnVault.disabled = true;
+      btnVault.className = "btn btn-success";
+      btnVault.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M5 12l5 5l10 -10"/></svg> Obsidian-Dokumente vorhanden';
+    } else {
+      btnVault.disabled = false;
+      btnVault.className = "btn btn-primary";
+      btnVault.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg> Obsidian-Dokumente anlegen';
+    }
+  }
+  updateVaultButtonState();
+
+  // Vault-Button-Klick
+  if (btnVault) {
+    btnVault.addEventListener("click", function() {
+      btnVault.disabled = true;
+      fetch("/api/strategy/iterations/{{ iteration.id }}/vault-create", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) {
+            document.getElementById("save-status").innerHTML =
+              '<div class="alert alert-danger">Vault-Fehler: ' + json.error + '</div>';
+            updateVaultButtonState();
+            return;
+          }
+          _vaultExists = true;
+          document.getElementById("save-status").innerHTML =
+            json.data.created
+              ? '<div class="alert alert-success">Obsidian-Notiz angelegt: ' + json.data.path + '</div>'
+              : '<div class="alert alert-info">Obsidian-Notiz existiert bereits.</div>';
+          updateVaultButtonState();
+        })
+        .catch(function(err) {
+          document.getElementById("save-status").innerHTML =
+            '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+          updateVaultButtonState();
+        });
+    });
+  }
+
+  // Favoriten-Toggle (Stern neben Titel)
+  var btnFav = document.getElementById("btn-toggle-favorite");
+  if (btnFav) {
+    btnFav.addEventListener("click", function() {
+      btnFav.disabled = true;
+      fetch("/api/strategy/iterations/{{ iteration.id }}/favorite", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) {
+            document.getElementById("save-status").innerHTML =
+              '<div class="alert alert-danger">' + json.error + '</div>';
+            btnFav.disabled = false;
+            return;
+          }
+          var on = !!json.data.is_favorite;
+          btnFav.setAttribute('data-is-favorite', on ? '1' : '0');
+          btnFav.className = 'btn btn-icon btn-ghost-' + (on ? 'warning text-warning' : 'secondary text-muted');
+          btnFav.title = on ? 'Favorit entfernen' : 'Als Favorit markieren';
+          var svg = btnFav.querySelector('svg');
+          if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
+          btnFav.disabled = false;
+        })
+        .catch(function(err) {
+          document.getElementById("save-status").innerHTML =
+            '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+          btnFav.disabled = false;
+        });
+    });
+  }
+
+  // GEÄNDERT: Doku-Favoriten-Toggle (roter Stern neben Titel)
+  var btnDocFav = document.getElementById("btn-toggle-doc-favorite");
+  if (btnDocFav) {
+    btnDocFav.addEventListener("click", function() {
+      btnDocFav.disabled = true;
+      fetch("/api/strategy/iterations/{{ iteration.id }}/doc_favorite", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json.error) {
+            document.getElementById("save-status").innerHTML =
+              '<div class="alert alert-danger">' + json.error + '</div>';
+            btnDocFav.disabled = false;
+            return;
+          }
+          var on = !!json.data.is_doc_favorite;
+          btnDocFav.setAttribute('data-is-doc-favorite', on ? '1' : '0');
+          btnDocFav.className = 'btn btn-icon btn-ghost-' + (on ? 'danger text-danger' : 'secondary text-muted');
+          btnDocFav.title = on ? 'Doku-Favorit entfernen' : 'Als Doku-Favorit markieren';
+          var svg = btnDocFav.querySelector('svg');
+          if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
+          btnDocFav.disabled = false;
+        })
+        .catch(function(err) {
+          document.getElementById("save-status").innerHTML =
+            '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+          btnDocFav.disabled = false;
+        });
+    });
+  }
+
+  // GEÄNDERT: Iteration löschen mit optionalem Obsidian-Ordner
+  var btnDelete = document.getElementById("btn-iteration-delete");
+  var btnDeleteConfirm = document.getElementById("btn-iteration-delete-confirm");
+  var deleteModalEl = document.getElementById("modal-iteration-delete");
+  if (btnDelete && deleteModalEl) {
+    var deleteModal = new tabler.Modal(deleteModalEl);
+    btnDelete.addEventListener("click", function() { deleteModal.show(); });
+    btnDeleteConfirm.addEventListener("click", function() {
+      var chk = document.getElementById("chk-delete-vault");
+      var deleteVault = chk ? chk.checked : false;
+      var force = btnDeleteConfirm.getAttribute("data-force") === "true";
+      btnDeleteConfirm.disabled = true;
+      var url = "/api/strategy/iterations/{{ iteration.id }}?delete_vault=" + (deleteVault ? "true" : "false") + (force ? "&force=true" : "");
+      fetch(url, { method: "DELETE" })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, json: j }; }); })
+        .then(function(res) {
+          if (!res.ok) {
+            var detail = res.json && res.json.detail;
+            // GEÄNDERT: 409 mit Blocker-Info im Modal anzeigen, Force-Option anbieten
+            if (res.status === 409 && detail && detail.blockers) {
+              var b = detail.blockers;
+              var parts = [];
+              if (b.child_iterations > 0) parts.push(b.child_iterations + " Child-Iteration(en)");
+              if (b.backtest_runs > 0) parts.push(b.backtest_runs + " Backtest-Run(s)");
+              if (b.backtest_results > 0) parts.push(b.backtest_results + " Backtest-Ergebnis(se)");
+              document.getElementById("modal-delete-blockers").innerHTML =
+                '<div class="alert alert-warning mb-0"><strong>Abhängige Datensätze:</strong> ' + parts.join(", ") +
+                ". Beim Fortfahren werden diese ebenfalls gelöscht.</div>";
+              btnDeleteConfirm.setAttribute("data-force", "true");
+              btnDeleteConfirm.textContent = "Alles löschen (Cascade)";
+              btnDeleteConfirm.disabled = false;
+            } else {
+              var msg = (typeof detail === "string" ? detail : (detail && detail.message) || (res.json && res.json.error)) || "Löschen fehlgeschlagen.";
+              document.getElementById("save-status").innerHTML =
+                '<div class="alert alert-danger">' + msg + "</div>";
+              deleteModal.hide();
+              btnDeleteConfirm.disabled = false;
+            }
+            return;
+          }
+          window.location.href = "/config/strategy-concepts";
+        })
+        .catch(function(err) {
+          document.getElementById("save-status").innerHTML =
+            '<div class="alert alert-danger">Fehler: ' + err + "</div>";
+          deleteModal.hide();
+          btnDeleteConfirm.disabled = false;
+        });
+    });
+  }
+  {% endif %}
+
+  document.getElementById("iteration-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    var specRaw = document.getElementById("it-spec-json").value.trim();
+    var specJson = null;
+    if (specRaw) {
+      try { specJson = JSON.parse(specRaw); }
+      catch(err) {
+        document.getElementById("save-status").innerHTML =
+          '<div class="alert alert-danger">Spec JSON ist kein gültiges JSON: ' + err.message + '</div>';
+        return;
+      }
+    }
+
+    var parentId = document.getElementById("it-parent-id").value;
+    var itType = typeEl.value;
+    var importPath = pathEl.value.trim();
+    // GEÄNDERT: Ticket 16 — obsidian_path entfernt aus payload
+    var payload = {
+      version_name: nameEl.value.trim(),
+      status: document.getElementById("it-status").value,
+      type: itType,
+      import_path: itType === "hardcoded" ? (importPath || null) : null,
+      parent_iteration_id: parentId ? parseInt(parentId) : null,
+      description: document.getElementById("it-description").value.trim() || null,
+      created_by: document.getElementById("it-created-by").value.trim() || null,
+      spec_json: specJson,
+    };
+
+    {% if iteration %}
+    var url = "/api/strategy/iterations/{{ iteration.id }}";
+    var method = "PUT";
+    {% else %}
+    payload.concept_id = {{ concept.id }};
+    var url = "/api/strategy/iterations";
+    var method = "POST";
+    {% endif %}
+
+    fetch(url, {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (json.error) {
+        document.getElementById("save-status").innerHTML =
+          '<div class="alert alert-danger">' + json.error + '</div>';
+        return;
+      }
+      window.location.href = "/config/strategy-concepts";
+    })
+    .catch(function(err) {
+      document.getElementById("save-status").innerHTML =
+        '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+    });
+  });
+});
+</script>
+{% endblock %}

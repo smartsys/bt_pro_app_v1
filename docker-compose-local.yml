@@ -1,0 +1,232 @@
+name: bt_pro_app_v1
+
+x-worker-base: &worker-base
+  build:
+    context: .
+    dockerfile: services/api/Dockerfile
+  volumes:
+    - ./services:/app/services
+    - ./user_data:/app/user_data
+    - ./data/ohlc_data:/app/data/ohlc_data
+    - ./.env:/app/.env
+    - ${OBSIDIAN_VAULT_HOST_PATH}:/obsidian_vault:ro
+  environment:
+    POSTGRES_SERVER: db_bt_pro_v1
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: ${POSTGRES_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    REDIS_HOST: redis_bt_pro_v1
+    REDIS_INTERNAL_PORT: "6379"
+    PROJECT_ROOT: /app
+    OHLC_FETCH_DELAY: ${OHLC_FETCH_DELAY:-1.5}
+    OHLC_FETCH_LIMIT: ${OHLC_FETCH_LIMIT:-1000}
+    VAULT_ROOT: /obsidian_vault
+    EMBEDDING_BACKEND_URL: ${EMBEDDING_BACKEND_URL}
+  networks:
+    - bt_pro_network
+
+services:
+
+  vbt:
+    image: bt_pro_app_v1-vbt:latest
+    pull_policy: never
+    container_name: framework_vbt_v1
+    restart: unless-stopped
+    volumes:
+      - ./user_data:/workspace/user_data
+      - ./data/ohlc_data:/workspace/data/ohlc_data
+      - ./notebooks:/workspace/notebooks
+      - ./.env:/workspace/.env
+    env_file:
+      - .env
+    depends_on:
+      db_bt_pro_v1:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    networks:
+      - bt_pro_network
+
+  app:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: frontend_bt_pro_v1
+    restart: unless-stopped
+    ports:
+      - "5570:8000"
+    volumes:
+      - ./services:/app/services
+      - ./user_data:/app/user_data
+      - ./data/ohlc_data:/app/data/ohlc_data
+      - ./.env:/app/.env
+      - ${OBSIDIAN_VAULT_HOST_PATH}:/obsidian_vault
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./documentation/backup:/app/documentation/backup
+    environment:
+      POSTGRES_SERVER: db_bt_pro_v1
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKTEST_RESULTS_PATH: /app/user_data/backtest_results
+      PROJECT_ROOT: /app
+      OBSIDIAN_VAULT_PATH: /obsidian_vault
+      NUMBA_CACHE_DIR: /tmp/numba_cache
+    user: "1000:1000"
+    depends_on:
+      db_bt_pro_v1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    networks:
+      - bt_pro_network
+
+  worker:
+    <<: *worker-base
+    restart: unless-stopped
+    depends_on:
+      db_bt_pro_v1:
+        condition: service_healthy
+      redis_bt_pro_v1:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    command:
+      - "python"
+      - "-m"
+      - "services.api.worker_entry"
+    deploy:
+      replicas: 2
+
+  worker-init:
+    <<: *worker-base
+    restart: "no"
+    depends_on:
+      db_bt_pro_v1:
+        condition: service_healthy
+      redis_bt_pro_v1:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    command:
+      - "python"
+      - "services/api/recovery_oneshot.py"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: services/scheduler/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./services:/app/services
+      - ./user_data:/app/user_data
+      - ./.env:/app/.env
+    environment:
+      POSTGRES_SERVER: db_bt_pro_v1
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis_bt_pro_v1
+      REDIS_INTERNAL_PORT: "6379"
+      PROJECT_ROOT: /app
+    depends_on:
+      db_bt_pro_v1:
+        condition: service_healthy
+      redis_bt_pro_v1:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    networks:
+      - bt_pro_network
+
+  db_bt_pro_v1:
+    image: timescale/timescaledb:latest-pg17
+    container_name: db_bt_pro_v1
+    restart: unless-stopped
+    ports:
+      - "5560:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} && psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - bt_pro_network
+
+  db_bt_pro_v1_test:
+    image: timescale/timescaledb:latest-pg17
+    container_name: db_bt_pro_v1_test
+    restart: unless-stopped
+    ports:
+      - "5562:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} && psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - bt_pro_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin_bt_pro_v1
+    restart: unless-stopped
+    ports:
+      - "5563:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - ./data/pgadmin:/var/lib/pgadmin
+      - ./data/pgadmin/servers.json:/pgadmin4/servers.json
+      - ./data/pgadmin/pgpass:/pgpass
+    depends_on:
+      - db_bt_pro_v1
+    networks:
+      - bt_pro_network
+
+  redis_bt_pro_v1:
+    image: redis:7-alpine
+    container_name: redis_bt_pro_v1
+    restart: unless-stopped
+    ports:
+      - "5561:6379"
+    volumes:
+      - ./data/redis:/data
+    command: ["redis-server", "--timeout", "0", "--tcp-keepalive", "60", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - bt_pro_network
+
+networks:
+  bt_pro_network:
+    driver: bridge

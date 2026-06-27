@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Backtest-Configs - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Backtest-Configs</h2>
+
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto">
+        <a href="/config/backtest/new" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Neue Config
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Alle Configs (<span id="configs-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <div class="dt-search-input" style="width: 260px;">
+        <span class="dt-search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="search" id="configs-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+        <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="configs-search">&times;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="configs-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="text-center" style="width:1%"></th>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Symbol</th>
+            <th>Exchange</th>
+            <th>TF</th>
+            <th>OHLC Start</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>OHLC End</th>
+            <th class="text-center">Size</th>
+            <th>Size Type</th>
+            <th class="text-center">Init Cash</th>
+            <th class="text-center">Fees</th>
+            <th style="min-width:120px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  // Lookup-Map: "exchange|timeframe|symbol" -> { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+  // Wird vor DataTable-Init geladen, damit die Date-Renderer den Verfügbarkeitsabgleich
+  // direkt machen können.
+  var dataAvailability = {};
+  function availabilityKey(exchange, timeframe, symbol) {
+    return (exchange || '') + '|' + (timeframe || '') + '|' + (symbol || '');
+  }
+  function loadAvailability() {
+    return fetch('/api/config/data/files')
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        var files = (j.data && j.data.files) || [];
+        files.forEach(function(f) {
+          (f.symbols || []).forEach(function(s) {
+            dataAvailability[availabilityKey(f.exchange, f.timeframe, s.symbol)] = {
+              start: (s.start || '').substring(0, 10),
+              end: (s.end || '').substring(0, 10),
+            };
+          });
+        });
+      })
+      .catch(function() { /* fallback: leere Map -> kein Marker */ });
+  }
+
+  // ISO 'YYYY-MM-DD' -> 'DD.MM.YYYY' (mitteleuropäisches Format, Zeitzone bleibt UTC)
+  function formatDateDe(iso) {
+    if (!iso) return '';
+    var s = ('' + iso).substring(0, 10);
+    var parts = s.split('-');
+    if (parts.length !== 3) return s;
+    return parts[2] + '.' + parts[1] + '.' + parts[0];
+  }
+
+  // Liefert die Datumszelle inkl. Warnung wenn auserhalb des verfügbaren OHLC-Bereichs
+  // für das Symbol/Exchange/Timeframe der Config.
+  // Sortierung/Filter nutzen weiterhin den ISO-Wert (orthogonales DataTables-Render).
+  function renderDateCell(dateStr, type, row) {
+    if (type !== 'display') return dateStr || '';
+    if (!dateStr) return '-';
+    var display = formatDateDe(dateStr);
+    var avail = dataAvailability[availabilityKey(row.exchange, row.timeframe, row.symbol)];
+    if (!avail || !avail.start || !avail.end) {
+      var tip = 'Keine OHLC-Daten für '
+        + (row.symbol || '?') + ' / ' + (row.exchange || '?') + ' / ' + (row.timeframe || '?')
+        + ' vorhanden';
+      return '<span class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="'
+        + tip + '">' + display + ' &#9888;</span>';
+    }
+    if (dateStr < avail.start || dateStr > avail.end) {
+      var tip2 = 'Daten verfügbar ab ' + formatDateDe(avail.start)
+               + ' bis ' + formatDateDe(avail.end);
+      return '<span class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="'
+        + tip2 + '">' + display + ' &#9888;</span>';
+    }
+    return display;
+  }
+
+  // Bootstrap-Tooltips für dynamisch eingefügte Zellen (Pattern aus backtest/analyse.html,
+  // weil tabler.min.js Tooltips nicht auto-initialisiert und window.bootstrap nicht verfügbar ist).
+  function initTooltips(scope) {
+    scope.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+      if (el._tipInit) return;
+      el._tipInit = true;
+      var tipText = el.getAttribute('title') || '';
+      el.removeAttribute('title');
+      el.setAttribute('data-tip', tipText);
+      el.addEventListener('mouseenter', function() {
+        var text = el.getAttribute('data-tip');
+        if (!text) return;
+        var rect = el.getBoundingClientRect();
+        var tip = document.createElement('div');
+        tip.className = 'tooltip bs-tooltip-top show';
+        tip.setAttribute('role', 'tooltip');
+        tip.innerHTML = '<div class="tooltip-arrow"></div><div class="tooltip-inner">' + text + '</div>';
+        document.body.appendChild(tip);
+        tip.style.position = 'fixed';
+        tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 4) + 'px';
+        el._tip = tip;
+      });
+      el.addEventListener('mouseleave', function() {
+        if (el._tip) { el._tip.remove(); el._tip = null; }
+      });
+    });
+  }
+
+  var table;
+  function initTable() {
+    table = new DataTable("#configs-table", {
+    ajax: {
+      url: "/api/config/backtest",
+      dataSrc: function(json) {
+        document.getElementById("configs-total").textContent = json.data.length;
+        return json.data;
+      }
+    },
+    columns: [
+      // GEÄNDERT: Favoriten-Stern (nicht-exklusiv) ersetzt das frühere Default-Flag.
+      { data: "is_favorite", orderable: true, className: "text-center", render: function(d, type, row) {
+          if (type === 'sort' || type === 'type') return d ? 1 : 0;
+          var on = !!d;
+          var fill = on ? 'currentColor' : 'none';
+          var cls = on ? 'btn-ghost-warning text-warning' : 'btn-ghost-secondary text-muted';
+          var title = on ? 'Favorit entfernen' : 'Als Favorit markieren';
+          return '<button class="btn btn-sm ' + cls + ' p-1 btn-toggle-favorite" data-id="' + row.id + '" title="' + title + '">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="' + fill + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/></svg>' +
+          '</button>';
+      }},
+      { data: "id" },
+      {
+        data: "name",
+        render: function(d) {
+          return '<strong>' + d + '</strong>';
+        }
+      },
+      { data: "symbol", render: function(d) { return '<span class="badge bg-cyan-lt">' + d + '</span>'; } },
+      { data: "exchange", render: function(d) { return '<span class="badge bg-azure-lt">' + d + '</span>'; } },
+      { data: "timeframe", render: function(d) { return '<span class="badge bg-green-lt">' + d + '</span>'; } },
+      { data: "ohlc_start", render: renderDateCell },
+      { data: "start",      render: renderDateCell },
+      { data: "end",        render: renderDateCell },
+      { data: "ohlc_end",   render: renderDateCell },
+      { data: "size", className: "text-center" },
+      { data: "size_type" },
+      { data: "init_cash", className: "text-center" },
+      { data: "fees", className: "text-center" },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data) {
+          return '<div class="text-end text-nowrap">' +
+            '<a href="/config/data" class="btn btn-sm btn-outline-secondary me-3" title="Zum OHLC-Downloader"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></svg> OHLC</a>' +
+            '<a href="/config/backtest/' + data + '" class="btn btn-sm btn-outline-primary me-1" title="Bearbeiten"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/><path d="M16 5l3 3"/></svg></a>' +
+            '<button class="btn btn-sm btn-outline-info btn-copy me-1" data-id="' + data + '" title="Kopieren"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></svg></button>' +
+            '<button class="btn btn-sm btn-outline-danger btn-delete" data-id="' + data + '" title="Löschen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></button>' +
+            '</div>';
+        }
+      }
+    ],
+    pageLength: 25,
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    // GEÄNDERT: Favoriten zuerst (Stern DESC), dann alphabetisch nach Name (ASC).
+    order: [[0, "desc"], [2, "asc"]],
+    drawCallback: function() {
+      // Tooltips für die Datums-Warnungen nach jedem Render initialisieren
+      initTooltips(document.getElementById('configs-table'));
+    },
+    language: {
+      search: "Suche:",
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_",
+      infoEmpty: "Keine Configs",
+      zeroRecords: "Keine Configs gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+    });
+  }
+
+  // Erst Availability laden, dann DataTable initialisieren — damit die
+  // Datums-Renderer den Verfügbarkeitsabgleich beim ersten Render schon haben.
+  loadAvailability().then(initTable).then(function() {
+    // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
+    var searchInput = document.getElementById("configs-search");
+    searchInput.addEventListener("input", function() {
+      table.search(this.value).draw();
+    });
+  });
+
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".dt-search-clear");
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  /* Favoriten-Stern toggeln */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var favBtn = e.target.closest(".btn-toggle-favorite");
+    if (!favBtn) return;
+    e.preventDefault();
+    var id = favBtn.getAttribute("data-id");
+    favBtn.disabled = true;
+    fetch('/api/config/backtest/' + id + '/favorite', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        favBtn.disabled = false;
+        if (json.error) { alert('Fehler: ' + json.error); return; }
+        // Zeilen-Datum im DataTable aktualisieren, damit Sortierung/Render stimmen
+        var row = table.row(favBtn.closest('tr'));
+        var rd = row.data();
+        if (rd) { rd.is_favorite = json.data.is_favorite ? 1 : 0; row.data(rd); }
+      })
+      .catch(function(err) { favBtn.disabled = false; alert('Fehler: ' + err); });
+  });
+
+  /* Kopieren */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-copy");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    fetch('/api/config/backtest/' + id + '/copy', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) { alert(json.error); return; }
+        table.ajax.reload();
+      });
+  });
+
+  /* Löschen */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-delete");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Config #" + id + " wirklich löschen?")) return;
+    fetch('/api/config/backtest/' + id, { method: 'DELETE' })
+      .then(function() { table.ajax.reload(); });
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Indizierte Dateien - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Indizierte Dateien</h2>
+        <div class="page-pretitle">Wissens-Index</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Filter-Zeile -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <input type="text" id="filter-q" class="form-control" placeholder="Pfad suchen...">
+      </div>
+      <div class="col-md-3">
+        <select id="filter-tags" class="form-select" multiple size="1" title="Tag-Filter">
+          <option value="">Alle Tags</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button id="btn-filter-apply" class="btn btn-primary">Filtern</button>
+        <button id="btn-filter-reset" class="btn btn-outline-secondary ms-1">Zurücksetzen</button>
+      </div>
+      <div class="col-auto ms-auto text-muted small" id="files-total-info"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="knowledge-files-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th>Vault-Pfad</th>
+            <th class="text-center">Chunks</th>
+            <th>Letzte Indexierung</th>
+            <th>Quelle-mtime</th>
+            <th>Tags</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  function fmtDateDe(iso) {
+    if (!iso) return '-';
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+           ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  }
+
+  function buildUrl() {
+    var q = document.getElementById('filter-q').value.trim();
+    var tagSel = document.getElementById('filter-tags');
+    var selectedTags = Array.from(tagSel.selectedOptions)
+      .map(function(o) { return o.value; })
+      .filter(function(v) { return v !== ''; });
+
+    var params = new URLSearchParams();
+    params.set('limit', '500');
+    if (q) params.set('q', q);
+    selectedTags.forEach(function(t) { params.append('tag', t); });
+    return '/api/knowledge/files?' + params.toString();
+  }
+
+  var table = new DataTable("#knowledge-files-table", {
+    ajax: {
+      url: buildUrl(),
+      dataSrc: function(json) {
+        document.getElementById('files-total-info').textContent = json.total + ' Dateien gesamt';
+
+        // Tags aus Daten sammeln und Select befüllen
+        var allTags = new Set();
+        (json.files || []).forEach(function(f) {
+          (f.tags || []).forEach(function(t) { allTags.add(t); });
+        });
+        var tagSel = document.getElementById('filter-tags');
+        var currentSelected = Array.from(tagSel.selectedOptions).map(function(o) { return o.value; });
+        tagSel.innerHTML = '<option value="">Alle Tags</option>';
+        Array.from(allTags).sort().forEach(function(t) {
+          var opt = document.createElement('option');
+          opt.value = t;
+          opt.textContent = t;
+          if (currentSelected.includes(t)) opt.selected = true;
+          tagSel.appendChild(opt);
+        });
+
+        return json.files || [];
+      }
+    },
+    columns: [
+      { data: "vault_path" },
+      {
+        data: "chunk_count",
+        className: "text-center",
+        render: function(d) { return d; }
+      },
+      {
+        data: "last_indexed",
+        render: function(d) { return '<span class="text-secondary">' + fmtDateDe(d) + '</span>'; }
+      },
+      {
+        data: "source_mtime",
+        render: function(d) { return '<span class="text-secondary">' + fmtDateDe(d) + '</span>'; }
+      },
+      {
+        data: "tags",
+        orderable: false,
+        render: function(tags) {
+          if (!tags || tags.length === 0) return '<span class="text-muted">-</span>';
+          return tags.map(function(t) {
+            return '<span class="badge bg-blue-lt me-1">' + t + '</span>';
+          }).join('');
+        }
+      }
+    ],
+    pageLength: 25,
+    order: [[2, "desc"]],
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    language: {
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_ Einträgen",
+      infoEmpty: "Keine indizierten Dateien",
+      zeroRecords: "Keine Dateien gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  function reloadTable() {
+    table.ajax.url(buildUrl()).load(null, false);
+  }
+
+  document.getElementById('btn-filter-apply').addEventListener('click', reloadTable);
+
+  document.getElementById('btn-filter-reset').addEventListener('click', function() {
+    document.getElementById('filter-q').value = '';
+    var tagSel = document.getElementById('filter-tags');
+    Array.from(tagSel.options).forEach(function(o) { o.selected = false; });
+    reloadTable();
+  });
+
+  // Enter im Suchfeld löst Filter aus
+  document.getElementById('filter-q').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') reloadTable();
+  });
+
+});
+</script>
+{% endblock %}

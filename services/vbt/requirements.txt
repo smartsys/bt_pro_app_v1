@@ -1,0 +1,44 @@
+# VBT Pro Core Dependencies (Required von vectorbtpro)
+numpy
+pandas
+numba
+scipy
+scikit-learn
+mypy_extensions
+attrs
+dateparser
+humanize
+imageio
+python-dateutil
+typing_extensions
+websocket-client
+schedule
+requests
+tqdm
+
+# Visualisierung
+plotly
+kaleido
+matplotlib
+
+# Indikatoren
+ta
+TA-Lib
+
+# Daten
+ccxt
+python-binance
+
+# Datenbank
+sqlalchemy
+psycopg2-binary
+redis
+tables
+
+# Sonstiges
+dill
+python-dotenv
+lz4
+
+# Knowledge-Modul (Vault-Indexer)
+PyYAML==6.0.2

@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Installation - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <h2 class="page-title">Installation</h2>
+        <div class="text-secondary mt-1">Willkommen — das ist eine frische Grundinstallation. Diese Seite führt dich in drei Schritten zum ersten Backtest: Was bereits eingerichtet ist, Kursdaten laden, Demo-Testlauf starten.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row row-cards">
+
+  <!-- Installations-Check: was die Grundausstattung mitgebracht hat -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Schritt 1 — Das ist schon da</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary">
+          Jede Neuinstallation bringt einen neutralen Grundstock mit, damit du sofort
+          loslegen kannst. Diese Objekte wurden bei der Installation automatisch eingespielt:
+        </p>
+        <table class="table table-vcenter">
+          <tbody>
+            <tr><td>Backtest-Configs</td><td class="text-end"><span class="badge bg-blue-lt">{{ counts.backtest_configs }}</span></td></tr>
+            <tr><td>Test-Sets</td><td class="text-end"><span class="badge bg-blue-lt">{{ counts.testsets }}</span></td></tr>
+            <tr><td>Strategie-Konzepte</td><td class="text-end"><span class="badge bg-blue-lt">{{ counts.strategy_concepts }}</span></td></tr>
+            <tr><td>Iterationen</td><td class="text-end"><span class="badge bg-blue-lt">{{ counts.strategy_iterations }}</span></td></tr>
+            <tr><td>Indicator-Configs</td><td class="text-end"><span class="badge bg-blue-lt">{{ counts.indicator_configs }}</span></td></tr>
+          </tbody>
+        </table>
+        <p class="text-secondary mb-0">
+          Dabei ist eine fertige <strong>Demo-Strategie</strong> als Einstiegsbeispiel —
+          inklusive ihrer Iteration und Indikator-Konfiguration. So kannst du den kompletten
+          Ablauf einmal durchspielen, bevor du eigene Strategien baust. Eigene Strategien,
+          Backtest-Läufe (Runs) und Leaderboard-Einträge sind bewusst noch nicht enthalten —
+          die entstehen erst durch deine eigene Arbeit.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kursdaten: OHLC-Download-Jobs anlegen -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Schritt 2 — Kursdaten laden</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary">
+          Ein Backtest rechnet auf historischen Kursdaten. Diese sogenannten
+          <strong>OHLC-Daten</strong> (Open, High, Low, Close — Eröffnungs-, Höchst-,
+          Tiefst- und Schlusskurs je Kerze) werden aus Platzgründen nicht mitgeliefert
+          und müssen zuerst heruntergeladen werden.
+        </p>
+        <p class="text-secondary">
+          Der Knopf legt automatisch die passenden Download-Jobs an — genau die Symbole
+          und Zeiträume, die die mitgelieferten Test-Sets und die Demo-Strategie brauchen
+          (Quelle Binance, je Symbol ein Hintergrund-Job). Den Fortschritt siehst du direkt
+          darunter; je nach Datenmenge dauert das ein paar Minuten.
+        </p>
+        <button id="btn-load-ohlc" class="btn btn-primary">
+          OHLC-Jobs anlegen
+        </button>
+        <div id="ohlc-result" class="mt-3"></div>
+
+        <!-- Live-Fortschritt der OHLC-Jobs (queued / fertig), direkt in der Maske -->
+        <div id="ohlc-progress" class="mt-3 d-none">
+          <div class="text-secondary mb-2">Fortschritt der Downloads:</div>
+          <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-yellow-lt">In Warteschlange: <span id="ohlc-queued">0</span></span>
+            <span class="badge bg-azure-lt">Läuft: <span id="ohlc-running">0</span></span>
+            <span class="badge bg-green-lt">Fertig: <span id="ohlc-completed">0</span></span>
+            <span class="badge bg-red-lt d-none" id="ohlc-failed-badge">Fehlgeschlagen: <span id="ohlc-failed">0</span></span>
+          </div>
+        </div>
+
+        <p class="text-secondary mt-3 mb-0">
+          <a href="/config/data" target="_blank" rel="noopener">OHLC-Daten</a>
+        </p>
+
+        <hr class="my-3">
+
+        <!-- Demo-Testlauf: prüft die Demo-Strategie gegen die mitgelieferten Testsets -->
+        <p class="fw-bold mb-1">Schritt 3 — Demo-Testlauf starten</p>
+        <p class="text-secondary">
+          Sobald die Kursdaten vollständig vorliegen, wird der Knopf aktiv. Ein
+          <strong>Test-Set</strong> bündelt mehrere Marktphasen, gegen die eine Strategie
+          auf einen Schlag geprüft wird. Der Demo-Testlauf nimmt die mitgelieferte
+          Demo-Strategie und rechnet sie über zwei Test-Sets — einen Bullen- und einen
+          Bärenmarkt. Im Hintergrund laufen die Backtests, Kennzahlen werden berechnet und
+          als Ergebnisse (Runs) gespeichert. So siehst du an einem fertigen Beispiel, wie
+          der komplette Ablauf von Strategie zu Auswertung funktioniert. Die Ergebnisse
+          findest du anschließend unter „Runs".
+        </p>
+        <button id="btn-testrun" class="btn btn-success" disabled>
+          TestSet starten
+        </button>
+        <div id="testrun-hint" class="text-secondary small mt-2"></div>
+        <div id="testrun-result" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Legt die Baseline-OHLC-Download-Jobs an und zeigt Ergebnis + Live-Fortschritt. */
+(function () {
+  const btn = document.getElementById("btn-load-ohlc");
+  const result = document.getElementById("ohlc-result");
+  if (!btn) return;
+
+  const progress = document.getElementById("ohlc-progress");
+  const elQueued = document.getElementById("ohlc-queued");
+  const elRunning = document.getElementById("ohlc-running");
+  const elCompleted = document.getElementById("ohlc-completed");
+  const elFailed = document.getElementById("ohlc-failed");
+  const failedBadge = document.getElementById("ohlc-failed-badge");
+  const btnTestrun = document.getElementById("btn-testrun");
+  const testrunHint = document.getElementById("testrun-hint");
+  const testrunResult = document.getElementById("testrun-result");
+  let pollTimer = null;
+
+  // Prueft, ob die fuer den Demo-Testlauf noetigen Candles vorliegen, und
+  // schaltet den Button entsprechend frei.
+  async function refreshReadiness() {
+    try {
+      const resp = await fetch("/api/config/data/baseline-testrun/readiness");
+      const json = await resp.json();
+      if (!resp.ok || json.error) return;
+      const d = json.data || {};
+      btnTestrun.disabled = !d.ready;
+      if (d.ready) {
+        testrunHint.textContent = "Alle Candles vorhanden — Testlauf bereit.";
+      } else {
+        const miss = (d.missing || []);
+        testrunHint.textContent = miss.length
+          ? "Es fehlen noch Candles für: " + miss.join(", ")
+          : "Candles werden noch geladen …";
+      }
+    } catch (err) {
+      /* Netzwerkfehler still ignorieren. */
+    }
+  }
+
+  // Holt die aggregierte Job-Zaehlung und aktualisiert die Anzeige.
+  async function refreshProgress() {
+    try {
+      const resp = await fetch("/api/config/data/jobs/summary");
+      const json = await resp.json();
+      if (!resp.ok || json.error) return;
+      const d = json.data || {};
+      if ((d.total || 0) > 0) progress.classList.remove("d-none");
+      elQueued.textContent = d.queued || 0;
+      elRunning.textContent = d.running || 0;
+      elCompleted.textContent = d.completed || 0;
+      elFailed.textContent = d.failed || 0;
+      failedBadge.classList.toggle("d-none", !(d.failed > 0));
+      // Readiness des Demo-Testlaufs mitziehen (Candles evtl. jetzt vollstaendig).
+      refreshReadiness();
+      // Solange Jobs warten oder laufen, weiter pollen; sonst Polling stoppen.
+      const active = (d.queued || 0) + (d.running || 0);
+      if (active > 0 && !pollTimer) {
+        pollTimer = setInterval(refreshProgress, 3000);
+      } else if (active === 0 && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    } catch (err) {
+      /* Netzwerkfehler still ignorieren — naechster Poll versucht es erneut. */
+    }
+  }
+
+  // Demo-Testlauf starten.
+  btnTestrun.addEventListener("click", async function () {
+    btnTestrun.disabled = true;
+    const original = btnTestrun.textContent;
+    btnTestrun.textContent = "Starte Testlauf …";
+    testrunResult.innerHTML = "";
+    try {
+      const resp = await fetch("/api/config/data/baseline-testrun", { method: "POST" });
+      const json = await resp.json();
+      if (!resp.ok || json.error) {
+        throw new Error(json.error || ("HTTP " + resp.status));
+      }
+      const d = json.data || {};
+      testrunResult.innerHTML =
+        '<div class="alert alert-success mb-0">' +
+        (d.count || 0) + ' Test-Set-Lauf/Läufe gestartet. ' +
+        'Ergebnisse unter <a href="/backtest/runs" target="_blank" rel="noopener">Runs</a>.' +
+        '</div>';
+    } catch (err) {
+      testrunResult.innerHTML =
+        '<div class="alert alert-danger mb-0">Fehler: ' + (err.message || err) + '</div>';
+    } finally {
+      btnTestrun.textContent = original;
+      refreshReadiness();
+    }
+  });
+
+  // Initial die Testlauf-Bereitschaft prüfen.
+  refreshReadiness();
+
+  // Beim Laden den aktuellen Stand zeigen (falls schon Jobs existieren).
+  refreshProgress();
+
+  btn.addEventListener("click", async function () {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Lege Jobs an …";
+    result.innerHTML = "";
+    try {
+      const resp = await fetch("/api/config/data/install-baseline-jobs", { method: "POST" });
+      const json = await resp.json();
+      if (!resp.ok || json.error) {
+        throw new Error(json.error || ("HTTP " + resp.status));
+      }
+      const d = json.data || {};
+      const created = d.count || 0;
+      const skipped = (d.skipped || []).length;
+      result.innerHTML =
+        '<div class="alert alert-success mb-0">' +
+        created + ' Download-Job(s) angelegt' +
+        (skipped ? ', ' + skipped + ' bereits vorhanden (übersprungen)' : '') +
+        '.</div>';
+      // Fortschritt sofort aktualisieren und Polling starten.
+      refreshProgress();
+    } catch (err) {
+      result.innerHTML =
+        '<div class="alert alert-danger mb-0">Fehler: ' + (err.message || err) + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+})();
+</script>
+{% endblock %}

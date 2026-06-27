@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Reindex-Run #{{ run_id }} - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Reindex-Run #{{ run_id }}</h2>
+        <div class="page-pretitle">Wissens-Index</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/knowledge/runs" class="btn btn-outline-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M15 6l-6 6l6 6"/></svg>
+          Zurück zur Liste
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="error-alert" class="alert alert-danger mb-3" style="display:none;"></div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Details</h3>
+    <div class="card-options">
+      <span id="status-badge" class="badge bg-secondary-lt">...</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-vcenter">
+        <tbody id="detail-tbody">
+          <tr><td colspan="2" class="text-muted text-center">Wird geladen...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Geänderte Dateien</h3>
+  </div>
+  <div class="card-body" id="files-changed-section">
+    <p class="text-muted">Wird geladen...</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var runId = {{ run_id }};
+
+  function fmtDateDe(iso) {
+    if (!iso) return '-';
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+           ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
+  }
+
+  function statusBadge(s) {
+    var map = {queued: 'bg-secondary-lt', running: 'bg-primary-lt', success: 'bg-success-lt', failed: 'bg-danger-lt'};
+    return 'badge ' + (map[s] || 'bg-secondary-lt');
+  }
+
+  function row(label, value) {
+    return '<tr><td class="text-muted" style="width:200px;">' + label + '</td><td>' + value + '</td></tr>';
+  }
+
+  async function loadDetail() {
+    try {
+      var resp = await fetch('/api/knowledge/runs/' + runId);
+      if (!resp.ok) {
+        document.getElementById('error-alert').textContent = 'Fehler beim Laden: HTTP ' + resp.status;
+        document.getElementById('error-alert').style.display = '';
+        return;
+      }
+      var d = await resp.json();
+
+      // Status-Badge aktualisieren
+      var badge = document.getElementById('status-badge');
+      badge.className = statusBadge(d.status);
+      badge.textContent = d.status;
+
+      // Fehlermeldung
+      var alertBox = document.getElementById('error-alert');
+      if (d.error_message) {
+        alertBox.textContent = d.error_message;
+        alertBox.style.display = '';
+      } else {
+        alertBox.style.display = 'none';
+      }
+
+      var tbody = document.getElementById('detail-tbody');
+      var html = '';
+      html += row('ID', d.id);
+      html += row('Job-ID', '<code>' + d.job_id + '</code>');
+      html += row('Scope', d.scope);
+      html += row('Ziel-Pfad', d.target_path || '-');
+      html += row('Trigger', d.trigger);
+      html += row('Status', '<span class="' + statusBadge(d.status) + '">' + d.status + '</span>');
+      html += row('Erstellt', fmtDateDe(d.created_at));
+      html += row('Gestartet', fmtDateDe(d.started_at));
+      html += row('Beendet', fmtDateDe(d.finished_at));
+      html += row('Dauer', d.duration_seconds !== null ? d.duration_seconds.toFixed(2) + ' s' : '-');
+      html += row('Dateien gescannt', d.files_scanned !== null ? d.files_scanned : '-');
+      html += row('Dateien reindiziert', d.files_reindexed !== null ? d.files_reindexed : '-');
+      html += row('Dateien gelöscht', d.files_deleted !== null ? d.files_deleted : '-');
+      html += row('Chunks geschrieben', d.chunks_written !== null ? d.chunks_written : '-');
+      html += row('Chunks / Sekunde', d.chunks_per_second !== null && d.chunks_per_second !== undefined ? d.chunks_per_second.toFixed(2) : '-');
+      tbody.innerHTML = html;
+
+      // Geänderte Dateien-Sektion aufbauen
+      var filesSection = document.getElementById('files-changed-section');
+      var fc = d.files_changed;
+      if (!fc || ((!fc.reindexed || fc.reindexed.length === 0) && (!fc.deleted || fc.deleted.length === 0))) {
+        filesSection.innerHTML = '<p class="text-muted">Keine Änderungen / nicht erfasst</p>';
+      } else {
+        var fsHtml = '';
+        var reindexed = fc.reindexed || [];
+        var deleted = fc.deleted || [];
+        fsHtml += '<details class="mb-2">';
+        fsHtml += '<summary class="fw-semibold" style="cursor:pointer;">Reindiziert (' + reindexed.length + ')</summary>';
+        fsHtml += '<ul class="list-unstyled mt-2 ps-2">';
+        if (reindexed.length > 0) {
+          reindexed.forEach(function(p) { fsHtml += '<li><code>' + p + '</code></li>'; });
+        } else {
+          fsHtml += '<li class="text-muted">Keine</li>';
+        }
+        fsHtml += '</ul></details>';
+
+        fsHtml += '<details>';
+        fsHtml += '<summary class="fw-semibold" style="cursor:pointer;">Gelöscht (' + deleted.length + ')</summary>';
+        fsHtml += '<ul class="list-unstyled mt-2 ps-2">';
+        if (deleted.length > 0) {
+          deleted.forEach(function(p) { fsHtml += '<li><code>' + p + '</code></li>'; });
+        } else {
+          fsHtml += '<li class="text-muted">Keine</li>';
+        }
+        fsHtml += '</ul></details>';
+        filesSection.innerHTML = fsHtml;
+      }
+
+    } catch (e) {
+      document.getElementById('error-alert').textContent = 'Netzwerkfehler: ' + e.message;
+      document.getElementById('error-alert').style.display = '';
+    }
+  }
+
+  loadDetail();
+});
+</script>
+{% endblock %}

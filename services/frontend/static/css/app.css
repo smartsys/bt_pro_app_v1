@@ -1,0 +1,1411 @@
+/**
+ * app.css — Projekteigenes globales Stylesheet
+ *
+ * Lädt nach tabler.min.css und tabler-vendors.min.css, damit diese Regeln
+ * Tablers Defaults gezielt überschreiben können.
+ *
+ * Inhalt:
+ *   1. Scrollbalken-Fix (Problem A: horizontales Springen verhindern)
+ *   2. Layout — volle Breite für alle Seiten
+ *   3. DataTables — gemeinsame Boilerplate (Suchfeld, Footer-Row, Spalten-Header)
+ *   4. Werte-Farben (positiv/negativ) — über mehrere Seiten genutzt
+ *   5. Child-Row — gemeinsame Stile für ausklappbare Detailzeilen (Runs-Seite)
+ *   6. Parameter-Tooltip (Results-Seite)
+ */
+
+
+/* =============================================================================
+   1. Scrollbalken-Fix
+   Tabler bringt ab ≥992px diese Regel mit:
+     @media (min-width:992px){ :root { margin-left: calc(100vw - 100%); } }
+   Das ergibt ~15px margin-left auf Seiten MIT Scrollbalken und 0px auf Seiten
+   OHNE — dadurch springen Navbar und Überschriften beim Seitenwechsel.
+   Lösung: margin neutralisieren + scrollbar-gutter reserviert den Platz immer.
+   ============================================================================= */
+:root {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+html {
+  /* Reserviert den Scrollbalken-Platz dauerhaft — verhindert Breiten-Sprung */
+  scrollbar-gutter: stable;
+}
+
+
+/* =============================================================================
+   2. Layout — volle Breite
+   Tabellenseiten und breite Seiten setzen container-xl auf max-width: 100%.
+   Da diese Regel auf allen Seiten gilt, entfällt das Inline-CSS pro Template.
+   ============================================================================= */
+.page-body .container-xl {
+  max-width: 100%;
+}
+
+
+/* =============================================================================
+   3. DataTables — gemeinsame Boilerplate
+   Gilt für alle Seiten mit DataTables. Ersetzt die identischen Inline-Blöcke
+   in backtest/runs.html, backtest/results.html, config/backtest_configs.html,
+   config/indicator_configs.html, config/playground_setups.html,
+   config/strategy_concepts.html, knowledge/files.html, knowledge/runs.html,
+   leaderboard/index.html, testsets/detail.html, testsets/list.html,
+   workflow/runs.html, workflow/templates.html u.a.
+   ============================================================================= */
+
+/* Standard-Suchfeld von DataTables ausblenden — eigenes im card-header */
+div.dt-search {
+  display: none;
+}
+
+/* Spalten-Header: nicht umbrechen, SVG bündig mit Textzeile */
+.dt-column-title {
+  white-space: nowrap;
+}
+.dt-column-title svg {
+  vertical-align: -0.125em;
+}
+
+/* Footer-Row: Length-Select links, Info Mitte, Pagination rechts.
+   Eigene Marker-Klasse dt-footer-row via dom-String, weil DataTables 2.0
+   ein unsichtbares .dt-autosize-Element ans Ende hängt und :last-child
+   daher nicht greift. */
+.dt-container > .row.dt-footer-row {
+  padding: 1rem 1.25rem;
+  margin: 0 !important;
+  align-items: center;
+}
+.dt-footer-row .pagination {
+  margin-bottom: 0;
+}
+.dt-footer-row,
+.dt-footer-row .dt-info,
+.dt-footer-row .dt-length,
+.dt-footer-row .dt-length label,
+.dt-footer-row .pagination .page-link {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.dt-footer-row .dt-length .form-select-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  padding: 0.375rem 1.75rem 0.375rem 0.5rem;
+  min-width: 4rem;
+  height: auto;
+  /* GEÄNDERT: beim Zentralisieren verloren gegangen — positioniert den Dropdown-Pfeil */
+  background-position: right 0.375rem center;
+}
+.dt-footer-row .dt-length {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dt-footer-row .dt-length label {
+  margin: 0;
+  color: var(--tblr-secondary);
+}
+
+/* Suchfeld im card-header: Lupe innen links, X-Button rechts */
+.dt-search-input {
+  position: relative;
+}
+.dt-search-input .form-control {
+  padding-left: 2rem;
+  padding-right: 0.75rem;
+  height: 2rem;
+}
+.dt-search-input .form-control:not(:placeholder-shown) {
+  padding-right: 2rem;
+}
+.dt-search-icon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tblr-secondary);
+  pointer-events: none;
+  z-index: 4;
+  display: inline-flex;
+}
+.dt-search-clear {
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  border: 0;
+  padding: 0 0.4rem;
+  line-height: 1;
+  background: transparent;
+  color: var(--tblr-secondary);
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+.dt-search-input .form-control:placeholder-shown + .dt-search-clear {
+  display: none;
+}
+
+
+/* =============================================================================
+   4. Werte-Farben
+   Positiv/Negativ-Farben für Kennzahlen-Zellen — genutzt in
+   backtest/results.html, backtest/run_detail.html, backtest/result_chart.html,
+   backtest/analyse.html u.a.
+   ============================================================================= */
+.val-pos {
+  color: #2fb344;
+}
+.val-neg {
+  color: #d63939;
+}
+
+
+/* =============================================================================
+   5. Child-Row (Runs-Seite)
+   Klick-Bereich, Hintergrund der ausgeklappten Detailzeile,
+   Hervorhebung der Parent-Zeile und Bemerkungsfeld.
+   ============================================================================= */
+
+/* Klick-Bereich für das Toggle-Icon */
+td.details-control {
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Hintergrund der ausgeklappten Detailzeile */
+tr.custom-details-row td {
+  background-color: var(--tblr-gray-50);
+  padding: 1rem !important;
+}
+
+/* Hervorhebung der Parent-Zeile bei geöffneten Details */
+tr.custom-details-open {
+  background-color: var(--tblr-gray-100) !important;
+}
+
+/* Bemerkungsfeld in der Child Row */
+.child-remarks textarea {
+  width: 100%;
+  min-height: 60px;
+  resize: vertical;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  background: var(--tblr-bg-surface);
+  color: var(--tblr-body-color);
+}
+.child-remarks textarea:focus {
+  outline: none;
+  border-color: var(--tblr-primary);
+  box-shadow: 0 0 0 0.25rem rgba(var(--tblr-primary-rgb), 0.25);
+}
+.child-remarks .remarks-status {
+  font-size: 0.75rem;
+  color: var(--tblr-secondary);
+  margin-top: 0.25rem;
+  min-height: 1rem;
+}
+
+
+/* =============================================================================
+   6. Parameter-Tooltip (Results-Seite)
+   ============================================================================= */
+
+/* Unterstrichener Cursor-Hinweis auf Tooltip-fähige Zellen */
+.param-tip {
+  cursor: default;
+  border-bottom: 1px dotted #888;
+}
+
+/* Schwebendes Tooltip-Element, wird per JS positioniert */
+#param-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #585b70;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: monospace;
+  line-height: 1.6;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+/* Filter-Leiste: Mindestbreite für Select-Felder */
+.filter-bar select {
+  min-width: 130px;
+}
+
+
+/* =============================================================================
+   7. Playground-Setups — Beschreibungszelle
+   ============================================================================= */
+
+/* Lange Beschreibungstexte in der Tabelle abschneiden */
+.desc-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =============================================================================
+   8. TestSet-Detail — Tabellenzellen-Ausrichtung
+   ============================================================================= */
+
+/* Vertikal zentrierte Zellen und Cursor für Checkboxen */
+#configs-table td,
+#configs-table th {
+  vertical-align: middle;
+}
+#configs-table input[type="checkbox"] {
+  cursor: pointer;
+}
+
+
+/* =============================================================================
+   9. Strategie-Konzepte — erweiterte DataTables-Stile und Child-Row
+   ============================================================================= */
+
+/* Tabellen-Header und Datenzellen — etwas mehr Abstand */
+.table.table-vcenter > tbody > tr > td {
+  padding-top: 0.875rem;
+  padding-bottom: 0.875rem;
+}
+.table.table-vcenter > thead > tr > th {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.table.card-table > thead > tr > th {
+  background-color: var(--tblr-bg-surface-tertiary, #f6f8fb);
+  color: var(--tblr-secondary);
+}
+[data-bs-theme="dark"] .table.card-table > thead > tr > th {
+  background-color: var(--tblr-bg-surface-secondary, #1a2234);
+}
+.dt-column-order svg {
+  vertical-align: -0.125em;
+}
+.table th.w-1,
+.table td.w-1 {
+  white-space: nowrap;
+  width: 1%;
+}
+
+/* Konsistente Schriftskala für Controls in der Card */
+.card .form-control-sm,
+.card .form-select-sm,
+.card .btn-sm {
+
+  font-weight: 400;
+  line-height: 1.4285714286;
+}
+.card .form-control-sm {
+  padding: 0.25rem 0.5rem;
+}
+
+/* Pagination — abgerundete Buttons */
+.dt-container .dt-paging .dt-paging-button {
+  border-radius: 6px;
+}
+.dt-container .dt-paging .dt-paging-button.current {
+  background: var(--tblr-primary);
+  border-color: var(--tblr-primary);
+  color: #fff;
+}
+
+/* Hover auf Tabellenzeilen */
+.card-table.table-striped > tbody > tr:hover > td {
+  background-color: var(--tblr-bg-surface-secondary, var(--tblr-gray-100));
+}
+
+/* dt-table-row: kein äußeres Margin/Padding */
+.dt-container > .row.dt-table-row {
+  margin-top: 0 !important;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Info-Zelle: kein internes Padding, inline-Anzeige */
+.dt-footer-row .dt-info {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 !important;
+  white-space: nowrap;
+  color: var(--tblr-secondary);
+}
+
+/* Child-Row mit Tabler-CSS-Variable (statt background-color) */
+tr.custom-details-row > td {
+  --tblr-table-bg-state: var(--tblr-gray-200);
+  padding: 0 !important;
+}
+[data-bs-theme="dark"] tr.custom-details-row > td {
+  --tblr-table-bg-state: var(--tblr-bg-surface-secondary, #1a2234);
+}
+
+/* Iterations-Tabelle: etwas mehr horizontales Padding */
+table[id^="iterations-table-"] > thead > tr > th,
+table[id^="iterations-table-"] > tbody > tr > td {
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+}
+
+/* Iteration-Detail Modal: Code-Block und Abstammungs-Kette */
+.spec-viewer {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  font-family: monospace;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre;
+}
+.lineage-chain {
+  list-style: none;
+  padding-left: 0;
+}
+.lineage-chain li {
+  padding: 4px 0;
+}
+.lineage-chain li::before {
+  content: "-> ";
+  color: #888;
+}
+.lineage-chain li:first-child::before {
+  content: "";
+}
+
+
+/* Kompatibilität für ältere Seiten mit :nth-child-Selektor (strategy_configs, run_detail) */
+.dt-container > .row:nth-child(1),
+.dt-container > .row:nth-child(3) {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+.dt-container > .row:nth-child(3) {
+  margin-bottom: 0.5rem !important;
+}
+
+
+/* =============================================================================
+   10. Leaderboard — Tabellen- und Child-Row-Stile
+   ============================================================================= */
+
+/* Zeilen sind anklickbar */
+#leaderboard-table tbody tr {
+  cursor: pointer;
+}
+#leaderboard-table tbody tr:hover {
+  background-color: rgba(var(--bs-primary-rgb), 0.05);
+}
+
+/* Chevron-Spalte für Child-Row-Toggle */
+td.dt-control {
+  cursor: pointer;
+  width: 1.25rem;
+  text-align: center;
+  user-select: none;
+}
+td.dt-control::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  transition: transform 0.15s ease;
+}
+tr.dt-hasChild td.dt-control::before {
+  transform: rotate(90deg);
+}
+
+/* Child-Row Hintergrund */
+#leaderboard-table tbody tr.child-row {
+  background-color: rgba(var(--bs-primary-rgb), 0.03);
+  cursor: default;
+}
+#leaderboard-table tbody tr.child-row:hover {
+  background-color: rgba(var(--bs-primary-rgb), 0.03);
+}
+
+/* Child-Row Inhalt */
+.leaderboard-child-hint {
+  padding: 0.5rem 1rem;
+  white-space: pre-wrap;
+}
+.leaderboard-child-hint .label {
+  font-weight: 600;
+  color: var(--tblr-secondary);
+  margin-right: 0.5rem;
+}
+.leaderboard-child-block {
+  padding: 1rem 1rem;
+}
+.leaderboard-child-block + .leaderboard-child-block {
+  border-top: 1px solid var(--tblr-border-color);
+  margin-top: 0.5rem;
+}
+.leaderboard-child-block h6 {
+  font-weight: 600;
+  color: var(--tblr-secondary);
+  margin-bottom: 0.5rem;
+}
+.leaderboard-child-block .content {
+  white-space: pre-wrap;
+}
+.leaderboard-child-block pre.content {
+  background-color: var(--tblr-bg-surface-secondary);
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  margin-bottom: 0;
+}
+
+/* Drill-Down-Modal: breiter und höher, mehr Abstand oben, Body scrollt intern */
+#modal-drilldown .modal-dialog {
+  max-width: 95vw;
+  margin-top: 4rem;
+}
+#modal-drilldown .modal-content {
+  min-height: 80vh;
+}
+#modal-drilldown .modal-body {
+  padding: 1.5rem 1.5rem 1rem;
+}
+
+/* Indikator-Tooltip: pro Indikator ein Block mit Name + Key/Value-Parametern */
+.tooltip.indicator-tooltip {
+  /* Solide, deckende Fläche — Tabler-Default ist teiltransparent, Tabelle schien durch */
+  --bs-tooltip-bg: #182433;
+  --bs-tooltip-opacity: 1;
+  --bs-tooltip-max-width: 360px;
+  opacity: 1;
+}
+.tooltip.indicator-tooltip .tooltip-inner {
+  text-align: left;
+  max-width: 360px;
+  font-size: 0.78rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.indicator-tooltip .ind-block {
+  margin-bottom: 0.45rem;
+}
+.indicator-tooltip .ind-block:last-child {
+  margin-bottom: 0;
+}
+.indicator-tooltip .ind-name {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  margin-bottom: 0.2rem;
+  padding-bottom: 0.1rem;
+}
+.indicator-tooltip .ind-param {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  font-family: var(--tblr-font-monospace);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.indicator-tooltip .ind-key {
+  opacity: 0.7;
+}
+.indicator-tooltip .ind-val {
+  font-weight: 500;
+}
+.indicator-tooltip .ind-empty {
+  display: block;
+  opacity: 0.6;
+  font-style: italic;
+}
+.indicator-config-link {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+
+/* =============================================================================
+   11. Chart-Seiten — Toolbar, Lineal, Tooltips, Dark-Mode
+   Gilt für result_chart.html und chart_playground/index.html.
+   ============================================================================= */
+
+/* Seitenlayout */
+.page-body.chart-page {
+  padding-top: 0;
+  margin-top: 0.5rem;
+}
+
+/* Metriken-Wert-Anzeige */
+.metric-value {
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+/* Chart-Toolbar */
+.chart-toolbar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Zeitrahmen-Buttons (tf-btn) */
+.tf-btn {
+  background-color: rgba(243, 244, 246, 0.9);
+  border: 1px solid rgba(209, 213, 219, 0.7);
+  color: #1f2937;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.tf-btn:hover {
+  background-color: rgba(47, 179, 68, 0.8);
+  border-color: rgba(47, 179, 68, 0.9);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(47, 179, 68, 0.4);
+}
+.tf-btn.active {
+  background-color: #2fb344 !important;
+  border-color: #2fb344 !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(47, 179, 68, 0.5);
+}
+.tf-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(47, 179, 68, 0.3);
+}
+.tf-btn.nav-btn:focus,
+.tf-btn.nav-btn:active {
+  background-color: rgba(243, 244, 246, 0.9);
+  border-color: rgba(209, 213, 219, 0.7);
+  color: #1f2937;
+  box-shadow: none;
+}
+.tf-separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  margin: 0 4px;
+}
+/* GEÄNDERT: View-Toggle-Buttons (Label statt Button) wie die übrigen tf-btn ausrichten */
+.cp-view-btn {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+/* Checkbox visuell verstecken (nicht display:none) — Label-Klick togglet zuverlässig */
+.cp-view-btn input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* Dark-Mode Toolbar */
+[data-bs-theme="dark"] .tf-btn {
+  background-color: rgba(55, 65, 81, 0.9);
+  border-color: rgba(75, 85, 99, 0.7);
+  color: #e5e7eb;
+}
+[data-bs-theme="dark"] .tf-btn.nav-btn:focus,
+[data-bs-theme="dark"] .tf-btn.nav-btn:active {
+  background-color: rgba(55, 65, 81, 0.9);
+  border-color: rgba(75, 85, 99, 0.7);
+  color: #e5e7eb;
+}
+[data-bs-theme="dark"] .tf-separator {
+  background: rgba(255, 255, 255, 0.2);
+}
+/* GEÄNDERT: Chart-Playground-Toolbar (.cp-toolbar) — kompaktere Buttons ohne
+   Hover-Animation. Stellt die Original-Werte wieder her, die beim Zentralisieren
+   von den groesseren result_chart-Werten ueberschrieben wurden. result_chart
+   (.chart-toolbar) bleibt bei den globalen Werten. */
+.cp-toolbar .tf-btn {
+  padding: 4px 10px;
+  min-width: 36px;
+  transition: all 0.15s ease;
+}
+.cp-toolbar .tf-btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+.cp-toolbar .tf-btn.active {
+  box-shadow: none;
+}
+.cp-toolbar .tf-btn:focus {
+  box-shadow: none;
+}
+.cp-toolbar .tf-separator {
+  height: 18px;
+}
+[data-bs-theme="dark"] #chartLoading {
+  background: rgba(31, 41, 55, 0.85);
+}
+
+/* Lineal — Cursor */
+.ruler-active {
+  cursor: crosshair !important;
+}
+.ruler-active canvas {
+  cursor: crosshair !important;
+}
+
+/* Lineal — schwebendes Label */
+.ruler-label {
+  position: absolute;
+  z-index: 1001;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #1f2937;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  /* GEÄNDERT: Grundzustand unsichtbar — JS blendet das Label nur beim Messen ein
+     (war im Original-Inline-CSS vorhanden, beim Zentralisieren verloren gegangen) */
+  display: none;
+}
+.ruler-label .ruler-percent {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.ruler-label .ruler-percent.positive {
+  color: #2fb344;
+}
+.ruler-label .ruler-percent.negative {
+  color: #d63939;
+}
+.ruler-label .ruler-details {
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+[data-bs-theme="dark"] .ruler-label {
+  background: rgba(31, 41, 55, 0.97);
+  border-color: rgba(75, 85, 99, 0.5);
+  color: #e5e7eb;
+}
+[data-bs-theme="dark"] .ruler-label .ruler-details {
+  color: #9ca3af;
+}
+
+/* Order-Tooltip (dunkel, monospace) */
+.order-tooltip {
+  position: absolute;
+  z-index: 1002;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #585b70;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  line-height: 1.6;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  max-width: 350px;
+}
+.order-tooltip .ot-header {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.order-tooltip .ot-label {
+  color: #888;
+}
+
+/* Aktiver Tab: primäre Schriftfarbe, fett */
+.nav-tabs .nav-link.active {
+  color: var(--tblr-primary) !important;
+  font-weight: 600 !important;
+}
+
+
+/* =============================================================================
+   12. Chart-Playground — Toolbar, Indikatoren, Params, Status
+   ============================================================================= */
+
+/* Eltern-Cards "Indikatoren" und "Entry/Exit-Logic": gleicher abgesetzter Hintergrund.
+   Flex-Spalte, damit die Aktions-Leiste per margin-top:auto an den unteren Card-Rand rutscht. */
+.cp-ind-panel > .card-body,
+.cp-rules-panel > .card-body {
+  background: rgba(0, 0, 0, 0.38);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Aktions-Leisten (Speichern etc.) an den unteren Card-Rand schieben */
+#cpIndCfgActions,
+#cpIterActions {
+  margin-top: auto;
+}
+
+/* Entry/Exit-Blöcke (disjunktive Normalform): Block intern UND, Blöcke ODER.
+   Gleicher Card-Look wie die Indikator-Cards (cp-ind-row): Surface-Hintergrund + Schatten. */
+.cp-rule-block {
+  position: relative;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  border-radius: 6px;
+  /* GEÄNDERT: Original-Padding beibehalten — der Entry/Exit-Tag liegt absolut in der oberen
+     rechten Ecke (im Leerraum neben den Bedingungszeilen) und beansprucht keine eigene Höhe */
+  padding: 0.5rem;
+  background: var(--tblr-bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+/* GEÄNDERT: Entry/Exit-Typ oben rechts an der Box */
+.cp-rule-block-tag {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tblr-muted, #6b7280);
+  pointer-events: none;
+}
+/* GEÄNDERT: Block-Aktiv als Schiebeschalter — Text links, Schalter rechts */
+.cp-block-enabled-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 0;
+  min-height: auto;
+}
+.cp-block-enabled-switch .form-check-input {
+  margin: 0;
+  float: none;
+}
+.cp-block-or {
+  display: flex;
+  align-items: center;
+  margin: 0.4rem 0;
+  color: var(--tblr-muted, #888);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.cp-block-or::before,
+.cp-block-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+.cp-block-or span {
+  padding: 0 0.6rem;
+}
+
+/* Indikator-Konfigurationsreihen */
+.cp-ind-row {
+  margin-bottom: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.cp-ind-row .card-body {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+}
+.cp-ind-title {
+  font-weight: 600;
+  min-width: 140px;
+  align-self: center;
+}
+.cp-ind-row .form-label {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-ind-row .form-select-sm,
+.cp-ind-row .form-control-sm {
+  width: 110px;
+  min-width: 110px;
+}
+/* GEÄNDERT: Die globale Regel ".card .form-control-sm" (Z. 309) gibt nur form-control-sm
+   4px padding-y -> 27px hoch, form-select-sm bleibt bei Tablers 1px -> 21px. Hier in der
+   Indikator-Card auf Tablers -sm-Padding zurueckgesetzt, damit Dropdown und Laenge gleich hoch sind. */
+.cp-ind-row .form-control-sm {
+  padding-top: 0.0625rem;
+  padding-bottom: 0.0625rem;
+}
+.cp-ind-row .form-control-color {
+  min-width: 40px;
+  width: 40px;
+  padding: 2px;
+}
+
+/* Feld-Gruppen */
+.cp-field-group {
+  display: flex;
+  gap: 6px;
+  align-items: end;
+}
+
+/* Indikator-Identitaet: Drag-Griff + Name (editierbar) + technische ID darunter */
+.cp-ind-identity-group {
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+.cp-ind-drag {
+  display: flex;
+  align-items: center;
+  color: #6b7280;
+  cursor: grab;
+  flex: 0 0 auto;
+}
+.cp-ind-drag:active {
+  cursor: grabbing;
+}
+/* Drag-Reorder-Zustaende */
+.cp-ind-row {
+  position: relative;
+}
+/* Gezogene Karte: klar als "in der Hand" markiert */
+.cp-ind-row.cp-ind-dragging {
+  opacity: 0.4;
+  outline: 2px dashed var(--tblr-primary, #2fb344);
+  outline-offset: -2px;
+}
+/* Einfuegemarke: kraeftige, leuchtende Linie an der Ziel-Kante */
+.cp-ind-row.cp-ind-drop-above::before,
+.cp-ind-row.cp-ind-drop-below::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  background: var(--tblr-primary, #2fb344);
+  border-radius: 2px;
+  box-shadow: 0 0 7px 1px rgba(47, 179, 68, 0.75);
+  z-index: 5;
+  pointer-events: none;
+}
+.cp-ind-row.cp-ind-drop-above::before {
+  top: -4px;
+}
+.cp-ind-row.cp-ind-drop-below::after {
+  bottom: -4px;
+}
+/* Farb-Linie rechts (vor dem Loeschen-Button), wie in der Vorlage */
+.cp-ind-colorline {
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+/* GEÄNDERT: Sichtbarkeits-Switch direkt unter dem Farbstrich in der oberen Zeile
+   (schnelles Ein-/Ausblenden ohne "Erweiterte Optionen" aufzuklappen) */
+.cp-ind-vis-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+/* GEÄNDERT: Chart-Sichtbarkeit als schlichte Checkbox (kein Switch) unter dem Farbstrich */
+.cp-ind-vis-check {
+  margin: 0;
+  cursor: pointer;
+}
+/* GEÄNDERT: Aktionen als rechtsbündige Spalte — X oben, darunter "Indikator aktiv" + Schalter
+   in einer Zeile (Text links, Schalter rechts); X und Schalter rechtsbündig wie die Checkbox darüber */
+.cp-ind-action-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  align-self: center;
+  flex: 0 0 auto;
+}
+.cp-ind-enabled-label {
+  font-size: 0.7rem;
+  color: var(--tblr-muted, #6b7280);
+  margin: 0;
+}
+.cp-ind-enabled-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: auto;
+  padding-left: 0;
+  margin: 0;
+}
+.cp-ind-enabled-switch .form-check-input {
+  margin: 0;
+  float: none;
+}
+
+/* Child-Row "Erweiterte Optionen" — volle Breite, eigene Zeile */
+.cp-ind-advanced {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px solid rgba(128, 128, 128, 0.18);
+  padding-top: 4px;
+}
+.cp-ind-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--tblr-muted, #6b7280);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.cp-ind-advanced-toggle:hover {
+  color: var(--tblr-body-color, #d1d5db);
+}
+.cp-adv-chevron {
+  transition: transform 0.15s ease;
+}
+.cp-ind-advanced-toggle[aria-expanded="true"] .cp-adv-chevron {
+  transform: rotate(90deg);
+}
+.cp-ind-advanced-body {
+  padding: 6px 4px 2px 20px;
+}
+/* Advanced-Cards: Anzeige + Farbe & Linie nebeneinander */
+.cp-adv-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cp-adv-card {
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(128, 128, 128, 0.04);
+}
+.cp-adv-card-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--tblr-muted, #6b7280);
+  margin-bottom: 6px;
+}
+.cp-adv-fields {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+.cp-adv-fields .form-label {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-adv-opacity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cp-adv-opacity .form-range {
+  width: 90px;
+}
+.cp-adv-opacity-val {
+  font-size: 0.75rem;
+  min-width: 34px;
+  color: var(--tblr-body-color, #d1d5db);
+}
+.cp-ind-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cp-ind-row .cp-ind-name-edit {
+  border: 1px solid transparent;
+  background: transparent;
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  padding: 1px 4px;
+  width: 150px;
+  border-radius: 4px;
+}
+.cp-ind-row .cp-ind-name-edit:hover {
+  border-color: rgba(128, 128, 128, 0.35);
+}
+.cp-ind-row .cp-ind-name-edit:focus {
+  border-color: var(--tblr-primary, #2fb344);
+  background: rgba(128, 128, 128, 0.08);
+  outline: none;
+}
+.cp-ind-typename {
+  font-size: 0.7rem;
+  color: var(--tblr-muted, #6b7280);
+  padding-left: 4px;
+}
+.cp-group-header {
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  padding: 8px 4px 4px;
+}
+
+/* Parameter als start/stop/step-Tripel */
+.cp-param-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cp-param-fields {
+  display: flex;
+  gap: 4px;
+}
+.cp-param-cell {
+  display: flex;
+  flex-direction: column;
+}
+.cp-param-cap {
+  font-size: 0.6rem;
+  color: #9ca3af;
+  line-height: 1;
+  margin-bottom: 1px;
+}
+.cp-ind-row .cp-param-field {
+  width: 58px;
+  min-width: 58px;
+}
+/* Kopfzeile eines Parameters: Label + Umschalter (Einzelwert <-> Wertebereich) */
+.cp-param-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cp-param-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 0;
+}
+.cp-param-toggle:hover {
+  color: var(--tblr-primary, #066fd1);
+  background: rgba(128, 128, 128, 0.12);
+}
+.cp-param-toggle.is-range {
+  color: var(--tblr-primary, #066fd1);
+}
+
+/* Stops-Card: spiegelt die vier .cp-ind-row-Feldregeln, damit Eingabeboxen exakt wie bei den
+   Indikatoren aussehen (Label 0.7rem, Felder 110px / Param-Felder 58px, -sm-Padding). Umbruch in der schmalen Spalte. */
+.cp-stops-fields {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.cp-stops-fields .form-label {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-stops-fields .form-select-sm,
+.cp-stops-fields .form-control-sm {
+  width: 110px;
+  min-width: 110px;
+}
+.cp-stops-fields .form-control-sm {
+  padding-top: 0.0625rem;
+  padding-bottom: 0.0625rem;
+}
+.cp-stops-fields .cp-param-field {
+  width: 58px;
+  min-width: 58px;
+}
+/* Statischer "Stops"-Name in der verschiebbaren Stops-Zeile (Optik wie der Indikator-Name) */
+.cp-stops-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  padding: 1px 4px;
+  color: var(--tblr-body-color, #d1d5db);
+}
+
+/* Indikator-Auswahlliste */
+.cp-indicator-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+.cp-indicator-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.cp-indicator-item:hover {
+  background: rgba(47, 179, 68, 0.12);
+}
+
+/* Dark-Mode: hellerer Hintergrund fuer die Chart-Uebersicht (Indikator-Cards bleiben unveraendert) */
+[data-bs-theme="dark"] #cpChartContainer {
+  background: #2c3242;
+}
+
+/* Lade-Overlay */
+#chartLoading {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.6);
+  display: none;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Status-Anzeige */
+.cp-status {
+  font-size: 0.75rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+.cp-status.err {
+  color: #d63939;
+}
+.cp-status.ok {
+  color: #2fb344;
+}
+.cp-status.warn {
+  color: #f76707;
+}
+
+/* Zahlen-Inputs zentrieren */
+input[type="number"].form-control,
+input[type="number"].form-control-sm {
+  text-align: center;
+}
+
+/* Mehr Abstand in den Strategie-Bedingungs-Reihen */
+#cpEntryConditions .d-flex,
+#cpExitConditions .d-flex {
+  gap: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+  padding: 4px 0;
+}
+
+/* Playground Toolbar */
+.cp-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.cp-toolbar .form-label {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+  color: #6b7280;
+}
+.cp-toolbar select,
+.cp-toolbar input {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  height: 32px;
+}
+
+/* Custom Modal (ohne Bootstrap JS) */
+.cp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1050;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.cp-modal-backdrop.show {
+  display: flex;
+}
+.cp-modal-box {
+  background: var(--tblr-bg-surface, #fff);
+  border-radius: 8px;
+  max-width: 720px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+.cp-modal-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cp-modal-head h5 {
+  margin: 0;
+}
+.cp-modal-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+.cp-modal-foot {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+[data-bs-theme="dark"] .cp-modal-box {
+  background: #1e293b;
+  color: #e5e7eb;
+}
+
+
+/* =============================================================================
+   13. CodeMirror-Editor — Stile für JSON/YAML-Editoren
+   Unterschiedliche Höhen je nach Einsatzort.
+   ============================================================================= */
+
+/* Indicator-Config-Editor (größerer Editor) */
+.indicator-editor .CodeMirror {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  height: auto;
+  min-height: 400px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+}
+
+/* Playground-Setup-Editor (kompakter Editor) */
+.playground-editor .CodeMirror {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  height: 420px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+}
+
+/* Fehlermeldung unterhalb des Editors */
+.json-error {
+  color: #d63939;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  min-height: 1.2em;
+}
+
+/* Backtest-Config-Editor (Chart-Vorschau, kompakt) */
+.cfg-tf-btn {
+  background-color: rgba(243, 244, 246, 0.9);
+  border: 1px solid rgba(209, 213, 219, 0.7);
+  color: #1f2937;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.cfg-tf-btn:hover {
+  background-color: rgba(47, 179, 68, 0.8);
+  border-color: rgba(47, 179, 68, 0.9);
+  color: #fff;
+}
+.cfg-tf-btn.active {
+  background-color: #2fb344 !important;
+  border-color: #2fb344 !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.cfg-tf-btn:focus {
+  outline: none;
+}
+.cfg-tf-sep {
+  width: 1px;
+  height: 18px;
+  background-color: rgba(209, 213, 219, 0.7);
+  margin: 0 4px;
+  display: inline-block;
+}
+[data-bs-theme="dark"] .cfg-tf-btn {
+  background-color: rgba(55, 65, 81, 0.9);
+  border-color: rgba(75, 85, 99, 0.7);
+  color: #e5e7eb;
+}
+
+
+/* =============================================================================
+   14. Workflow-Template-Editor — Indikator-Checkliste
+   ============================================================================= */
+
+/* Indikator-Auswahl-Items in der Checkliste */
+.ind-check-item {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.ind-check-item:last-child {
+  border-bottom: none;
+}
+.ind-check-item .badge {
+  font-size: 0.75rem;
+}
+
+
+/* =============================================================================
+   16. Analyse-Seite — Metriken und Chart-Stile
+   ============================================================================= */
+
+/* Aktiver Metrik-Button */
+.metric-btn.active {
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(var(--tblr-primary-rgb), 0.4);
+}
+
+/* Chart-Container mit fester Höhe */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 220px;
+}
+
+/* Top-Tabelle: kompakte Zahlen-Darstellung */
+.top-table td,
+.top-table th {
+  font-size: 0.82rem;
+  white-space: nowrap;
+  text-align: right;
+}
+.top-table th:last-child,
+.top-table td:last-child {
+  text-align: center;
+}

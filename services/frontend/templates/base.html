@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{% block title %}BT Pro{% endblock %}</title>
+    <link href="/static/css/tabler.min.css?v={{ STATIC_TS }}" rel="stylesheet" />
+    <link href="/static/css/tabler-vendors.min.css?v={{ STATIC_TS }}" rel="stylesheet" />
+    <link href="/static/libs/datatables/dataTables.bootstrap5.min.css?v={{ STATIC_TS }}" rel="stylesheet" />
+    <link href="https://rsms.me/inter/inter.css" rel="stylesheet" />
+    <!-- GEÄNDERT: Projekteigenes globales Stylesheet — überschreibt Tabler-Defaults -->
+    <link href="/static/css/app.css?v={{ STATIC_TS }}" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet" />
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <script src="/static/js/tabler-theme.min.js?v={{ STATIC_TS }}"></script>
+    <div class="page">
+      <!-- TOP NAVIGATION -->
+      <header class="navbar navbar-expand-md d-print-none">
+        <div class="container-xl">
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <h1 class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
+            <a href="/">BT Pro</a>
+          </h1>
+          <div class="collapse navbar-collapse" id="navbar-menu">
+            <ul class="navbar-nav">
+              <li class="nav-item{% if active_nav == 'start' %} active{% endif %}">
+                <a class="nav-link" href="/backtest/start">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 4v16l13 -8z"/></svg>
+                  </span>
+                  <span class="nav-link-title">Start</span>
+                </a>
+              </li>
+              <li class="nav-item{% if active_nav == 'runs' %} active{% endif %}">
+                <a class="nav-link" href="/backtest/runs">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M4 20h14"/></svg>
+                  </span>
+                  <span class="nav-link-title">Runs</span>
+                </a>
+              </li>
+              <li class="nav-item{% if active_nav == 'results' %} active{% endif %}">
+                <a class="nav-link" href="/backtest/results">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 4h16v16H4z" /><path d="M4 10h16" /><path d="M10 4v16" /></svg>
+                  </span>
+                  <span class="nav-link-title">Results</span>
+                </a>
+              </li>
+              <li class="nav-item{% if active_nav == 'chart_playground' %} active{% endif %}">
+                <a class="nav-link" href="/chart-playground">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3v18h18"/><path d="M7 15l4 -4l4 4l6 -6"/></svg>
+                  </span>
+                  <span class="nav-link-title">Chart Playground</span>
+                </a>
+              </li>
+              <li class="nav-item{% if active_nav == 'strategy_concepts' %} active{% endif %}">
+                <a class="nav-link" href="/config/strategy-concepts">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M9 17h6"/><path d="M9 13h6"/></svg>
+                  </span>
+                  <span class="nav-link-title">Strategie-Konzepte</span>
+                </a>
+              </li>
+              <!-- GEÄNDERT: Leaderboard-Eintrag (Ticket 07) -->
+              <li class="nav-item{% if active_nav == 'leaderboard' %} active{% endif %}">
+                <a class="nav-link" href="/leaderboard">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M8 20v-6"/><path d="M12 20v-12"/><path d="M16 20v-8"/><path d="M4 20h16"/></svg>
+                  </span>
+                  <span class="nav-link-title">Leaderboard</span>
+                </a>
+              </li>
+              <!-- GEÄNDERT: Wissens-Index in Konfiguration-Dropdown verschoben (active_nav erweitert) -->
+              <li class="nav-item dropdown{% if active_nav in ['config_backtest', 'config_indicator', 'config_data', 'config_playground', 'testsets', 'knowledge_dashboard', 'knowledge_runs', 'knowledge_files'] %} active{% endif %}">
+                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" role="button">
+                  <span class="nav-link-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.066 2.573c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.573 1.066c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.066 -2.573c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg>
+                  </span>
+                  <span class="nav-link-title">Konfiguration</span>
+                </a>
+                <div class="dropdown-menu">
+                  <a class="dropdown-item" href="/config/backtest">Backtest-Configs</a>
+                  <a class="dropdown-item" href="/config/indicator">Indicator-Configs</a>
+                  <a class="dropdown-item" href="/config/playground">Playground-Setups</a>
+                  <a class="dropdown-item" href="/testsets">TestSets</a>
+                  <a class="dropdown-item" href="/config/data">OHLC-Daten</a>
+                  <!-- GEÄNDERT: Wissens-Index ans Ende der Konfiguration verschoben -->
+                  <div class="dropdown-divider"></div>
+                  <h6 class="dropdown-header">Wissens-Index</h6>
+                  <a class="dropdown-item" href="/knowledge">Übersicht</a>
+                  <a class="dropdown-item" href="/knowledge/runs">Reindex-Verlauf</a>
+                  <a class="dropdown-item" href="/knowledge/files">Indizierte Dateien</a>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div class="navbar-nav ms-auto">
+            <a href="#" id="theme-toggle" class="nav-link px-0" title="Theme wechseln">
+              <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></svg>
+              <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/></svg>
+            </a>
+          </div>
+        </div>
+      </header>
+      <!-- PAGE WRAPPER -->
+      <div class="page-wrapper">
+        {% block page_header %}{% endblock %}
+        <div class="page-body">
+          <div class="container-xl">
+            {% block content %}{% endblock %}
+          </div>
+        </div>
+        <footer class="footer footer-transparent d-print-none">
+          <div class="container-xl">
+            <div class="row text-center align-items-center">
+              <div class="col-12">
+                <span class="text-secondary">BT Pro App v{{ APP_VERSION }}</span>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Globaler Lösch-Job-Indikator: seitenübergreifend sichtbar, solange ein
+         Results-/Runs-Lösch-Job läuft. Eigenes Panel (kein bootstrap.Toast) für
+         volle Kontrolle über Dauer-Anzeige und Abbrechen. -->
+    <div id="delete-job-toast" class="d-none position-fixed bottom-0 end-0 p-3" style="z-index:1090; max-width:360px;">
+      <div class="card shadow">
+        <div class="card-body p-3">
+          <div class="d-flex align-items-center mb-2">
+            <div class="spinner-border spinner-border-sm text-danger me-2" role="status"></div>
+            <strong id="delete-job-toast-title" class="small">Löschvorgang läuft…</strong>
+            <button id="delete-job-toast-cancel" type="button" class="btn btn-sm btn-outline-danger ms-auto">Abbrechen</button>
+          </div>
+          <div class="progress" style="height:6px;">
+            <div id="delete-job-toast-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-danger" style="width:0%"></div>
+          </div>
+          <div id="delete-job-toast-label" class="small text-muted mt-1">…</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/js/tabler.min.js?v={{ STATIC_TS }}" defer></script>
+    <script src="/static/libs/datatables/jquery-3.7.1.min.js?v={{ STATIC_TS }}"></script>
+    <script src="/static/libs/datatables/dataTables.min.js?v={{ STATIC_TS }}"></script>
+    <script src="/static/libs/datatables/dataTables.bootstrap5.min.js?v={{ STATIC_TS }}"></script>
+    <script>
+    /* Theme-Toggle */
+    (function() {
+      var toggle = document.getElementById("theme-toggle");
+      var iconMoon = document.getElementById("icon-moon");
+      var iconSun = document.getElementById("icon-sun");
+      var isDark = localStorage.getItem("theme") === "dark";
+
+      function applyTheme(dark) {
+        document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
+        iconMoon.style.display = dark ? "none" : "";
+        iconSun.style.display = dark ? "" : "none";
+        localStorage.setItem("theme", dark ? "dark" : "light");
+      }
+
+      applyTheme(isDark);
+
+      toggle.addEventListener("click", function(e) {
+        e.preventDefault();
+        isDark = !isDark;
+        applyTheme(isDark);
+      });
+    })();
+    </script>
+
+    <script>
+    /* Globaler Lösch-Job-Indikator — pollt aktive Results-/Runs-Lösch-Jobs und zeigt
+       sie seitenübergreifend als Dauer-Panel mit Abbrechen-Button an. Wenn ein Job
+       endet, feuert ein 'vbt:delete-jobs-idle'-Event, auf das Listen-Seiten ihre
+       Tabelle neu laden. */
+    (function() {
+      var toast = document.getElementById("delete-job-toast");
+      if (!toast) return;
+      var title = document.getElementById("delete-job-toast-title");
+      var bar = document.getElementById("delete-job-toast-bar");
+      var label = document.getElementById("delete-job-toast-label");
+      var cancelBtn = document.getElementById("delete-job-toast-cancel");
+
+      var IDLE_MS = 4000;    // Heartbeat, wenn nichts läuft
+      var ACTIVE_MS = 1500;  // schneller pollen, solange ein Job läuft
+      var current = null;    // job_id des aktuell angezeigten Jobs
+      var wasActive = false;
+
+      function show() { toast.classList.remove("d-none"); }
+      function hide() { toast.classList.add("d-none"); current = null; }
+
+      function render(job) {
+        current = job.job_id;
+        var pct = job.progress ? job.progress.pct : 0;
+        var stepLabel = job.progress ? job.progress.label : "Wird vorbereitet…";
+        title.textContent = "Lösche " + job.label + " …";
+        bar.style.width = (pct || 0) + "%";
+        label.textContent = stepLabel + (job.progress ? " (" + pct + "%)" : "");
+        cancelBtn.disabled = false;
+        show();
+      }
+
+      function poll() {
+        fetch("/api/backtest/delete-jobs/active")
+          .then(function(r) { return r.json(); })
+          .then(function(j) {
+            var jobs = (j && j.jobs) || [];
+            if (jobs.length > 0) {
+              // Den bereits angezeigten Job bevorzugen, sonst den ersten nehmen
+              var job = null;
+              for (var i = 0; i < jobs.length; i++) {
+                if (jobs[i].job_id === current) { job = jobs[i]; break; }
+              }
+              render(job || jobs[0]);
+              wasActive = true;
+              setTimeout(poll, ACTIVE_MS);
+            } else {
+              if (wasActive) {
+                // Übergang aktiv -> fertig: Panel schließen, Listen aktualisieren
+                wasActive = false;
+                hide();
+                window.dispatchEvent(new CustomEvent("vbt:delete-jobs-idle"));
+              } else {
+                hide();
+              }
+              setTimeout(poll, IDLE_MS);
+            }
+          })
+          .catch(function() { setTimeout(poll, IDLE_MS); });
+      }
+
+      cancelBtn.addEventListener("click", function() {
+        if (!current) return;
+        if (!confirm("Laufenden Löschvorgang abbrechen?")) return;
+        cancelBtn.disabled = true;
+        fetch("/api/backtest/delete-jobs/" + current + "/cancel", { method: "POST" })
+          .catch(function() {})
+          .then(function() { setTimeout(poll, 300); });
+      });
+
+      poll();
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

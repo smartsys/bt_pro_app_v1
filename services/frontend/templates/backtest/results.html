@@ -1,0 +1,804 @@
+{% extends "base.html" %}
+
+{% block title %}Alle Results - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Alle Results</h2>
+
+        <div class="page-pretitle">Backtesting</div>
+      </div>
+      <div class="col-auto ms-auto d-flex align-items-center gap-3">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="toggle-auto-update">
+          <label class="form-check-label small" for="toggle-auto-update">Auto-Update (5s)</label>
+        </div>
+        <button id="btn-delete-selected-results" class="btn btn-outline-danger" disabled>Auswahl löschen (<span id="results-selected-count">0</span>)</button>
+        <button id="btn-delete-all-results" class="btn btn-outline-danger">Alle löschen</button>
+        <button id="btn-toggle-filter" class="btn btn-icon btn-outline-secondary" title="Filterleiste ein-/ausblenden">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Filter-Leiste -->
+<div class="card mb-3" id="filter-card">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end filter-bar">
+      <!-- GEÄNDERT: Filter-Reihenfolge folgt der Tabellen-Spaltenreihenfolge -->
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Run</label>
+        <select id="filter-run" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <!-- GEÄNDERT: Strategie-Filter in Konzept + Iteration getrennt -->
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Konzept</label>
+        <select id="filter-concept" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Iteration</label>
+        <select id="filter-iteration" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Symbol</label>
+        <select id="filter-symbol" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Timeframe</label>
+        <select id="filter-timeframe" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <!-- Numerische Min/Max-Feld-Filter (Tabellen-Reihenfolge) -->
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Sharpe</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-sharpe_ratio-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-sharpe_ratio-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Max DD %</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-max_drawdown_pct-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-max_drawdown_pct-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Trades</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-total_trades-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-total_trades-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Win Rate %</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-win_rate_pct-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-win_rate_pct-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Profit Factor</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-profit_factor-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-profit_factor-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Return %</label>
+        <div class="d-flex gap-1">
+          <input type="number" id="filter-total_return_pct-min" class="form-control form-control-sm" style="width:64px" placeholder="min" autocomplete="off">
+          <input type="number" id="filter-total_return_pct-max" class="form-control form-control-sm" style="width:64px" placeholder="max" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-auto">
+        <button id="filter-apply" class="btn btn-sm btn-primary">Filtern</button>
+        <button id="filter-reset" class="btn btn-sm btn-outline-secondary ms-1">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Results-Tabelle -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Results (<span id="results-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <div class="dt-search-input" style="width: 260px;">
+        <span class="dt-search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="search" id="results-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+        <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="results-search">&times;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="results-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="w-1"><input type="checkbox" id="results-select-all" class="form-check-input" title="Alle auf dieser Seite auswählen"></th>
+            <th class="w-1 text-center px-1" title="Favorit">F</th>
+            {# GEÄNDERT: Doku-Favorit-Spalte (roter Stern) #}
+            <th class="w-1 text-center px-1" title="Doku-Favorit">D</th>
+            <th class="text-nowrap">ID</th>
+            <th class="text-nowrap">Run</th>
+            <th class="text-nowrap">Konzept</th>
+            <th class="text-nowrap">Iteration</th>
+            <th class="text-nowrap">Symbol</th>
+            <th class="text-nowrap">TF</th>
+            <th class="text-nowrap">Start</th>
+            <th class="text-nowrap">Ende</th>
+            <th class="text-nowrap">TP</th>
+            <th class="text-nowrap">SL</th>
+            <th class="text-nowrap">Sharpe</th>
+            <th class="text-nowrap">Sortino</th>
+            <th class="text-nowrap">DD%<span class="ms-1"
+                style="vertical-align: baseline;"
+                data-bs-toggle="tooltip" data-bs-placement="top"
+                title="Max Drawdown: größter prozentualer Rückgang vom Höchststand zum darauffolgenden Tief des Equity-Verlaufs."><svg xmlns="http://www.w3.org/2000/svg"
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" class="text-muted"
+                style="vertical-align: -0.1em;">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/>
+                <path d="M12 9h.01"/>
+                <path d="M11 12h1v4h1"/>
+              </svg></span></th>
+            <th class="text-nowrap">Trades</th>
+            <th class="text-nowrap">WR%<span class="ms-1"
+                style="vertical-align: baseline;"
+                data-bs-toggle="tooltip" data-bs-placement="top"
+                title="Win Rate: Anteil der Gewinn-Trades an allen abgeschlossenen Trades in Prozent."><svg xmlns="http://www.w3.org/2000/svg"
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" class="text-muted"
+                style="vertical-align: -0.1em;">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/>
+                <path d="M12 9h.01"/>
+                <path d="M11 12h1v4h1"/>
+              </svg></span></th>
+            <th class="text-nowrap">PF<span class="ms-1"
+                style="vertical-align: baseline;"
+                data-bs-toggle="tooltip" data-bs-placement="top"
+                title="Profit Factor: Verhältnis von Bruttogewinn zu Bruttoverlust. Werte über 1 sind profitabel."><svg xmlns="http://www.w3.org/2000/svg"
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" class="text-muted"
+                style="vertical-align: -0.1em;">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/>
+                <path d="M12 9h.01"/>
+                <path d="M11 12h1v4h1"/>
+              </svg></span></th>
+            <th class="text-nowrap">Return %</th>
+            <th class="text-nowrap">End Value</th>
+            <th class="w-1"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div id="param-tooltip"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmtNum(val, dec) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  return parseFloat(val).toFixed(dec || 2);
+}
+function fmtColor(val, dec) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  var n = parseFloat(val);
+  var cls = n >= 0 ? "val-pos" : "val-neg";
+  return '<span class="' + cls + '">' + n.toFixed(dec || 2) + '</span>';
+}
+// Wandelt ein ISO-Datum (YYYY-MM-DD... oder YYYY-MM-DDTHH:MM:SS) in deutsche Notation DD.MM.YYYY
+function fmtDateDe(val) {
+  if (!val) return '-';
+  var s = String(val).substring(0, 10);
+  var parts = s.split('-');
+  if (parts.length !== 3) return s;
+  return parts[2] + '.' + parts[1] + '.' + parts[0];
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  var table;  // DataTable-Referenz (wird weiter unten initialisiert)
+
+  /* GEÄNDERT: alle Iterationen (mit concept_id) für die abhängige Iterations-Liste */
+  var allIterations = [];
+
+  /* Iterations-Dropdown auf das gewählte Konzept einschränken */
+  function populateIterations() {
+    var selConcept = document.getElementById("filter-concept");
+    var selIteration = document.getElementById("filter-iteration");
+    var conceptId = selConcept.value;  // value = concept.id (als String)
+    selIteration.length = 1;  // alles außer "Alle" entfernen
+    allIterations.forEach(function(it) {
+      if (!conceptId || String(it.concept_id) === conceptId) {
+        selIteration.add(new Option(it.label, it.id));
+      }
+    });
+  }
+
+  /* Filter-Werte laden */
+  fetch("/api/backtest/filters")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var selConcept = document.getElementById("filter-concept");
+      var selSymbol = document.getElementById("filter-symbol");
+      var selTimeframe = document.getElementById("filter-timeframe");
+      var selRun = document.getElementById("filter-run");
+
+      data.concepts.forEach(function(c) {
+        selConcept.add(new Option(c.name, c.id));
+      });
+      // GEÄNDERT: Option für Results ohne zugeordnetes Konzept (keine Iteration verknüpft)
+      if (data.has_unassigned) {
+        selConcept.add(new Option("(ohne Konzept)", "none"));
+      }
+      allIterations = data.iterations;
+      populateIterations();
+      data.symbols.forEach(function(s) {
+        selSymbol.add(new Option(s, s));
+      });
+      data.timeframes.forEach(function(s) {
+        selTimeframe.add(new Option(s, s));
+      });
+      data.runs.forEach(function(r) {
+        selRun.add(new Option(r.label, r.id));
+      });
+
+      /* URL-Filter vorbelegen */
+      {% if filter_symbol %}selSymbol.value = "{{ filter_symbol }}";{% endif %}
+      {% if filter_timeframe %}selTimeframe.value = "{{ filter_timeframe }}";{% endif %}
+      {% if filter_run_id %}selRun.value = "{{ filter_run_id }}";{% endif %}
+
+      /* DataTable neu laden wenn URL-Filter gesetzt wurden */
+      {% if filter_symbol or filter_timeframe or filter_run_id %}
+      table.ajax.reload();
+      {% endif %}
+    });
+
+  /* Iterations-Liste an das gewählte Konzept koppeln */
+  document.getElementById("filter-concept").addEventListener("change", populateIterations);
+
+  /* Numerische Felder mit Min/Max-Filter (Feld-Id == DB-Spalte) */
+  var NUMERIC_FILTER_FIELDS = ["win_rate_pct", "total_return_pct", "sharpe_ratio", "profit_factor", "total_trades", "max_drawdown_pct"];
+
+  /* Filter-Parameter für Server-Side Request */
+  function getFilterParams() {
+    var params = {};
+    var conceptId = document.getElementById("filter-concept").value;
+    var iterationId = document.getElementById("filter-iteration").value;
+    var symbol = document.getElementById("filter-symbol").value;
+    var timeframe = document.getElementById("filter-timeframe").value;
+    var runId = document.getElementById("filter-run").value;
+    /* Konzept und Iteration filtern jeweils per ID */
+    if (conceptId) params.concept_id = conceptId;
+    if (iterationId) params.iteration_id = iterationId;
+    if (symbol) params.symbol = symbol;
+    if (timeframe) params.timeframe = timeframe;
+    if (runId) params.run_id = runId;
+    /* Numerische Min/Max-Feld-Filter anhängen */
+    NUMERIC_FILTER_FIELDS.forEach(function(field) {
+      var minVal = document.getElementById("filter-" + field + "-min").value;
+      var maxVal = document.getElementById("filter-" + field + "-max").value;
+      if (minVal !== "") params[field + "_min"] = minVal;
+      if (maxVal !== "") params[field + "_max"] = maxVal;
+    });
+    return params;
+  }
+
+  /* DataTable mit Server-Side Processing */
+  table = new DataTable("#results-table", {
+    serverSide: true,
+    processing: false,
+    columnDefs: [{ orderSequence: ['desc', 'asc'], targets: '_all' }],
+    ajax: {
+      url: "/api/backtest/results/dt",
+      data: function(d) {
+        /* Filter-Parameter an den Request anhängen */
+        var filters = getFilterParams();
+        for (var key in filters) {
+          d[key] = filters[key];
+        }
+        return d;
+      },
+      dataSrc: function(json) {
+        return json.data;
+      }
+    },
+    // GEÄNDERT: Header-Zahl erst nach einem AKZEPTIERTEN Draw setzen (respektiert die
+    // DataTables-Draw-Reihenfolge). Vorher lief der Header-Update in dataSrc bei JEDEM
+    // Response - auch beim initialen, überholten Draw ohne run_id-Filter -, wodurch der
+    // Header fälschlich den Gesamt-Schätzwert der ganzen Tabelle zeigte statt des
+    // gefilterten Run-Werts.
+    drawCallback: function() {
+      document.getElementById("results-total").textContent = this.api().page.info().recordsDisplay;
+    },
+    columns: [
+      {
+        data: "id",
+        orderable: false,
+        className: "text-center",
+        render: function(data) {
+          return '<input type="checkbox" class="form-check-input row-select" data-id="' + data + '">';
+        }
+      },
+      {
+        data: "is_favorite",
+        // GEÄNDERT: Favorit-Spalte schmaler (weniger Zell-Padding)
+        className: "text-center px-1",
+        render: function(data, type, row) {
+          var cls = data ? 'text-warning' : 'text-muted';
+          var fill = data ? 'currentColor' : 'none';
+          return '<button class="btn btn-sm btn-ghost-secondary btn-fav p-0" data-id="' + row.id + '" title="Favorit">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="' + fill + '" stroke="currentColor" stroke-width="2" class="' + cls + '">' +
+            '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>';
+        }
+      },
+      {
+        // GEÄNDERT: Doku-Favorit-Spalte (roter Stern), direkt nach gelbem Stern
+        data: "is_doc_favorite",
+        // GEÄNDERT: Doku-Favorit-Spalte schmaler (weniger Zell-Padding)
+        className: "text-center px-1",
+        render: function(data, type, row) {
+          var cls = data ? 'text-danger' : 'text-muted';
+          var fill = data ? 'currentColor' : 'none';
+          return '<button class="btn btn-sm btn-ghost-secondary btn-doc-fav p-0" data-id="' + row.id + '" title="Doku-Favorit">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="' + fill + '" stroke="currentColor" stroke-width="2" class="' + cls + '">' +
+            '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>';
+        }
+      },
+      {
+        data: "id",
+        render: function(data) {
+          return data;
+        }
+      },
+      {
+        data: "run_id",
+        render: function(data) {
+          return '<a href="/backtest/runs/' + data + '" class="text-reset">' + data + '</a>';
+        }
+      },
+      {
+        // GEÄNDERT: Strategie-Spalte in Konzept + Iteration aufgeteilt
+        data: "concept_name",
+        render: function(data) {
+          return data || '-';
+        }
+      },
+      {
+        // GEÄNDERT: Iterations-Spalte mit ID, Parameter-Tooltip und Fallback-Hinweis
+        data: null,
+        render: function(data) {
+          // GEÄNDERT: API-Feld heißt actual_params (nicht actual_params_json) — Bugfix Tooltip
+          var params = data.actual_params;
+          // GEÄNDERT: K4 — kein hartgecodetes Label-Mapping mehr; Parameter roh anzeigen (key|value)
+          var lines = [];
+          // GEÄNDERT: Stop-Keys hier überspringen — sie kommen aufgelöst aus data.stops (Duplikat-Schutz)
+          var stopKeys = { td_stop: 1, tp_stop: 1, sl_stop: 1, tsl_stop: 1, tsl_th: 1 };
+          if (params) {
+            for (var key in params) {
+              if (key === 'symbol') continue;
+              if (stopKeys[key]) continue;
+              var v = params[key];
+              lines.push(key + '|' + (typeof v === 'number' ? parseFloat(v.toFixed(4)) : v));
+            }
+          }
+          // GEÄNDERT: Stoppdaten (td/tp/sl/tsl) aus dem Result-Snapshot in den Tooltip aufnehmen
+          if (data.stops) {
+            for (var sk in data.stops) {
+              var sv = data.stops[sk];
+              lines.push(sk + '|' + (typeof sv === 'number' ? parseFloat(sv.toFixed(4)) : sv));
+            }
+          }
+          // GEÄNDERT: Name der Indikator-Config ans Feld anhängen, falls am Result vorhanden
+          var cfgName = data.indicator_config_name
+            ? ' <span class="text-muted">· ' + data.indicator_config_name + '</span>'
+            : '';
+          // Sprechende Anzeige mit Iterations-Version wenn Iteration bekannt
+          if (data.iteration_version != null) {
+            var displayName = data.iteration_name ? (data.iteration_version + ' ' + data.iteration_name) : String(data.iteration_version);
+            if (!lines.length) return displayName + cfgName;
+            return '<span class="param-tip" data-params="' + lines.join(';') + '">' + displayName + '</span>' + cfgName;
+          }
+          // Fallback: keine Iteration zugeordnet — strategy_name + Hinweis-Icon
+          var legacyName = data.strategy_name || '-';
+          var icon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted ms-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Keine Iteration zugeordnet"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></svg>';
+          if (!lines.length) return legacyName + icon + cfgName;
+          return '<span class="param-tip" data-params="' + lines.join(';') + '">' + legacyName + '</span>' + icon + cfgName;
+        }
+      },
+      {
+        data: "symbol",
+        render: function(data) {
+          return '<span class="badge bg-azure-lt">' + (data || '-') + '</span>';
+        }
+      },
+      {
+        data: "timeframe",
+        render: function(data) {
+          return data ? '<span class="badge bg-green-lt">' + data + '</span>' : '-';
+        }
+      },
+      {
+        data: "start_date",
+        render: function(data) {
+          return data ? '<small>' + fmtDateDe(data) + '</small>' : '-';
+        }
+      },
+      {
+        data: "end_date",
+        render: function(data) {
+          return data ? '<small>' + fmtDateDe(data) + '</small>' : '-';
+        }
+      },
+      {
+        data: "tp_stop",
+        orderable: false,
+        render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
+      },
+      {
+        data: "sl_stop",
+        orderable: false,
+        render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
+      },
+      { data: "sharpe_ratio", render: function(d) { return fmtColor(d); } },
+      { data: "sortino_ratio", render: function(d) { return fmtColor(d); } },
+      {
+        data: "max_drawdown_pct",
+        render: function(d) {
+          if (d === null || d === undefined) return '<span class="text-muted">-</span>';
+          return '<span class="val-neg">' + parseFloat(d).toFixed(2) + '</span>';
+        }
+      },
+      { data: "total_trades", render: function(d) { return d !== null ? d : '-'; } },
+      { data: "win_rate_pct", render: function(d) { return fmtNum(d); } },
+      { data: "profit_factor", render: function(d) { return fmtColor(d); } },
+      { data: "total_return_pct", render: function(d) { return fmtColor(d); } },
+      { data: "end_value", render: function(d) { return fmtNum(d); } },
+      {
+        // GEÄNDERT: Aktionen zusammengefasst — PG bleibt eigenständig,
+        // Chart/BC/IC/Setup/Löschen wandern ins Drei-Punkte-Menü
+        data: null,
+        orderable: false,
+        render: function(data) {
+          var level = data.metrics_level || 'partial';
+          var chartCls = (level === 'chart' || level === 'full') ? 'fw-bold' : '';
+          var id = data.id;
+          return '<div class="text-end text-nowrap">'
+            + '<a href="/chart-playground?resultid=' + id + '" class="btn btn-sm btn-outline-success me-1" title="Im Playground öffnen (flüchtig)">PG</a>'
+            + '<button type="button" class="btn btn-sm btn-icon btn-outline-secondary result-actions-toggle" title="Aktionen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></svg></button>'
+            + '<div class="dropdown-menu result-actions-menu text-start">'
+              + '<a href="/backtest/results/' + id + '/chart" class="dropdown-item ' + chartCls + '">Chart</a>'
+              + '<button type="button" class="dropdown-item btn-save-backtest-config" data-id="' + id + '">Backtest-Config speichern</button>'
+              + '<button type="button" class="dropdown-item btn-save-indicator-config" data-id="' + id + '">Indikator-Config speichern</button>'
+              + '<button type="button" class="dropdown-item btn-save-setup" data-id="' + id + '">Setup speichern</button>'
+              + '<div class="dropdown-divider"></div>'
+              + '<button type="button" class="dropdown-item text-danger btn-delete-result" data-id="' + id + '">Result löschen</button>'
+            + '</div>'
+          + '</div>';
+        }
+      }
+    ],
+    pageLength: 25,
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    lengthMenu: [[10, 25, 50, 100, 250], [10, 25, 50, 100, 250]],
+    order: [[3, "desc"]],
+    language: {
+      search: "Suche:",
+      processing: "Lade...",
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_ Einträgen",
+      infoEmpty: "Keine Einträge",
+      infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+      zeroRecords: "Keine passenden Einträge gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  /* Filter anwenden — Server-Side neu laden */
+  document.getElementById("filter-apply").addEventListener("click", function() {
+    table.draw();
+  });
+
+  /* Filter zurücksetzen */
+  document.getElementById("filter-reset").addEventListener("click", function() {
+    document.getElementById("filter-concept").value = "";
+    populateIterations();
+    document.getElementById("filter-iteration").value = "";
+    document.getElementById("filter-symbol").value = "";
+    document.getElementById("filter-timeframe").value = "";
+    document.getElementById("filter-run").value = "";
+    NUMERIC_FILTER_FIELDS.forEach(function(field) {
+      document.getElementById("filter-" + field + "-min").value = "";
+      document.getElementById("filter-" + field + "-max").value = "";
+    });
+    table.draw();
+  });
+
+  /* Filterleiste ein-/ausblenden (Default: eingeblendet) */
+  document.getElementById("btn-toggle-filter").addEventListener("click", function() {
+    document.getElementById("filter-card").classList.toggle("d-none");
+  });
+
+  /* Suchfeld — Server-Side Suche; X-Sichtbarkeit per CSS, Klick via Delegation */
+  var searchInput = document.getElementById("results-search");
+  var searchTimeout = null;
+  searchInput.addEventListener("input", function() {
+    clearTimeout(searchTimeout);
+    var val = this.value;
+    searchTimeout = setTimeout(function() {
+      table.search(val).draw();
+    }, 300);
+  });
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".dt-search-clear");
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  /* Auto-Update (standardmäßig AUS, 5s Intervall) */
+  var autoUpdateInterval = null;
+  function startAutoUpdate() {
+    if (autoUpdateInterval) return;
+    autoUpdateInterval = setInterval(function() {
+      // GEÄNDERT: Scroll-Position um den Reload herum sichern. DataTables gibt beim
+      // Redraw dem zuletzt geklickten Pagination-Button wieder den Fokus, wodurch der
+      // Browser nach unten scrollt (sprang auf hohen Seiten immer wieder ans Tabellenende).
+      var scrollY = window.scrollY;
+      table.ajax.reload(function() { window.scrollTo(0, scrollY); }, false);
+    }, 5000);
+  }
+  function stopAutoUpdate() {
+    if (autoUpdateInterval) {
+      clearInterval(autoUpdateInterval);
+      autoUpdateInterval = null;
+    }
+  }
+  document.getElementById("toggle-auto-update").addEventListener("change", function() {
+    if (this.checked) { startAutoUpdate(); } else { stopAutoUpdate(); }
+  });
+  // GEÄNDERT: Standard AUS - der teure Reload (5er-Join über die ganze Results-Tabelle)
+  // lief sonst alle 5s, obwohl Results erst nach Run-Ende gesammelt nachgetragen werden.
+  // Bei Bedarf manuell per Schalter aktivierbar.
+
+  /* Favorit umschalten */
+  document.getElementById("results-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-fav");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    fetch("/api/backtest/results/" + id + "/favorite", { method: "POST" })
+      .then(function() { table.ajax.reload(null, false); });
+  });
+
+  /* Doku-Favorit umschalten (roter Stern) */
+  // GEÄNDERT: Separater Handler für Doku-Favorit, analog zum gelben Stern
+  document.getElementById("results-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-doc-fav");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    fetch("/api/backtest/results/" + id + "/doc_favorite", { method: "POST" })
+      .then(function() { table.ajax.reload(null, false); });
+  });
+
+  /* Einzelnes Result löschen */
+  document.getElementById("results-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-delete-result");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Result #" + id + " wirklich löschen?\n\nACHTUNG: Kein Löschschutz — ein als Favorit markiertes Result (gelb oder rot) wird hier ohne Ausnahme gelöscht.")) return;
+    fetch("/api/backtest/results/" + id, { method: "DELETE" })
+      .then(function() { table.ajax.reload(); });
+  });
+
+  /* Mehrfach-Auswahl per Checkbox (server-side: nur sichtbare Seite haltbar) */
+  var selectedResultIds = new Set();
+  var selectedCountEl = document.getElementById("results-selected-count");
+  var bulkBtn = document.getElementById("btn-delete-selected-results");
+
+  function updateSelectionUi() {
+    selectedCountEl.textContent = selectedResultIds.size;
+    bulkBtn.disabled = selectedResultIds.size === 0;
+  }
+  function syncCheckboxes() {
+    document.querySelectorAll("#results-table tbody .row-select").forEach(function(cb) {
+      cb.checked = selectedResultIds.has(parseInt(cb.getAttribute("data-id"), 10));
+    });
+    var selectAll = document.getElementById("results-select-all");
+    var visible = document.querySelectorAll("#results-table tbody .row-select");
+    var allChecked = visible.length > 0 && Array.prototype.every.call(visible, function(cb) { return cb.checked; });
+    selectAll.checked = allChecked;
+  }
+  table.on("draw", syncCheckboxes);
+
+  document.getElementById("results-table").addEventListener("change", function(e) {
+    var cb = e.target.closest(".row-select");
+    if (!cb) return;
+    var id = parseInt(cb.getAttribute("data-id"), 10);
+    if (cb.checked) selectedResultIds.add(id);
+    else selectedResultIds.delete(id);
+    updateSelectionUi();
+    syncCheckboxes();
+  });
+
+  document.getElementById("results-select-all").addEventListener("change", function() {
+    var checked = this.checked;
+    document.querySelectorAll("#results-table tbody .row-select").forEach(function(cb) {
+      cb.checked = checked;
+      var id = parseInt(cb.getAttribute("data-id"), 10);
+      if (checked) selectedResultIds.add(id);
+      else selectedResultIds.delete(id);
+    });
+    updateSelectionUi();
+  });
+
+  bulkBtn.addEventListener("click", function() {
+    if (selectedResultIds.size === 0) return;
+    var ids = Array.from(selectedResultIds);
+    if (!confirm(ids.length + " Result(s) löschen?\n\nACHTUNG: Kein Löschschutz — favorisierte Results (gelb oder rot) in der Auswahl werden mitgelöscht.")) return;
+    bulkBtn.disabled = true;
+    fetch("/api/backtest/results/bulk-delete", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ids: ids})
+    })
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        selectedResultIds.clear();
+        updateSelectionUi();
+        table.ajax.reload(null, false);
+      })
+      .catch(function() { bulkBtn.disabled = false; });
+  });
+
+  /* Alle löschen — stößt den Hintergrund-Job an; die Fortschrittsanzeige übernimmt
+     der globale Lösch-Job-Toast (base.html), seitenübergreifend und abbrechbar.
+     Endet ein Lösch-Job, lädt 'vbt:delete-jobs-idle' die Tabelle neu. */
+  (function() {
+    var btn = document.getElementById("btn-delete-all-results");
+
+    btn.addEventListener("click", function() {
+      if (!confirm("ALLE Results löschen? Das kann nicht rückgängig gemacht werden!\n\nLöschschutz aktiv: Favoriten (gelb = persönlich, rot = doku-verlinkt) bleiben erhalten.")) return;
+      btn.disabled = true;
+      fetch("/api/backtest/results", { method: "DELETE" })
+        .catch(function() {})
+        .then(function() { btn.disabled = false; });
+    });
+
+    window.addEventListener("vbt:delete-jobs-idle", function() {
+      table.ajax.reload(null, false);
+    });
+  })();
+
+  /* Parameter-Tooltip (fixed position, kein Clipping) */
+  var paramTip = document.getElementById("param-tooltip");
+  document.addEventListener("mouseover", function(e) {
+    var el = e.target.closest(".param-tip");
+    if (!el) return;
+    var raw = el.getAttribute("data-params");
+    if (!raw) return;
+    var html = raw.split(";").map(function(item) {
+      var parts = item.split("|");
+      return '<span style="color:#888">' + parts[0] + '</span> ' + parts[1];
+    }).join("<br>");
+    paramTip.innerHTML = html;
+    paramTip.style.display = "block";
+    var rect = el.getBoundingClientRect();
+    paramTip.style.left = rect.left + "px";
+    paramTip.style.top = (rect.bottom + 4) + "px";
+  });
+  document.addEventListener("mouseout", function(e) {
+    var el = e.target.closest(".param-tip");
+    if (el) paramTip.style.display = "none";
+  });
+
+  /* Speichern-Aktionen aus Result (Ticket 43) */
+  function _saveFromResult(endpoint, label, id) {
+    fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          alert('Fehler beim Speichern (' + label + '): ' + data.error);
+        } else {
+          alert(label + ' gespeichert: ' + (data.data && data.data.name ? data.data.name : 'OK'));
+        }
+      })
+      .catch(function() { alert('Netzwerkfehler beim Speichern (' + label + ').'); });
+  }
+
+  document.getElementById('results-table').addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-save-backtest-config');
+    if (btn) { _saveFromResult('config/backtest', 'Backtest-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-indicator-config');
+    if (btn) { _saveFromResult('config/indicator', 'Indikator-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-setup');
+    if (btn) { _saveFromResult('chart-playground/setups', 'Setup', btn.getAttribute('data-id')); return; }
+  });
+
+  /* GEÄNDERT: Drei-Punkte-Aktionsmenü. Das Menü liegt im DOM in der Zelle (damit die
+     bestehende Klick-Delegation auf #results-table weiter greift), wird aber per
+     position:fixed positioniert, damit es nicht vom table-responsive-Container
+     abgeschnitten wird. */
+  var openActionsMenu = null;
+
+  function closeActionsMenu() {
+    if (openActionsMenu) {
+      openActionsMenu.classList.remove("show");
+      openActionsMenu.removeAttribute("style");
+      openActionsMenu = null;
+    }
+  }
+
+  function positionActionsMenu(menu, toggle) {
+    var rect = toggle.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.margin = "0";
+    var menuW = menu.offsetWidth;
+    var menuH = menu.offsetHeight;
+    var left = rect.right - menuW;
+    if (left < 4) left = 4;
+    var top = rect.bottom + 2;
+    // Nach oben klappen, wenn unten kein Platz ist
+    if (top + menuH > window.innerHeight - 4) top = rect.top - menuH - 2;
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+  }
+
+  document.getElementById("results-table").addEventListener("click", function(e) {
+    var toggle = e.target.closest(".result-actions-toggle");
+    if (!toggle) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var menu = toggle.parentNode.querySelector(".result-actions-menu");
+    var wasOpen = (menu === openActionsMenu);
+    closeActionsMenu();
+    if (!wasOpen && menu) {
+      menu.classList.add("show");
+      positionActionsMenu(menu, toggle);
+      openActionsMenu = menu;
+    }
+  });
+
+  // Klick außerhalb schließt das Menü; Klicks auf Menü-Items bubbeln vorher zu den
+  // bestehenden Handlern (Speichern/Löschen) und schließen es danach mit
+  document.addEventListener("click", function(e) {
+    if (openActionsMenu && !e.target.closest(".result-actions-toggle")) closeActionsMenu();
+  });
+  document.addEventListener("keydown", function(e) { if (e.key === "Escape") closeActionsMenu(); });
+  window.addEventListener("resize", closeActionsMenu);
+  window.addEventListener("scroll", closeActionsMenu, true);
+  table.on("draw", closeActionsMenu);
+});
+</script>
+{% endblock %}

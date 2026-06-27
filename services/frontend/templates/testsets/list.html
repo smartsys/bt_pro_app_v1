@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}TestSets - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">TestSets</h2>
+
+        <div class="page-pretitle">Vergleichs-Anker</div>
+      </div>
+      <div class="col-auto ms-auto">
+        <a href="/testsets/new" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Neues TestSet
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Alle TestSets (<span id="sets-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <div class="dt-search-input" style="width: 260px;">
+        <span class="dt-search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="search" id="testsets-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+        <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="testsets-search">&times;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="testsets-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th class="text-center">Anzahl Configs</th>
+            <th>Beschreibung</th>
+            <th class="text-center">Leaderboard</th>
+            <th>Erstellt am</th>
+            <th>Erstellt von</th>
+            <th style="min-width:120px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Configs eines TestSets anzeigen -->
+<div class="modal modal-blur fade" id="modal-configs" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="configs-modal-title">Konfigurationen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Symbol</th>
+                <th>Timeframe</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="configs-modal-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var table = new DataTable("#testsets-table", {
+    ajax: {
+      url: "/api/testsets",
+      dataSrc: function(json) {
+        document.getElementById("sets-total").textContent = json.data.length;
+        return json.data;
+      }
+    },
+    columns: [
+      { data: "id" },
+      {
+        data: "name",
+        render: function(d, _, row) {
+          return '<a href="/testsets/' + row.id + '"><strong>' + d + '</strong></a>';
+        }
+      },
+      {
+        data: "backtest_config_ids",
+        className: "text-center",
+        render: function(d, _, row) {
+          var count = d ? d.length : 0;
+          if (count === 0) {
+            return '<span class="badge bg-blue-lt">0</span>';
+          }
+          // Klickbares Badge: öffnet ein Modal mit den Konfigurationen des TestSets
+          return '<button type="button" class="badge bg-blue-lt border-0 btn-show-configs" ' +
+            'data-testset-id="' + row.id + '" style="cursor:pointer">' + count + '</button>';
+        }
+      },
+      {
+        data: "description",
+        render: function(d) { return d ? d : '<span class="text-muted">—</span>'; }
+      },
+      {
+        data: "leaderboard_enabled",
+        className: "text-center",
+        render: function(d) {
+          return d
+            ? '<span class="badge bg-green-lt">Ja</span>'
+            : '<span class="badge bg-secondary-lt">Nein</span>';
+        }
+      },
+      {
+        data: "created_at",
+        className: "text-nowrap",
+        render: function(d) {
+          if (!d) return '—';
+          var dt = new Date(d);
+          if (isNaN(dt.getTime())) return d;
+          var pad = function(n) { return String(n).padStart(2, '0'); };
+          return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+                 ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+        }
+      },
+      { data: "created_by", render: function(d) { return d || '—'; } },
+      {
+        data: null,
+        orderable: false,
+        render: function(_, __, row) {
+          return '<div class="text-end text-nowrap">' +
+            '<a href="/testsets/' + row.id + '" class="btn btn-sm btn-outline-primary" title="Details"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/><path d="M16 5l3 3"/></svg></a>' +
+            '</div>';
+        }
+      }
+    ],
+    order: [[0, 'desc']],
+    pageLength: 25,
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    language: { url: '/static/datatables-de.json' }
+  });
+
+  // Config-Map (id -> {name, symbol, timeframe}) einmalig laden, für das Modal
+  var configMap = {};
+  fetch("/api/config/backtest")
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      (json.data || []).forEach(function(c) { configMap[c.id] = c; });
+    })
+    .catch(function(err) { console.error("Configs konnten nicht geladen werden:", err); });
+
+  var configsModal = new tabler.Modal(document.getElementById("modal-configs"));
+
+  // Klick auf das Configs-Badge -> Modal mit den Konfigurationen öffnen
+  document.querySelector("#testsets-table tbody").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-show-configs");
+    if (!btn) return;
+    var tr = btn.closest("tr");
+    var rowData = table.row(tr).data();
+    if (!rowData) return;
+
+    var ids = rowData.backtest_config_ids || [];
+    document.getElementById("configs-modal-title").textContent =
+      "Konfigurationen: " + rowData.name;
+
+    var rows = ids.map(function(id) {
+      var c = configMap[id];
+      var name = c ? c.name : '<span class="text-muted">(unbekannt)</span>';
+      var symbol = c ? c.symbol : '—';
+      var timeframe = c ? c.timeframe : '—';
+      return '<tr>' +
+        '<td>' + id + '</td>' +
+        '<td class="text-nowrap">' + name + '</td>' +
+        '<td>' + symbol + '</td>' +
+        '<td>' + timeframe + '</td>' +
+        '<td class="text-end"><a href="/config/backtest/' + id + '" target="_blank" rel="noopener" ' +
+        'class="btn btn-sm btn-outline-primary">Öffnen</a></td>' +
+        '</tr>';
+    }).join("");
+
+    document.getElementById("configs-modal-body").innerHTML = rows;
+    configsModal.show();
+  });
+
+  // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
+  var searchInput = document.getElementById("testsets-search");
+  searchInput.addEventListener("input", function() {
+    table.search(this.value).draw();
+  });
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".dt-search-clear");
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+  });
+
+});
+</script>
+{% endblock %}

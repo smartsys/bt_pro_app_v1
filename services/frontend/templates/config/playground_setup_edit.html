@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Neues Setup' if not setup else setup.name }} - BT Pro{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+  /* CodeMirror-Editor: kompaktere Schrift, feste Höhe für Setup-Editor */
+  .CodeMirror {
+    font-size: 0.95rem;
+    line-height: 1.45;
+    height: 420px;
+    border: 1px solid var(--tblr-border-color);
+    border-radius: var(--tblr-border-radius);
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">
+          {{ 'Neues Playground-Setup' if not setup else 'Setup bearbeiten: ' + setup.name }}{% if setup %} <span class="text-secondary fw-normal ms-2">ID {{ setup.id }}</span>{% endif %}
+        </h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/playground" class="btn btn-outline-secondary">Abbrechen</a>
+        <button type="button" id="btn-save" class="btn btn-primary">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="setup-form" onsubmit="return false;">
+  <input type="hidden" id="setup-id" value="{{ setup.id if setup else '' }}">
+
+  <div id="save-status" class="mb-2"></div>
+
+  <!-- Allgemein -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Allgemein</h3></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="setup-name" value="{{ setup.name if setup else '' }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Erstellt</label>
+          <input type="text" class="form-control" value="{{ (setup.created_at if setup else '') or '-' }}" readonly>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Beschreibung</label>
+          <input type="text" class="form-control" id="setup-description" value="{{ setup.description if setup and setup.description else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Geändert</label>
+          <input type="text" class="form-control" value="{{ (setup.updated_at if setup else '') or '-' }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backtest-Config + Indicators -->
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">backtest_config_json</h3>
+          <div class="card-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-format="backtest">Formatieren</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <textarea id="ta-backtest" style="display:none;">{{ backtest_config_json_str }}</textarea>
+          <div id="ed-backtest"></div>
+          <div class="json-error" id="err-backtest"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">indicators_config_json</h3>
+          <div class="card-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-format="indicators">Formatieren</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <textarea id="ta-indicators" style="display:none;">{{ indicators_config_json_str }}</textarea>
+          <div id="ed-indicators"></div>
+          <div class="json-error" id="err-indicators"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Strategy + UI -->
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">strategy_config_json</h3>
+          <div class="card-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-format="strategy">Formatieren</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <textarea id="ta-strategy" style="display:none;">{{ strategy_config_json_str }}</textarea>
+          <div id="ed-strategy"></div>
+          <div class="json-error" id="err-strategy"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">ui_state_json</h3>
+          <div class="card-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-format="ui">Formatieren</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <textarea id="ta-ui" style="display:none;">{{ ui_state_json_str }}</textarea>
+          <div id="ed-ui"></div>
+          <div class="json-error" id="err-ui"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/brace-fold.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var setupId = document.getElementById("setup-id").value;
+  var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark"
+            || document.body.getAttribute("data-bs-theme") === "dark";
+  var cmTheme = isDark ? "material-darker" : "default";
+
+  function makeEditor(taId, edId) {
+    var ta = document.getElementById(taId);
+    var ed = CodeMirror(document.getElementById(edId), {
+      value: ta.value,
+      mode: { name: "javascript", json: true },
+      lineNumbers: true,
+      foldGutter: true,
+      gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+      tabSize: 2,
+      indentUnit: 2,
+      lineWrapping: true,
+      theme: cmTheme,
+    });
+    return ed;
+  }
+
+  var editors = {
+    backtest:   makeEditor("ta-backtest",   "ed-backtest"),
+    indicators: makeEditor("ta-indicators", "ed-indicators"),
+    strategy:   makeEditor("ta-strategy",   "ed-strategy"),
+    ui:         makeEditor("ta-ui",         "ed-ui"),
+  };
+  var errEls = {
+    backtest:   document.getElementById("err-backtest"),
+    indicators: document.getElementById("err-indicators"),
+    strategy:   document.getElementById("err-strategy"),
+    ui:         document.getElementById("err-ui"),
+  };
+
+  // JSON formatieren pro Editor
+  document.querySelectorAll('[data-format]').forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var key = btn.getAttribute("data-format");
+      var ed = editors[key];
+      try {
+        var obj = JSON.parse(ed.getValue() || '{}');
+        ed.setValue(JSON.stringify(obj, null, 2));
+        errEls[key].textContent = '';
+      } catch (e) {
+        errEls[key].textContent = 'JSON-Fehler: ' + e.message;
+      }
+    });
+  });
+
+  function parseAll() {
+    var out = {};
+    var ok = true;
+    Object.keys(editors).forEach(function(key) {
+      var raw = editors[key].getValue().trim();
+      if (raw === '') { out[key] = {}; errEls[key].textContent = ''; return; }
+      try {
+        out[key] = JSON.parse(raw);
+        errEls[key].textContent = '';
+      } catch (e) {
+        errEls[key].textContent = 'JSON-Fehler: ' + e.message;
+        ok = false;
+      }
+    });
+    return ok ? out : null;
+  }
+
+  function setStatus(msg, kind) {
+    var el = document.getElementById("save-status");
+    var cls = kind === 'err' ? 'alert-danger' : 'alert-success';
+    el.innerHTML = '<div class="alert ' + cls + ' mb-0">' + msg + '</div>';
+  }
+
+  document.getElementById("btn-save").addEventListener("click", function() {
+    var name = document.getElementById("setup-name").value.trim();
+    if (!name) { setStatus('Name ist Pflicht', 'err'); return; }
+    var parsed = parseAll();
+    if (!parsed) { setStatus('Bitte zuerst die JSON-Fehler korrigieren', 'err'); return; }
+
+    var body = {
+      name: name,
+      description: document.getElementById("setup-description").value.trim() || null,
+      backtest_config_json: parsed.backtest,
+      indicators_config_json: parsed.indicators,
+      strategy_config_json: parsed.strategy,
+      ui_state_json: parsed.ui,
+    };
+
+    var url = setupId ? '/api/chart-playground/setups/' + setupId : '/api/chart-playground/setups';
+    var method = setupId ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function(r) { return r.json().then(function(j) { return { status: r.status, j: j }; }); })
+      .then(function(res) {
+        if (res.status >= 400 || (res.j && res.j.error)) {
+          var detail = (res.j && (res.j.detail || res.j.error)) || ('HTTP ' + res.status);
+          setStatus('Speichern fehlgeschlagen: ' + detail, 'err');
+          return;
+        }
+        var saved = res.j.data;
+        setStatus('Setup gespeichert (#' + saved.id + ')', 'ok');
+        if (!setupId && saved && saved.id) {
+          // Bei Neu-Anlage auf Edit-URL umleiten
+          window.location.href = '/config/playground/' + saved.id;
+        }
+      })
+      .catch(function(err) { setStatus('Fehler: ' + err.message, 'err'); });
+  });
+});
+</script>
+{% endblock %}

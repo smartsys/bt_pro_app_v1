@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Playground-Setups - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Playground-Setups</h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button class="btn btn-outline-danger" id="btn-bulk-delete" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          <span id="bulk-delete-count">0</span>&nbsp;ausgewählte löschen
+        </button>
+        <a href="/config/playground/new" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Neues Setup
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Alle Setups (<span id="setups-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <div class="dt-search-input" style="width: 260px;">
+        <span class="dt-search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="search" id="setups-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+        <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="setups-search">&times;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="setups-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="w-1"><input class="form-check-input" type="checkbox" id="select-all"></th>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Beschreibung</th>
+            <th>Symbol</th>
+            <th>Exchange</th>
+            <th>TF</th>
+            <th>Start</th>
+            <th>Ende</th>
+            <th class="text-center">Indikatoren</th>
+            <th>Erstellt</th>
+            <th>Geändert</th>
+            <th style="min-width:160px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  function formatDateDe(iso) {
+    if (!iso) return '-';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return ('' + iso).substring(0, 10);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear()
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  // ISO 'YYYY-MM-DD' -> 'DD.MM.YYYY' (ohne Uhrzeit, für Start/Ende-Spalten)
+  function formatDateOnlyDe(iso) {
+    if (!iso) return '-';
+    var s = ('' + iso).substring(0, 10);
+    var parts = s.split('-');
+    if (parts.length !== 3) return s;
+    return parts[2] + '.' + parts[1] + '.' + parts[0];
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var table = new DataTable("#setups-table", {
+    ajax: {
+      url: "/api/chart-playground/setups",
+      dataSrc: function(json) {
+        var items = (json.data && json.data.items) || [];
+        document.getElementById("setups-total").textContent = items.length;
+        // Flatten — extract leicht zugängliche Felder aus den JSON-Blobs
+        return items.map(function(it) {
+          var bt = it.backtest_config_json || {};
+          var ind = it.indicators_config_json || {};
+          var symbol = bt.symbol || (Array.isArray(bt.symbols) ? bt.symbols[0] : '');
+          return {
+            id: it.id,
+            name: it.name,
+            description: it.description,
+            symbol: symbol,
+            exchange: bt.exchange || '',
+            timeframe: bt.timeframe || '',
+            start: bt.start || '',
+            end: bt.end || '',
+            ind_count: Object.keys(ind).length,
+            created_at: it.created_at,
+            updated_at: it.updated_at,
+          };
+        });
+      }
+    },
+    columns: [
+      {
+        data: "id",
+        orderable: false,
+        searchable: false,
+        render: function(data) {
+          return '<input class="form-check-input row-select" type="checkbox" value="' + data + '">';
+        }
+      },
+      { data: "id" },
+      { data: "name", render: function(d) { return '<strong>' + escapeHtml(d) + '</strong>'; } },
+      { data: "description", render: function(d) {
+          var txt = escapeHtml(d || '');
+          return '<div class="desc-cell" title="' + txt + '">' + (txt || '-') + '</div>';
+        }
+      },
+      { data: "symbol", render: function(d) { return d ? '<span class="badge bg-cyan-lt">' + escapeHtml(d) + '</span>' : '-'; } },
+      { data: "exchange", render: function(d) { return d ? '<span class="badge bg-azure-lt">' + escapeHtml(d) + '</span>' : '-'; } },
+      { data: "timeframe", render: function(d) { return d ? '<span class="badge bg-green-lt">' + escapeHtml(d) + '</span>' : '-'; } },
+      { data: "start", render: function(d, type) { return type === 'display' ? formatDateOnlyDe(d) : (d || ''); } },
+      { data: "end",   render: function(d, type) { return type === 'display' ? formatDateOnlyDe(d) : (d || ''); } },
+      { data: "ind_count", className: "text-center" },
+      { data: "created_at", className: "text-nowrap", render: formatDateDe },
+      { data: "updated_at", className: "text-nowrap", render: formatDateDe },
+      {
+        data: "id",
+        orderable: false,
+        render: function(id) {
+          return '<div class="text-end text-nowrap">' +
+            '<a href="/chart-playground?setupid=' + id + '" class="btn btn-sm btn-outline-success me-1" title="Im Playground öffnen">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 0"/><path d="M4 20l16 0"/><path d="M7 8l3 4l-3 4"/><path d="M14 8l3 4l-3 4"/></svg>' +
+            '</a>' +
+            '<a href="/config/playground/' + id + '" class="btn btn-sm btn-outline-primary me-1" title="Bearbeiten">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/><path d="M16 5l3 3"/></svg>' +
+            '</a>' +
+            '<button class="btn btn-sm btn-outline-danger btn-delete" data-id="' + id + '" title="Löschen">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>' +
+            '</button>' +
+          '</div>';
+        }
+      }
+    ],
+    pageLength: 25,
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    order: [[1, "desc"]],
+    language: {
+      search: "Suche:",
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_",
+      infoEmpty: "Keine Setups",
+      zeroRecords: "Keine Setups gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  /* Suche; X-Sichtbarkeit per CSS, Klick via Delegation */
+  var searchInput = document.getElementById("setups-search");
+  searchInput.addEventListener("input", function() {
+    table.search(this.value).draw();
+  });
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".dt-search-clear");
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  /* Löschen */
+  document.getElementById("setups-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-delete");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Setup #" + id + " wirklich löschen?")) return;
+    fetch('/api/chart-playground/setups/' + id, { method: 'DELETE' })
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.error) { alert('Fehler: ' + j.error); return; }
+        document.getElementById("select-all").checked = false;
+        table.ajax.reload(function() { updateBulkBtn(); });
+      })
+      .catch(function(err) { alert('Fehler: ' + err.message); });
+  });
+
+  /* Select-All */
+  document.getElementById("select-all").addEventListener("change", function() {
+    var checked = this.checked;
+    document.querySelectorAll(".row-select").forEach(function(cb) { cb.checked = checked; });
+    updateBulkBtn();
+  });
+
+  /* Einzelne Checkbox */
+  document.getElementById("setups-table").addEventListener("change", function(e) {
+    if (!e.target.classList.contains("row-select")) return;
+    var all = document.querySelectorAll(".row-select");
+    var allChecked = document.querySelectorAll(".row-select:checked");
+    document.getElementById("select-all").checked = all.length > 0 && all.length === allChecked.length;
+    updateBulkBtn();
+  });
+
+  function updateBulkBtn() {
+    var selected = document.querySelectorAll(".row-select:checked");
+    var btn = document.getElementById("btn-bulk-delete");
+    document.getElementById("bulk-delete-count").textContent = selected.length;
+    btn.disabled = selected.length === 0;
+  }
+
+  /* Bulk-Delete */
+  document.getElementById("btn-bulk-delete").addEventListener("click", function() {
+    var selected = document.querySelectorAll(".row-select:checked");
+    var ids = [];
+    selected.forEach(function(cb) { ids.push(parseInt(cb.value)); });
+    if (ids.length === 0) return;
+    if (!confirm(ids.length + " Setups wirklich löschen?")) return;
+    fetch('/api/chart-playground/setups/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) { alert('Fehler: ' + json.error); return; }
+        document.getElementById("select-all").checked = false;
+        table.ajax.reload(function() { updateBulkBtn(); });
+      })
+      .catch(function(err) { alert('Fehler: ' + err.message); });
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,783 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Neue Config' if not config else config.name }} - BT Pro{% endblock %}
+
+{% block head %}
+<!-- flatpickr: Datepicker mit fixem europäischem Anzeigeformat (TT.MM.JJJJ), Input-Wert bleibt ISO -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">{{ 'Neue Backtest-Config' if not config else 'Config bearbeiten: ' + config.name }}</h2>
+
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/backtest" class="btn btn-ghost-secondary">Zurück zur Liste</a>
+        <a href="/config/backtest" class="btn btn-outline-secondary">Abbrechen</a>
+        <button type="submit" form="config-form" class="btn btn-primary">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <!-- Linke Spalte: Formular -->
+  <div class="col-xl-5">
+    <form id="config-form">
+      <input type="hidden" id="cfg-id" value="{{ config.id if config else '' }}">
+
+      <!-- Name & Beschreibung -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Allgemein</h3></div>
+        <div class="card-body">
+          <div class="row mb-3">
+            <div class="col-12">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="cfg-name" value="{{ config.name if config else '' }}" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-12">
+              <label class="form-label">Beschreibung</label>
+              <textarea class="form-control" id="cfg-description" rows="2">{{ config.description if config and config.description else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Markt-Konfiguration -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Markt</h3></div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-4">
+              <label class="form-label">Symbol</label>
+              <select class="form-select" id="cfg-symbol" data-initial="{{ config.symbol if config else '' }}" required>
+                <option value="">Lädt...</option>
+              </select>
+              <small id="cfg-symbol-hint" class="text-muted"></small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Exchange</label>
+              <select class="form-select" id="cfg-exchange">
+                {% for ex in ['binance', 'bybit', 'kucoin'] %}
+                <option value="{{ ex }}" {{ 'selected' if config and config.exchange == ex else ('selected' if not config and ex == 'binance' else '') }}>{{ ex|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Timeframe</label>
+              <select class="form-select" id="cfg-timeframe">
+                {% for tf in ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'] %}
+                <option value="{{ tf }}" {{ 'selected' if config and config.timeframe == tf else ('selected' if not config and tf == '4h' else '') }}>{{ tf }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zeitraum -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Zeitraum</h3></div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label">OHLC Start <small class="text-muted">(inkl. Warmup)</small></label>
+              <input type="text" class="form-control" id="cfg-ohlc-start" value="{{ config.ohlc_start if config else '' }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Start</label>
+              <input type="text" class="form-control" id="cfg-start" value="{{ config.start if config else '' }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">End</label>
+              <input type="text" class="form-control" id="cfg-end" value="{{ config.end if config else '' }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">OHLC End</label>
+              <input type="text" class="form-control" id="cfg-ohlc-end" value="{{ config.ohlc_end if config else '' }}" required>
+            </div>
+          </div>
+          <!-- Verfügbare Zeiträume pro Timeframe für das gewählte Symbol -->
+          <div id="cfg-availability" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Portfolio-Parameter -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Portfolio</h3></div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-3">
+              <label class="form-label">Size</label>
+              <input type="number" class="form-control" id="cfg-size" step="any" value="{{ config.size if config else '100' }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Size Type</label>
+              <select class="form-select" id="cfg-size-type">
+                {% for st in ['value', 'percent100'] %}
+                <option value="{{ st }}" {{ 'selected' if config and config.size_type == st else ('selected' if not config and st == 'value' else '') }}>{{ st }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Init Cash</label>
+              <input type="number" class="form-control" id="cfg-init-cash" step="any" value="{{ config.init_cash if config else '100' }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Fees</label>
+              <input type="number" class="form-control" id="cfg-fees" step="0.0001" value="{{ config.fees if config else '0.001' }}" required>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GEÄNDERT: Schritt 3d — Format-Card (delta_format/time_delta_format) entfernt.
+           Die Formate gehören jetzt zu den Stops (indicators_json['_stops']) und
+           bekommen ihren Platz in der Schritt-4-Stop-UI. -->
+
+    </form>
+
+    <div id="save-status" class="mt-2"></div>
+  </div>
+
+  <!-- Rechte Spalte: Mini-Chart -->
+  <div class="col-xl-7">
+    <div class="card position-sticky" style="top: 1rem;">
+      <div class="card-header">
+        <h3 class="card-title mb-0">OHLC-Vorschau</h3>
+        <span id="chart-info" class="text-muted ms-auto small"></span>
+      </div>
+      <div class="card-body p-0">
+        <!-- Chart-Toolbar: TF-Sampling + Nav + Fit (rechtsbündig wie im Playground) -->
+        <div class="d-flex align-items-center px-2 py-1 border-bottom gap-2">
+          <div class="ms-auto d-flex align-items-center gap-1">
+            <div class="d-flex align-items-center gap-1" id="cfg-tf-btns"></div>
+            <span class="cfg-tf-sep"></span>
+            <button type="button" class="cfg-tf-btn" id="cfg-nav-start-btn" title="Zum Anfang springen">&laquo;|</button>
+            <button type="button" class="cfg-tf-btn" id="cfg-nav-end-btn" title="Zum Ende springen">|&raquo;</button>
+            <span class="cfg-tf-sep"></span>
+            <button type="button" class="cfg-tf-btn" id="cfg-fit-btn" title="Alles anzeigen">Fit</button>
+          </div>
+        </div>
+        <div id="cfg-chart" style="width: 100%; height: 600px;"></div>
+        <div id="chart-status" class="text-muted small mt-2">Symbol wählen, um Chart zu laden...</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/de.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  // ---- Form-Felder ----
+  var symbolSelect = document.getElementById("cfg-symbol");
+  var symbolHint = document.getElementById("cfg-symbol-hint");
+  var exchangeSelect = document.getElementById("cfg-exchange");
+  var timeframeSelect = document.getElementById("cfg-timeframe");
+  var ohlcStartInput = document.getElementById("cfg-ohlc-start");
+  var startInput = document.getElementById("cfg-start");
+  var endInput = document.getElementById("cfg-end");
+  var ohlcEndInput = document.getElementById("cfg-ohlc-end");
+  var availabilityBox = document.getElementById("cfg-availability");
+  var initialSymbol = symbolSelect.getAttribute("data-initial") || "";
+
+  // ---- Cache der /api/config/data/files Antwort (alle Files mit allen Symbolen) ----
+  var dataFilesCache = null;
+  function loadDataFiles() {
+    if (dataFilesCache) return Promise.resolve(dataFilesCache);
+    return fetch('/api/config/data/files')
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        dataFilesCache = (j.data && j.data.files) || [];
+        return dataFilesCache;
+      })
+      .catch(function() { return []; });
+  }
+
+  // ---- Symbol-Dropdown laden (passende HDF5-Datei zu exchange+timeframe) ----
+  function loadSymbols(preselect) {
+    var exchange = exchangeSelect.value;
+    var timeframe = timeframeSelect.value;
+    symbolSelect.innerHTML = '<option value="">Lädt...</option>';
+    symbolHint.textContent = "";
+    var url = "/api/config/symbols?exchange=" + encodeURIComponent(exchange)
+            + "&timeframe=" + encodeURIComponent(timeframe);
+    fetch(url)
+      .then(function(resp) { return resp.json(); })
+      .then(function(json) {
+        var data = json.data || {};
+        var symbols = data.symbols || [];
+        symbolSelect.innerHTML = "";
+        if (symbols.length === 0) {
+          var opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "— keine Symbole verfügbar —";
+          symbolSelect.appendChild(opt);
+          symbolHint.textContent = json.error || ("Keine Daten für " + exchange + "/" + timeframe);
+          symbolHint.className = "text-danger";
+          updateAvailability();
+          renderChart();
+          return;
+        }
+        symbols.forEach(function(s) {
+          var opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s;
+          if (s === preselect) opt.selected = true;
+          symbolSelect.appendChild(opt);
+        });
+        symbolHint.className = "text-muted";
+        symbolHint.textContent = data.file ? ("Quelle: " + data.file) : "";
+        if (preselect && symbols.indexOf(preselect) === -1) {
+          symbolHint.className = "text-warning";
+          symbolHint.textContent = "Bisheriges Symbol '" + preselect
+            + "' ist in dieser Datei nicht vorhanden. Bitte neues wählen.";
+        }
+        updateAvailability();
+        renderChart();
+      })
+      .catch(function(err) {
+        symbolSelect.innerHTML = '<option value="">Fehler</option>';
+        symbolHint.className = "text-danger";
+        symbolHint.textContent = "Fehler beim Laden: " + err;
+      });
+  }
+
+  // ---- Verfügbarkeits-Info: alle Timeframes für das gewählte Symbol+Exchange ----
+  // Wandelt einen ISO-Datumsstring (YYYY-MM-DD...) in europäisches Format (TT.MM.JJJJ) um.
+  function fmtDateDe(s) {
+    var iso = (s || '').substring(0, 10);
+    var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? m[3] + '.' + m[2] + '.' + m[1] : iso;
+  }
+
+  // Rendert die vom Backend gelieferte Datenqualität als farbige Prozentzahl
+  // (grün >=99,5 / gelb >=90 / rot darunter). q ist Prozent (0..100) oder null.
+  function qualityCell(q) {
+    if (q == null) return '<span class="text-muted">–</span>';
+    var cls = q >= 99.5 ? 'text-green' : (q >= 90 ? 'text-yellow' : 'text-red');
+    return '<span class="' + cls + '">' + q.toFixed(1).replace('.', ',') + ' %</span>';
+  }
+
+  function updateAvailability() {
+    var exchange = exchangeSelect.value;
+    var symbol = symbolSelect.value;
+    if (!symbol) {
+      availabilityBox.innerHTML = '';
+      return;
+    }
+    // Ladeanzeige, solange die Datei-Metadaten geholt werden.
+    availabilityBox.innerHTML = '<div class="d-flex align-items-center text-muted small">'
+      + '<span class="spinner-border spinner-border-sm me-2" role="status"></span>'
+      + 'Lade verfügbare Zeiträume…</div>';
+    loadDataFiles().then(function(files) {
+      // Timeframe-Reihenfolge wie im Dropdown
+      var tfOrder = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'];
+      var rows = [];
+      files.filter(function(f) { return f.exchange === exchange; })
+           .forEach(function(f) {
+        (f.symbols || []).forEach(function(s) {
+          if (s.symbol === symbol) {
+            rows.push({ timeframe: f.timeframe, start: s.start, end: s.end, bars: s.bars, quality: s.quality });
+          }
+        });
+      });
+      rows.sort(function(a, b) {
+        return tfOrder.indexOf(a.timeframe) - tfOrder.indexOf(b.timeframe);
+      });
+      if (rows.length === 0) {
+        availabilityBox.innerHTML = '<div class="text-muted small">Keine weiteren Timeframes für ' + symbol + ' verfügbar.</div>';
+        return;
+      }
+      var html = '<div class="small text-muted mb-1">Verfügbar für <strong>' + symbol + '</strong>:</div>'
+        + '<div class="table-responsive"><table class="table table-sm table-vcenter mb-0">'
+        + '<thead><tr><th>TF</th><th>Start</th><th>End</th><th class="text-end">Bars</th><th class="text-end">Qualität</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var startStr = fmtDateDe(r.start);
+        var endStr = fmtDateDe(r.end);
+        var isActive = r.timeframe === timeframeSelect.value;
+        html += '<tr' + (isActive ? ' class="table-active"' : '') + '>'
+          + '<td><strong>' + r.timeframe + '</strong></td>'
+          + '<td>' + startStr + '</td>'
+          + '<td>' + endStr + '</td>'
+          + '<td class="text-end">' + (r.bars || 0).toLocaleString() + '</td>'
+          + '<td class="text-end">' + qualityCell(r.quality) + '</td>'
+          + '<td class="text-end">' + updateBtnHtml(r.timeframe, symbol, exchange) + '</td>'
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+      availabilityBox.innerHTML = html;
+      // Klick-Handler der Aktualisieren-Buttons binden (Tabelle wird neu gerendert).
+      availabilityBox.querySelectorAll('.btn-cfg-update').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          startSymbolUpdate(
+            btn.getAttribute('data-exchange'),
+            btn.getAttribute('data-tf'),
+            btn.getAttribute('data-symbol'),
+          );
+        });
+      });
+    });
+  }
+
+  // ---- Aktualisieren-Button je Timeframe: Job anlegen, Fortschritt pollen ----
+  // timeframe -> laufende Job-ID
+  var activeUpdateJobs = {};
+  var updatePollTimer = null;
+
+  // Button-HTML je Zeile: Spinner, wenn für diesen TF gerade ein Update läuft.
+  function updateBtnHtml(tf, symbol, exchange) {
+    if (activeUpdateJobs[tf]) {
+      return '<button class="btn btn-sm btn-primary" id="cfg-upd-' + tf + '" disabled>'
+        + '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Aktualisiere…</button>';
+    }
+    return '<button class="btn btn-sm btn-outline-primary btn-cfg-update" id="cfg-upd-' + tf + '" '
+      + 'data-tf="' + tf + '" data-symbol="' + symbol + '" data-exchange="' + exchange + '">'
+      + 'Aktualisieren</button>';
+  }
+
+  // Update-Job für ein Symbol+TF anlegen (Start = letzter Bar − 1 Tag, Ende = jetzt UTC).
+  function startSymbolUpdate(exchange, tf, symbol) {
+    var btn = document.getElementById('cfg-upd-' + tf);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Aktualisiere…';
+    }
+    fetch('/api/config/data/update-symbol', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({exchange: exchange, timeframe: tf, symbol: symbol}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (json.error) { alert('Fehler: ' + json.error); updateAvailability(); return; }
+      activeUpdateJobs[tf] = json.data.id;
+      pollUpdateJobs();
+    })
+    .catch(function(e) {
+      console.error('[CFG] Update-Job einreihen fehlgeschlagen:', e);
+      alert('Fehler beim Einreihen — bitte erneut versuchen.');
+      updateAvailability();
+    });
+  }
+
+  // Laufende Update-Jobs pollen, Button-Label mit Restfortschritt aktualisieren.
+  function pollUpdateJobs() {
+    if (updatePollTimer) { clearTimeout(updatePollTimer); updatePollTimer = null; }
+    if (Object.keys(activeUpdateJobs).length === 0) return;
+    fetch('/api/config/data/jobs?limit=50')
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) || [];
+        var byId = {};
+        items.forEach(function(j) { byId[j.id] = j; });
+        var stillActive = false;
+        var anyDone = false;
+        Object.keys(activeUpdateJobs).forEach(function(tf) {
+          var j = byId[activeUpdateJobs[tf]];
+          if (!j) return;
+          if (j.status === 'completed' || j.status === 'failed') {
+            delete activeUpdateJobs[tf];
+            anyDone = true;
+          } else {
+            stillActive = true;
+            var btn = document.getElementById('cfg-upd-' + tf);
+            if (btn) {
+              var label = 'Aktualisiere…';
+              if (j.intervals_total != null) {
+                var rem = Math.max(j.intervals_total - (j.intervals_done || 0), 0);
+                label = 'Aktualisiere… noch ' + rem.toLocaleString();
+              }
+              btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>' + label;
+            }
+          }
+        });
+        // Bei Abschluss: Datei-Cache verwerfen und Tabelle mit neuen Bars neu aufbauen.
+        if (anyDone) { dataFilesCache = null; updateAvailability(); }
+        if (stillActive) { updatePollTimer = setTimeout(pollUpdateJobs, 1500); }
+      })
+      .catch(function() { updatePollTimer = setTimeout(pollUpdateJobs, 3000); });
+  }
+
+  // ---- Mini-Chart (Lightweight Charts) ----
+  var CHART_TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '1w': 604800 };
+  var CHART_TF_LIST = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w'];
+
+  var chartObj = null;
+  var candleSeries = null;
+  var markerSeriesList = [];   // alle aktuell aktiven vertikalen Linien
+  var chartRequestSeq = 0;
+  var visualTf = null;         // null = Basis-TF (aus cfg-timeframe), sonst groberer TF für Anzeige
+  // Cache der zuletzt geladenen Daten, damit Datums-Änderungen die Linien
+  // ohne erneuten Server-Roundtrip aktualisieren können.
+  // rawCandles: unresampelte Basis-Candles (für TF-Wechsel)
+  // candles/low/high: aktuell angezeigte (ggf. resampelte) Daten
+  var lastChartData = null;    // { rawCandles, candles, low, high }
+
+  // Resampling: gruppiert Basis-Candles in gröbere Buckets.
+  function resampleCandles(candles, targetSec) {
+    var result = [], group = [], bucket = null;
+    for (var i = 0; i < candles.length; i++) {
+      var c = candles[i];
+      var bt = Math.floor(c.time / targetSec) * targetSec;
+      if (bucket === null) bucket = bt;
+      if (bt !== bucket) {
+        if (group.length) {
+          var hi = group[0].high, lo = group[0].low;
+          for (var j = 1; j < group.length; j++) {
+            if (group[j].high > hi) hi = group[j].high;
+            if (group[j].low < lo) lo = group[j].low;
+          }
+          result.push({ time: bucket, open: group[0].open, high: hi, low: lo, close: group[group.length - 1].close });
+        }
+        group = [c]; bucket = bt;
+      } else {
+        group.push(c);
+      }
+    }
+    if (group.length) {
+      var hi2 = group[0].high, lo2 = group[0].low;
+      for (var k = 1; k < group.length; k++) {
+        if (group[k].high > hi2) hi2 = group[k].high;
+        if (group[k].low < lo2) lo2 = group[k].low;
+      }
+      result.push({ time: bucket, open: group[0].open, high: hi2, low: lo2, close: group[group.length - 1].close });
+    }
+    return result;
+  }
+
+  function ensureChart() {
+    if (chartObj) return;
+    var container = document.getElementById('cfg-chart');
+    chartObj = LightweightCharts.createChart(container, {
+      layout: { background: { color: 'transparent' }, textColor: getComputedStyle(document.body).color },
+      grid: {
+        vertLines: { color: 'rgba(128,128,128,0.12)' },
+        horzLines: { color: 'rgba(128,128,128,0.12)' },
+      },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: 'rgba(128,128,128,0.3)' },
+      autoSize: true,
+    });
+    candleSeries = chartObj.addSeries(LightweightCharts.CandlestickSeries, {
+      upColor: '#2fb344', downColor: '#d63939', borderVisible: false,
+      wickUpColor: '#2fb344', wickDownColor: '#d63939',
+    });
+  }
+
+  function clearVerticalLines() {
+    markerSeriesList.forEach(function(s) {
+      try { chartObj.removeSeries(s); } catch (e) {}
+    });
+    markerSeriesList = [];
+  }
+
+  // Senkrechte Linie via Line-Series mit zwei Punkten gleicher Zeit (low/high des Datasets)
+  function addVerticalLine(timeSec, color, low, high) {
+    var s = chartObj.addSeries(LightweightCharts.LineSeries, {
+      color: color, lineWidth: 2, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+    });
+    s.setData([
+      { time: timeSec, value: low },
+      { time: timeSec, value: high },
+    ]);
+    return s;
+  }
+
+  function dateStrToSec(s) {
+    if (!s) return null;
+    // YYYY-MM-DD als UTC-Mitternacht
+    var d = new Date(s + 'T00:00:00Z');
+    var t = d.getTime();
+    if (isNaN(t)) return null;
+    return Math.floor(t / 1000);
+  }
+
+  function snapToCandleTime(timeSec, candles) {
+    // findet den nächstgelegenen Candle-Zeitstempel
+    if (!candles.length || timeSec == null) return null;
+    if (timeSec <= candles[0].time) return candles[0].time;
+    if (timeSec >= candles[candles.length - 1].time) return candles[candles.length - 1].time;
+    var lo = 0, hi = candles.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (candles[mid].time < timeSec) lo = mid + 1; else hi = mid;
+    }
+    return candles[lo].time;
+  }
+
+  var renderChartTimer = null;
+  function renderChart() {
+    if (renderChartTimer) clearTimeout(renderChartTimer);
+    renderChartTimer = setTimeout(doRenderChart, 350);
+  }
+
+  // TF-Buttons (Resampling) erzeugen — nur Timeframes >= Basis-TF aus dem Form.
+  function renderTfButtons() {
+    var container = document.getElementById('cfg-tf-btns');
+    container.innerHTML = '';
+    var baseTf = timeframeSelect.value;
+    var baseSec = CHART_TF_SEC[baseTf] || 0;
+    var options = CHART_TF_LIST.filter(function(tf) { return CHART_TF_SEC[tf] >= baseSec; });
+    options.forEach(function(tf) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cfg-tf-btn';
+      b.textContent = tf;
+      b.dataset.tf = tf;
+      if ((!visualTf && tf === baseTf) || visualTf === tf) b.classList.add('active');
+      b.addEventListener('click', function() {
+        visualTf = (tf === baseTf) ? null : tf;
+        container.querySelectorAll('.cfg-tf-btn').forEach(function(x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        applyVisualTf();
+      });
+      container.appendChild(b);
+    });
+  }
+
+  // Aktuell aktiven TF auf Basis-Candles anwenden (resample), anzeigen + Marker/Zoom neu.
+  function applyVisualTf() {
+    if (!chartObj || !lastChartData || !lastChartData.rawCandles) return;
+    var baseTf = timeframeSelect.value;
+    var targetSec = visualTf ? CHART_TF_SEC[visualTf] : CHART_TF_SEC[baseTf];
+    var baseSec = CHART_TF_SEC[baseTf];
+    var candles = (targetSec && targetSec !== baseSec)
+      ? resampleCandles(lastChartData.rawCandles, targetSec)
+      : lastChartData.rawCandles;
+    var low = Infinity, high = -Infinity;
+    for (var i = 0; i < candles.length; i++) {
+      if (candles[i].low < low) low = candles[i].low;
+      if (candles[i].high > high) high = candles[i].high;
+    }
+    lastChartData.candles = candles;
+    lastChartData.low = low;
+    lastChartData.high = high;
+    candleSeries.setData(candles);
+    chartObj.timeScale().applyOptions({ timeVisible: !(visualTf === '1d' || visualTf === '1w') });
+    redrawMarkersAndZoom();
+  }
+
+  // Linien und Zoom aus dem aktuellen Datumsfeld-Stand neu setzen — ohne OHLCV neu zu laden.
+  // Drei vertikale Linien: OHLC Start (grau), Start (blau), End (rot).
+  // Zoom umfasst alle drei Marker mit Padding links und rechts, damit die linke Linie
+  // auch dann sichtbar ist, wenn sie ganz am Anfang der verfügbaren Daten liegt.
+  function redrawMarkersAndZoom() {
+    if (!chartObj || !lastChartData) return;
+    var candles = lastChartData.candles;
+    var low = lastChartData.low;
+    var high = lastChartData.high;
+    clearVerticalLines();
+    if (!candles.length) return;
+
+    var ohlcStartSec = snapToCandleTime(dateStrToSec(ohlcStartInput.value), candles);
+    var startSec = snapToCandleTime(dateStrToSec(startInput.value), candles);
+    var endSec = snapToCandleTime(dateStrToSec(endInput.value), candles);
+
+    var markers = [
+      { time: ohlcStartSec, color: '#868c97' }, // OHLC Start: grau
+      { time: startSec,     color: '#206bc4' }, // Start: blau
+      { time: endSec,       color: '#d63939' }, // End:   rot
+    ];
+    // Duplikate vermeiden (gleicher Snap-Zeitpunkt)
+    var seen = {};
+    markers.forEach(function(m) {
+      if (m.time == null) return;
+      if (seen[m.time]) return;
+      seen[m.time] = true;
+      markerSeriesList.push(addVerticalLine(m.time, m.color, low, high));
+    });
+
+    // Zoom: kleinster bis größter Marker mit symmetrischem Padding,
+    // begrenzt auf die geladenen Daten. Fallback: gesamter Range.
+    var dataFrom = candles[0].time;
+    var dataTo = candles[candles.length - 1].time;
+    var times = markers.map(function(m) { return m.time; })
+                       .filter(function(t) { return t != null; });
+    var viewFrom = dataFrom, viewTo = dataTo;
+    if (times.length) {
+      var minT = Math.min.apply(null, times);
+      var maxT = Math.max.apply(null, times);
+      var span = Math.max(maxT - minT, dataTo - dataFrom);
+      var pad = Math.round(span * 0.05); // 5% Padding pro Seite
+      viewFrom = Math.max(dataFrom - pad, minT - pad);
+      viewTo = Math.min(dataTo + pad, maxT + pad);
+      // setVisibleRange darf über dataFrom/dataTo hinausgehen — Lightweight Charts
+      // erlaubt das und erzeugt so den gewünschten Leerraum links/rechts.
+    }
+    try {
+      chartObj.timeScale().setVisibleRange({ from: viewFrom, to: viewTo });
+    } catch (e) {
+      chartObj.timeScale().fitContent();
+    }
+  }
+
+  function doRenderChart() {
+    var symbol = symbolSelect.value;
+    var exchange = exchangeSelect.value;
+    var timeframe = timeframeSelect.value;
+    var statusEl = document.getElementById('chart-status');
+    var infoEl = document.getElementById('chart-info');
+    if (!symbol) {
+      statusEl.textContent = 'Symbol wählen, um Chart zu laden...';
+      infoEl.textContent = '';
+      if (candleSeries) candleSeries.setData([]);
+      clearVerticalLines();
+      return;
+    }
+    ensureChart();
+    statusEl.textContent = 'Lade OHLCV...';
+    var seq = ++chartRequestSeq;
+    var qs = new URLSearchParams({ symbol: symbol, exchange: exchange, timeframe: timeframe });
+    fetch('/api/chart-playground/ohlcv?' + qs.toString())
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (seq !== chartRequestSeq) return; // veraltete Antwort verwerfen
+        if (j.error) {
+          statusEl.textContent = 'Fehler: ' + j.error;
+          return;
+        }
+        var candles = (j.data && j.data.candles) || [];
+        if (!candles.length) {
+          statusEl.textContent = 'Keine Daten für ' + symbol + '/' + timeframe;
+          candleSeries.setData([]);
+          clearVerticalLines();
+          infoEl.textContent = '';
+          return;
+        }
+        // Rohdaten cachen, dann (ggf. resampelt) anzeigen.
+        // Default-Ansicht: 1d, falls die Basis-TF feiner ist — bessere Übersicht.
+        var baseTf = timeframeSelect.value;
+        visualTf = (CHART_TF_SEC[baseTf] < CHART_TF_SEC['1d']) ? '1d' : null;
+        lastChartData = { rawCandles: candles, candles: null, low: 0, high: 0 };
+        renderTfButtons();
+        applyVisualTf();
+        var firstDate = new Date(candles[0].time * 1000).toISOString().substring(0, 10);
+        var lastDate = new Date(candles[candles.length - 1].time * 1000).toISOString().substring(0, 10);
+        infoEl.textContent = candles.length.toLocaleString() + ' Bars · ' + firstDate + ' → ' + lastDate;
+        statusEl.innerHTML = '<span style="color:#868c97">|</span> OHLC Start  '
+                           + '<span style="color:#206bc4">|</span> Start  '
+                           + '<span style="color:#d63939">|</span> End';
+      })
+      .catch(function(err) {
+        if (seq !== chartRequestSeq) return;
+        statusEl.textContent = 'Fehler: ' + err;
+      });
+  }
+
+  // Initial laden
+  loadSymbols(initialSymbol);
+
+  // Re-Loads bei Änderungen
+  exchangeSelect.addEventListener("change", function() {
+    dataFilesCache = null; // exchange-Wechsel kann andere Files relevant machen
+    loadSymbols(symbolSelect.value);
+  });
+  timeframeSelect.addEventListener("change", function() {
+    loadSymbols(symbolSelect.value);
+  });
+  symbolSelect.addEventListener("change", function() {
+    updateAvailability();
+    renderChart();
+  });
+  // Datums-Änderungen: nur Linien + Zoom neu setzen, OHLCV nicht neu laden.
+  [ohlcStartInput, startInput, endInput, ohlcEndInput].forEach(function(el) {
+    el.addEventListener("change", redrawMarkersAndZoom);
+  });
+
+  // Datepicker: europäisches Anzeigeformat (TT.MM.JJJJ) über einen sichtbaren altInput,
+  // der eigentliche Feld-Wert bleibt ISO (Y-m-d) und wird ohne Zeitzonen-Versatz als
+  // UTC-Mitternacht interpretiert (siehe dateStrToSec). So bleibt die Speichern-/Chart-Logik
+  // unverändert, nur die Darstellung ändert sich.
+  if (window.flatpickr) {
+    [ohlcStartInput, startInput, endInput, ohlcEndInput].forEach(function(el) {
+      flatpickr(el, {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d.m.Y",
+        allowInput: true,
+        locale: "de",
+      });
+    });
+  }
+
+  // Chart-Toolbar: Fit / Nav. TF-Buttons werden in renderTfButtons() angelegt.
+  document.getElementById('cfg-fit-btn').addEventListener('click', function(e) {
+    e.stopPropagation(); this.blur();
+    if (chartObj) chartObj.timeScale().fitContent();
+    this.classList.add('active');
+    var btn = this;
+    setTimeout(function() { btn.classList.remove('active'); }, 300);
+  });
+  document.getElementById('cfg-nav-start-btn').addEventListener('click', function(e) {
+    e.stopPropagation(); this.blur();
+    if (!chartObj || !lastChartData || !lastChartData.candles || !lastChartData.candles.length) return;
+    var ts = chartObj.timeScale();
+    var r = ts.getVisibleLogicalRange();
+    var visible = r ? Math.round(r.to - r.from) : 100;
+    ts.setVisibleLogicalRange({ from: -2, to: visible });
+  });
+  document.getElementById('cfg-nav-end-btn').addEventListener('click', function(e) {
+    e.stopPropagation(); this.blur();
+    if (chartObj) chartObj.timeScale().scrollToRealTime();
+  });
+
+  // ---- Speichern ----
+  document.getElementById("config-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    var id = document.getElementById("cfg-id").value;
+    var data = {
+      name: document.getElementById("cfg-name").value,
+      description: document.getElementById("cfg-description").value || null,
+      symbol: document.getElementById("cfg-symbol").value,
+      exchange: document.getElementById("cfg-exchange").value,
+      timeframe: document.getElementById("cfg-timeframe").value,
+      ohlc_start: document.getElementById("cfg-ohlc-start").value,
+      start: document.getElementById("cfg-start").value,
+      end: document.getElementById("cfg-end").value,
+      ohlc_end: document.getElementById("cfg-ohlc-end").value,
+      size: parseFloat(document.getElementById("cfg-size").value),
+      size_type: document.getElementById("cfg-size-type").value,
+      init_cash: parseFloat(document.getElementById("cfg-init-cash").value),
+      fees: parseFloat(document.getElementById("cfg-fees").value),
+    };
+
+    var url = id ? '/api/config/backtest/' + id : '/api/config/backtest';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(json) {
+      if (json.error) {
+        document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">' + json.error + '</div>';
+        return;
+      }
+      window.location.href = '/config/backtest';
+    })
+    .catch(function(err) {
+      document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+    });
+  });
+});
+</script>
+{% endblock %}

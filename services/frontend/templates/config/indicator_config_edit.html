@@ -1,0 +1,1129 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Neue Config' if not config else config.name }} - BT Pro{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+  /* CodeMirror-Editor: größere Schrift, automatische Höhe */
+  .CodeMirror {
+    font-size: 1.1rem;
+    line-height: 1.5;
+    height: auto;
+    min-height: 400px;
+    border: 1px solid var(--tblr-border-color);
+    border-radius: var(--tblr-border-radius);
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">{{ 'Neue Indicator-Config' if not config else 'Config bearbeiten: ' + config.name }}</h2>
+
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/indicator" class="btn btn-ghost-secondary">Zurück zur Liste</a>
+        <button type="button" class="btn btn-outline-secondary" id="btn-calc-combos">Kombinationen berechnen</button>
+        <button type="button" class="btn btn-outline-secondary" id="btn-gen-title">Titel generieren</button>
+        <button type="button" class="btn btn-outline-secondary" id="btn-gen-desc">Beschreibung generieren</button>
+        <a href="/config/indicator" class="btn btn-outline-secondary">Abbrechen</a>
+        <button type="submit" form="config-form" class="btn btn-primary">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="config-form">
+  <input type="hidden" id="cfg-id" value="{{ config.id if config else '' }}">
+
+  <div class="d-flex gap-2 align-items-center mb-3">
+    <span id="combo-result" class="fw-bold"></span>
+  </div>
+  <div id="save-status"></div>
+
+  <div class="row">
+    <!-- JSON Config (links) -->
+    <div class="col-md-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Indikator-Konfiguration</h3>
+          <div class="card-actions d-flex gap-2 align-items-center">
+            <!-- GEÄNDERT: Schritt 1 — Umschalter JSON <-> Visueller Editor -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Bearbeitungsmodus">
+              <input type="radio" class="btn-check" name="cfg-edit-mode" id="cfg-mode-json" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="cfg-mode-json">JSON</label>
+              <input type="radio" class="btn-check" name="cfg-edit-mode" id="cfg-mode-visual" autocomplete="off" checked>
+              <label class="btn btn-outline-secondary" for="cfg-mode-visual">Visuell</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-format-json">JSON formatieren</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- GEÄNDERT: Schritt 1 — JSON-Editor in eigenes Panel gekapselt; Default ist jetzt Visuell -->
+          <div id="cfg-json-panel" hidden>
+            <textarea class="form-control" id="cfg-json" style="display:none;">{{ config_json_str }}</textarea>
+            <div id="cfg-json-editor"></div>
+            <div id="json-error" class="text-danger mt-2" style="display:none;"></div>
+          </div>
+          <!-- GEÄNDERT: Schritt 2/3 — Visueller Editor (Indikatoren + Stops); jetzt Default-Ansicht -->
+          <div id="cfg-visual-panel">
+            <div class="d-flex justify-content-end mb-2">
+              <button type="button" class="btn btn-sm btn-primary" id="cfgAddIndBtn">+ hinzufügen</button>
+            </div>
+            <div id="cfg-visual-status" class="small mb-2 text-muted"></div>
+            <div id="cfgIndicatorList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Allgemein (rechts) -->
+    <div class="col-md-6">
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Allgemein</h3></div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input type="text" class="form-control" id="cfg-name" value="{{ config.name if config else '' }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Beschreibung</label>
+            <textarea class="form-control" id="cfg-description" rows="3">{{ config.description if config and config.description else '' }}</textarea>
+          </div>
+          <!-- GEÄNDERT: Ticket 22 — Lose Verknüpfung zu Strategy-Concept und Iteration -->
+          <div class="mb-3">
+            <label class="form-label">Konzept (optional)</label>
+            <select class="form-select" id="cfg-strategy-concept">
+              <option value="">-- Wird geladen --</option>
+            </select>
+            <small class="text-secondary">Lose Verknüpfung — Löschen/Umbenennen des Konzepts hat keine Auswirkung.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Iteration (optional)</label>
+            <select class="form-select" id="cfg-strategy-iteration" disabled>
+              <option value="">-- Zuerst Konzept wählen --</option>
+            </select>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="cfg-is-default" {{ 'checked' if config and config.is_default else '' }}>
+            <label class="form-check-label" for="cfg-is-default">Als Default markieren</label>
+          </div>
+          <input type="hidden" id="cfg-preselect-concept" value="{{ config.strategy_concept_id if config and config.strategy_concept_id else '' }}">
+          <input type="hidden" id="cfg-preselect-iteration" value="{{ config.strategy_iteration_id if config and config.strategy_iteration_id else '' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+</form>
+
+<!-- GEÄNDERT: Schritt 3 — Picker-Modal (Indikator hinzufügen), Markup analog Playground -->
+<div class="cp-modal-backdrop" id="cfgPickerModal">
+  <div class="cp-modal-box">
+    <div class="cp-modal-head">
+      <h5>Indikator hinzufügen</h5>
+      <button type="button" class="btn-close" data-cp-close="cfgPickerModal"></button>
+    </div>
+    <div class="cp-modal-body">
+      <input type="text" class="form-control mb-2" id="cfgPickerSearch" placeholder="Suchen...">
+      <div class="cp-indicator-list" id="cfgPickerList"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/foldgutter.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/fold/brace-fold.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var jsonField = document.getElementById("cfg-json");
+  var jsonError = document.getElementById("json-error");
+
+  // CodeMirror initialisieren
+  var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+  var editor = CodeMirror(document.getElementById("cfg-json-editor"), {
+    value: jsonField.value,
+    mode: {name: "javascript", json: true},
+    lineNumbers: true,
+    foldGutter: true,
+    gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+    tabSize: 2,
+    indentWithTabs: false,
+    theme: isDark ? "material-darker" : "default"
+  });
+  // Änderungen in verstecktes Textarea synchronisieren
+  editor.on("change", function() {
+    jsonField.value = editor.getValue();
+  });
+
+  /* GEÄNDERT: Schritt 1 — Umschalter JSON <-> Visueller Editor.
+     JSON bleibt vorerst die kanonische Quelle; der Visual-Editor wird in Schritt 2/3 befüllt
+     und in Schritt 5 mit dem JSON synchronisiert. Speichern liest weiterhin nur jsonField. */
+  var jsonPanel = document.getElementById("cfg-json-panel");
+  var visualPanel = document.getElementById("cfg-visual-panel");
+  var formatBtn = document.getElementById("btn-format-json");
+  var editMode = "json";
+
+  async function setEditMode(mode) {
+    if (mode === "visual") {
+      // GEÄNDERT: Schritt 2 — Wechsel nur bei gültigem JSON; sonst zurück auf JSON
+      if (!validateJson()) { document.getElementById("cfg-mode-json").checked = true; return; }
+      try {
+        await buildVisualFromConfig(JSON.parse(jsonField.value));
+      } catch (e) {
+        visStatus("Kann den visuellen Editor nicht aufbauen: " + e.message, "err");
+        document.getElementById("cfg-mode-json").checked = true;
+        return;
+      }
+    } else if (editMode === "visual") {
+      // GEÄNDERT: Schritt 2 — Visual -> JSON: aktuellen Visual-Stand verlustfrei zurückschreiben
+      syncVisualToJson();
+    }
+    editMode = mode;
+    var isJson = (mode === "json");
+    jsonPanel.hidden = !isJson;
+    visualPanel.hidden = isJson;
+    // "JSON formatieren" betrifft nur den JSON-Editor
+    formatBtn.style.display = isJson ? "" : "none";
+    // CodeMirror rendert in versteckten Containern nicht korrekt — nach Einblenden refreshen
+    if (isJson) editor.refresh();
+  }
+
+  document.getElementById("cfg-mode-json").addEventListener("change", function() {
+    if (this.checked) setEditMode("json");
+  });
+  document.getElementById("cfg-mode-visual").addEventListener("change", function() {
+    if (this.checked) setEditMode("visual");
+  });
+
+  // GEÄNDERT: Schritt 3 — Picker-UI (Hinzufügen-Button, Suche, Schließen)
+  document.getElementById("cfgAddIndBtn").addEventListener("click", function() { openPicker(); });
+  document.getElementById("cfgPickerSearch").addEventListener("input", function(e) { renderPicker(e.target.value); });
+  document.querySelectorAll("[data-cp-close]").forEach(function(btn) {
+    btn.addEventListener("click", function() { closeModal(btn.dataset.cpClose); });
+  });
+  document.querySelectorAll(".cp-modal-backdrop").forEach(function(bd) {
+    bd.addEventListener("click", function(e) { if (e.target === bd) bd.classList.remove("show"); });
+  });
+
+  /* JSON validieren */
+  function validateJson() {
+    try {
+      JSON.parse(jsonField.value);
+      jsonError.style.display = 'none';
+      jsonField.style.borderColor = '';
+      return true;
+    } catch (e) {
+      jsonError.textContent = 'Ungültiges JSON: ' + e.message;
+      jsonError.style.display = 'block';
+      jsonField.style.borderColor = 'var(--tblr-danger)';
+      return false;
+    }
+  }
+
+  /* JSON formatieren mit sortierter Reihenfolge */
+  function sortIndicatorConfig(config) {
+    // Indikator-Felder sortieren: indicator, tf, enabled, dann Parameter
+    var metaKeys = ['indicator', 'tf', 'enabled'];
+    var paramKeyOrder = ['start', 'stop', 'step', 'type', 'dtype'];
+    // GEÄNDERT: Schritt 4a — innere Reihenfolge für den _stops-Sonderblock
+    var stopsKeyOrder = ['tp_stop', 'sl_stop', 'tsl_th', 'tsl_stop', 'td_stop', 'delta_format', 'time_delta_format'];
+    var sorted = {};
+    for (var indKey in config) {
+      // GEÄNDERT: _-präfixierte Meta-Keys (_stops, _stops_pos) sind keine Indikatoren
+      if (indKey.charAt(0) === '_') continue;
+      var ind = config[indKey];
+      var sortedInd = {};
+      // Erst Meta-Felder
+      metaKeys.forEach(function(k) { if (ind[k] !== undefined) sortedInd[k] = ind[k]; });
+      // Dann Parameter (mit sortierter innerer Reihenfolge)
+      for (var k in ind) {
+        if (metaKeys.indexOf(k) !== -1) continue;
+        var val = ind[k];
+        if (val && typeof val === 'object' && val.start !== undefined) {
+          var sortedParam = {};
+          paramKeyOrder.forEach(function(pk) { if (val[pk] !== undefined) sortedParam[pk] = val[pk]; });
+          sortedInd[k] = sortedParam;
+        } else {
+          sortedInd[k] = val;
+        }
+      }
+      sorted[indKey] = sortedInd;
+    }
+    // GEÄNDERT: Schritt 4a — _stops als Sonderblock ans Ende, eigene innere Reihenfolge,
+    // Range-Dicts der Stop-Werte wie Indikator-Params nach start/stop/step/type/dtype sortieren
+    if (config._stops && typeof config._stops === 'object') {
+      var stops = config._stops;
+      var sortedStops = {};
+      stopsKeyOrder.forEach(function(sk) {
+        if (stops[sk] === undefined) return;
+        var sval = stops[sk];
+        if (sval && typeof sval === 'object' && sval.start !== undefined) {
+          var sortedRange = {};
+          paramKeyOrder.forEach(function(pk) { if (sval[pk] !== undefined) sortedRange[pk] = sval[pk]; });
+          sortedStops[sk] = sortedRange;
+        } else {
+          sortedStops[sk] = sval;
+        }
+      });
+      // Etwaige unbekannte Zusatz-Keys aus _stops nicht verlieren
+      for (var ek in stops) {
+        if (stopsKeyOrder.indexOf(ek) === -1) sortedStops[ek] = stops[ek];
+      }
+      sorted._stops = sortedStops;
+    }
+    // GEÄNDERT: _stops_pos wird nicht mehr geführt — Position gehört nicht in eine Indikator-Config.
+    return sorted;
+  }
+
+  document.getElementById("btn-format-json").addEventListener("click", function() {
+    try {
+      var parsed = JSON.parse(editor.getValue());
+      var sorted = sortIndicatorConfig(parsed);
+      editor.setValue(JSON.stringify(sorted, null, 2));
+      jsonError.style.display = 'none';
+    } catch (e) {
+      jsonError.textContent = 'Kann nicht formatieren — ungültiges JSON: ' + e.message;
+      jsonError.style.display = 'block';
+    }
+  });
+
+  /* Kombinationen berechnen — Einzige Zähl-Wahrheit: Server-Endpunkt (describe_combos).
+     Listen, Stops und das gekoppelte TSL-Paar zählen damit korrekt. */
+  document.getElementById("btn-calc-combos").addEventListener("click", async function() {
+    var resultEl = document.getElementById("combo-result");
+    var config;
+    try {
+      config = JSON.parse(jsonField.value);
+    } catch(e) {
+      resultEl.textContent = 'Ungültiges JSON';
+      resultEl.title = '';
+      resultEl.className = 'fw-bold text-danger';
+      return;
+    }
+    try {
+      var resp = await fetch('/api/config/indicator/count-combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_json: config })
+      });
+      var j = await resp.json();
+      if (!resp.ok || j.error) {
+        resultEl.textContent = j.error || 'Fehler bei der Berechnung';
+        resultEl.title = '';
+        resultEl.className = 'fw-bold text-danger';
+        return;
+      }
+      var total = j.data.total;
+      resultEl.textContent = total.toLocaleString('de-DE') + ' Kombinationen';
+      resultEl.title = (j.data.details || []).join('\n');
+      resultEl.className = 'fw-bold ' + (total > 50000 ? 'text-danger' : total > 10000 ? 'text-warning' : 'text-success');
+    } catch(e) {
+      resultEl.textContent = 'Fehler bei der Berechnung';
+      resultEl.title = '';
+      resultEl.className = 'fw-bold text-danger';
+    }
+  });
+
+  /* Titel generieren — Format: konzept-iteration - X Kombi. tp/sl (nur Namensfeld) */
+  document.getElementById("btn-gen-title").addEventListener("click", async function() {
+    var config;
+    try {
+      config = JSON.parse(editor.getValue());
+    } catch(e) {
+      alert('Ungültiges JSON: ' + e.message);
+      return;
+    }
+    try {
+      // Kombinationen über den Server-Endpunkt (einzige Zähl-Wahrheit, inkl. Listen/Stops/TSL-Paar)
+      var resp = await fetch('/api/config/indicator/count-combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_json: config })
+      });
+      var comboData = await resp.json();
+      if (!resp.ok || comboData.error) {
+        alert('Fehler bei der Kombinationsberechnung: ' + (comboData.error || resp.status));
+        return;
+      }
+      var total = comboData.data.total;
+
+      // Konzept-Name aus dem Dropdown (Schreibweise wie im Konzept)
+      var conceptSelEl = document.getElementById("cfg-strategy-concept");
+      var concept = '';
+      if (conceptSelEl.selectedIndex >= 0 && conceptSelEl.value) {
+        concept = conceptSelEl.options[conceptSelEl.selectedIndex].text.trim();
+      }
+
+      // Iterations-Nummer (version) aus dem data-Attribut der gewählten Option
+      var iterationSelEl = document.getElementById("cfg-strategy-iteration");
+      var iterVersion = '';
+      if (iterationSelEl.selectedIndex >= 0 && iterationSelEl.value) {
+        iterVersion = iterationSelEl.options[iterationSelEl.selectedIndex].getAttribute('data-version') || '';
+      }
+
+      // TP/SL aus _stops; bei delta_format "percent" als Prozentzahl (0.05 -> 5)
+      var stops = config._stops || {};
+      var isPercent = stops.delta_format === 'percent';
+      function fmtStop(v) {
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object' && v.start !== undefined && v.stop !== undefined) {
+          return fmtStop(v.start) + '-' + fmtStop(v.stop);
+        }
+        var num = isPercent ? v * 100 : v;
+        return String(parseFloat(num.toFixed(6)));
+      }
+      var tp = fmtStop(stops.tp_stop);
+      var sl = fmtStop(stops.sl_stop);
+
+      // Format zusammensetzen: konzept-iteration - X Kombi. tp/sl — nur ins Namensfeld
+      // Kein Konzept -> Kopf entfällt komplett (auch kein führendes " - ");
+      // Konzept ohne Iteration -> Iteration (mit Bindestrich) weglassen.
+      var head = '';
+      if (concept) {
+        head = concept;
+        if (iterVersion !== '') head += '-' + iterVersion;
+      }
+      // GEÄNDERT: Ohne TP und SL entfällt der Stop-Teil samt Schrägstrich
+      var comboPart = total.toLocaleString('de-DE') + ' Kombi.';
+      if (tp || sl) comboPart += ' ' + tp + '/' + sl;
+      var title = head ? head + ' - ' + comboPart : comboPart;
+
+      document.getElementById("cfg-name").value = title;
+    } catch(e) {
+      alert('Fehler beim Titel generieren: ' + e.message);
+    }
+  });
+
+  /* Beschreibung generieren — Stops in Reihenfolge TP, SL, TSL, (delta_format), TD, (time_delta_format).
+     Stop wird gezeigt, wenn gesetzt; delta_format nur bei gesetztem tsl_th, time_delta_format nur bei gesetztem td_stop. */
+  document.getElementById("btn-gen-desc").addEventListener("click", function() {
+    try {
+      var config = JSON.parse(editor.getValue());
+      var stops = config._stops || {};
+
+      function isSet(v) { return v !== null && v !== undefined; }
+      // TP/SL/TSL als Prozent: x100 mit "%"
+      function pct(v) { return String(parseFloat((+v * 100).toFixed(6))) + '%'; }
+
+      var parts = [];
+      if (isSet(stops.tp_stop)) parts.push('TP ' + pct(stops.tp_stop));
+      if (isSet(stops.sl_stop)) parts.push('SL ' + pct(stops.sl_stop));
+
+      // TSL aus tsl_th/tsl_stop: vorhandene Werte als <th>/<stop> verbinden
+      var tslParts = [];
+      if (isSet(stops.tsl_th)) tslParts.push(pct(stops.tsl_th));
+      if (isSet(stops.tsl_stop)) tslParts.push(pct(stops.tsl_stop));
+      if (tslParts.length > 0) parts.push('TSL ' + tslParts.join('/'));
+
+      // delta_format gehört zu TSL: nur zeigen, wenn tsl_th gesetzt ist
+      if (isSet(stops.tsl_th) && stops.delta_format) parts.push(stops.delta_format);
+
+      // TD als ganze Zahl; time_delta_format gehört zu TD und wird nur bei gesetztem td_stop gezeigt
+      if (isSet(stops.td_stop)) {
+        parts.push('TD ' + String(parseFloat((+stops.td_stop).toFixed(6))));
+        if (stops.time_delta_format) parts.push(stops.time_delta_format);
+      }
+
+      document.getElementById("cfg-description").value = parts.join(', ');
+    } catch(e) {
+      alert('Ungültiges JSON: ' + e.message);
+    }
+  });
+
+  /* GEÄNDERT: Ticket 22 — Concept/Iteration-Dropdowns (lose Verknüpfung) */
+  var conceptSel = document.getElementById("cfg-strategy-concept");
+  var iterationSel = document.getElementById("cfg-strategy-iteration");
+  var preselectConcept = document.getElementById("cfg-preselect-concept").value;
+  var preselectIteration = document.getElementById("cfg-preselect-iteration").value;
+  var iterationsCacheCfg = {};
+
+  function _fillIterationSelect(conceptId, iterations, preselect) {
+    iterationSel.innerHTML = '<option value="">-- Keine --</option>';
+    iterations.forEach(function(it) {
+      var label = (it.version_name || it.version) + (it.description ? ' — ' + it.description : '');
+      // GEÄNDERT: version als data-Attribut, damit "Beschreibung generieren" die Iterations-Nummer kennt
+      iterationSel.innerHTML += '<option value="' + it.id + '" data-version="' + it.version + '">' + label + '</option>';
+    });
+    iterationSel.disabled = false;
+    if (preselect) {
+      iterationSel.value = preselect;
+    }
+  }
+
+  function _loadIterations(conceptId, preselect) {
+    if (!conceptId) {
+      iterationSel.innerHTML = '<option value="">-- Zuerst Konzept wählen --</option>';
+      iterationSel.disabled = true;
+      return;
+    }
+    if (iterationsCacheCfg[conceptId]) {
+      _fillIterationSelect(conceptId, iterationsCacheCfg[conceptId], preselect);
+      return;
+    }
+    fetch('/api/strategy/iterations?concept_id=' + conceptId)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) ? json.data.items : [];
+        items.sort(function(a, b) {
+          return (b.created_at || '').localeCompare(a.created_at || '');
+        });
+        iterationsCacheCfg[conceptId] = items;
+        _fillIterationSelect(conceptId, items, preselect);
+      });
+  }
+
+  fetch('/api/strategy/concepts')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      var items = (json.data && json.data.items) ? json.data.items : [];
+      conceptSel.innerHTML = '<option value="">-- Keine --</option>';
+      items.forEach(function(c) {
+        conceptSel.innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+      });
+      if (preselectConcept) {
+        conceptSel.value = preselectConcept;
+        _loadIterations(preselectConcept, preselectIteration);
+      }
+    });
+
+  conceptSel.addEventListener("change", function() {
+    _loadIterations(conceptSel.value, null);
+  });
+
+  // ====================================================================
+  // GEÄNDERT: Schritt 2 — Visueller Indikator-Editor.
+  // Eigenständige, um Chart/Backtest getrimmte Kopie der Playground-Logik
+  // (Approach B). Liest/schreibt dasselbe config_json wie der JSON-Editor.
+  // Picker/Hinzufügen/Entfernen/Drag folgen in Schritt 3.
+  // ====================================================================
+  var vis = { catalog: null, indicators: [], stops: null };
+
+  function visStatus(msg, kind) {
+    var el = document.getElementById("cfg-visual-status");
+    el.className = "small mb-2 " + (kind === "err" ? "text-danger" : kind === "warn" ? "text-warning" : "text-muted");
+    el.textContent = msg || "";
+  }
+
+  // ---- reine Helfer (1:1 aus dem Playground) ----
+  function cid() { return "i" + Math.random().toString(36).slice(2, 10); }
+  function slugifyIndicatorType(typeId) {
+    var s = String(typeId || "ind");
+    var colon = s.lastIndexOf(":");
+    if (colon >= 0) s = s.slice(colon + 1);
+    s = s.replace(/^dws/i, "");
+    s = s.replace(/([a-z])([A-Z])/g, "$1_$2");
+    s = s.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    return s || "ind";
+  }
+  function nextFreeName(base, existingNames) {
+    if (!existingNames.has(base)) return base;
+    var n = 2;
+    while (existingNames.has(base + "_" + n)) n++;
+    return base + "_" + n;
+  }
+  function defaultInputSource(iname) {
+    var map = { close: "close", open: "open", high: "high", low: "low", volume: "volume", source: "close" };
+    return map[iname.toLowerCase()] || "close";
+  }
+  var INPUT_DEFAULTS = { source: "close", close: "close", open: "open", high: "high", low: "low", volume: "volume" };
+
+  function paramRangeFields(value, dflt) {
+    if (value != null && typeof value === "object") {
+      return {
+        start: value.start != null ? value.start : "",
+        stop: value.stop != null ? value.stop : "",
+        step: value.step != null ? value.step : "",
+      };
+    }
+    if (value != null && value !== "") return { start: value, stop: "", step: "" };
+    return { start: dflt != null ? dflt : "", stop: "", step: "" };
+  }
+  function buildParamValue(start, stop, step, prev) {
+    var s = (start === "" || start == null) ? null : parseFloat(start);
+    if (s == null || isNaN(s)) return "";
+    var hasStop = stop !== "" && stop != null && !isNaN(parseFloat(stop));
+    var hasStep = step !== "" && step != null && !isNaN(parseFloat(step));
+    if (!hasStop && !hasStep) return s;
+    var range = {
+      type: "arange",
+      start: s,
+      stop: hasStop ? parseFloat(stop) : s,
+      step: hasStep ? parseFloat(step) : 1,
+    };
+    var prevDtype = (prev && typeof prev === "object") ? prev.dtype : null;
+    // GEÄNDERT: arange-Werte = start + k*step; nur start/step bestimmen die Nachkommastelle.
+    // stop ist nur die (per .01 genudgete) exklusive Obergrenze und nie Teil der Werte.
+    // Float in start/step erzwingt float64; sonst alten dtype erhalten (bewusstes float64), sonst int64.
+    var startStepInt = Number.isInteger(range.start) && Number.isInteger(range.step);
+    range.dtype = startStepInt ? (prevDtype || "int64") : "float64";
+    return range;
+  }
+  function toggleParamMode(ind, key) {
+    var cur = (ind.params || {})[key];
+    var meta = (ind.paramsMeta || []).find(function(p) { return p.name === key; }) || {};
+    var dflt = meta.default;
+    if (cur !== null && typeof cur === "object") {
+      return (cur.start != null) ? cur.start : (dflt != null ? dflt : "");
+    }
+    var start = (typeof cur === "number") ? cur : parseFloat(cur);
+    if (start == null || isNaN(start)) start = (typeof dflt === "number") ? dflt : 0;
+    var isInt = Number.isInteger(start);
+    var step = isInt ? 1 : 0.1;
+    var stop = isInt ? (start + step) : Math.round((start + step) * 1e8) / 1e8;
+    return { type: "arange", start: start, stop: stop, step: step, dtype: isInt ? "int64" : "float64" };
+  }
+  function paramModeToggleHtml(ind, key, isRange) {
+    var title = isRange ? "Zu Einzelwert umschalten" : "Zu Wertebereich umschalten";
+    return '<button type="button" class="cp-param-toggle' + (isRange ? " is-range" : "") + '" data-cid="' + ind.client_id + '" data-paramtoggle="' + key + '" title="' + title + '" aria-label="' + title + '">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/></svg>' +
+      '</button>';
+  }
+  function fieldKind(key, meta) {
+    if (key === "indicator") return "identity";
+    if (key === "tf") return "timeframe";
+    var inputs = (meta && meta.inputs) ? meta.inputs : [];
+    if (inputs.includes(key)) return "input";
+    return "value";
+  }
+  function splitLoadedEntry(name, entry, meta) {
+    var params = {}, inputs = {}, stale = [];
+    var detectStale = Array.isArray(meta && meta.params);
+    var knownParams = new Set(detectStale ? meta.params.map(function(p) { return p.name; }) : []);
+    Object.entries(entry).forEach(function(kv) {
+      var k = kv[0], v = kv[1];
+      var kind = fieldKind(k, meta);
+      if (kind === "identity" || kind === "timeframe") return;
+      if (kind === "input") { inputs[k] = v; return; }
+      if (detectStale && !knownParams.has(k)) { stale.push(name + "." + k); return; }
+      params[k] = v;
+    });
+    return { params: params, inputs: inputs, stale: stale };
+  }
+  function renderValueWidget(ind, key, curVal, dflt) {
+    var effVal = (curVal === undefined ? dflt : curVal);
+    if (typeof effVal === "boolean") {
+      return '<div class="cp-param-group"><label class="form-label">' + key + '</label>' +
+        '<label class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" data-cid="' + ind.client_id + '" data-parambool="' + key + '" ' + (effVal ? "checked" : "") + '></label></div>';
+    }
+    if (effVal !== null && typeof effVal === "object") {
+      var r = paramRangeFields(effVal, dflt);
+      var stepAttr = (typeof dflt === "number" && !Number.isInteger(dflt)) ? "0.1" : "1";
+      var cell = function(cap, range, val, sa) {
+        return '<div class="cp-param-cell"><span class="cp-param-cap">' + cap + '</span>' +
+          '<input class="form-control form-control-sm cp-param-field" type="number" step="' + sa + '" data-cid="' + ind.client_id + '" data-param="' + key + '" data-range="' + range + '" value="' + val + '" placeholder="' + cap + '"></div>';
+      };
+      return '<div class="cp-param-group"><div class="cp-param-head"><label class="form-label mb-0">' + key + '</label>' + paramModeToggleHtml(ind, key, true) + '</div>' +
+        '<div class="cp-param-fields">' + cell("start", "start", r.start, stepAttr) + cell("stop", "stop", r.stop, stepAttr) + cell("step", "step", r.step, "any") + '</div></div>';
+    }
+    var isNum = (typeof effVal === "number");
+    var valStr = (effVal == null ? "" : effVal);
+    var inputType = isNum ? "number" : "text";
+    var stepA = (isNum && !Number.isInteger(effVal)) ? "0.1" : (isNum ? "1" : null);
+    var stepHtml = stepA != null ? ' step="' + stepA + '"' : "";
+    var headHtml = isNum
+      ? '<div class="cp-param-head"><label class="form-label mb-0">' + key + '</label>' + paramModeToggleHtml(ind, key, false) + '</div>'
+      : '<label class="form-label">' + key + '</label>';
+    return '<div class="cp-param-group">' + headHtml +
+      '<input class="form-control form-control-sm cp-param-field" type="' + inputType + '"' + stepHtml + ' data-cid="' + ind.client_id + '" data-paramscalar="' + key + '" data-numeric="' + (isNum ? "1" : "0") + '" value="' + valStr + '"></div>';
+  }
+  // GEÄNDERT: tf-Feld ohne Chart-Bezug — statische TF-Liste statt Filterung nach Chart-Timeframe.
+  var TF_OPTIONS = ["", "1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"];
+  function renderField(ind, key, kind, ctx) {
+    if (kind === "timeframe") {
+      var curTf = ind.timeframe || "";
+      return '<div><label class="form-label">tf</label>' +
+        '<select class="form-select form-select-sm" data-cid="' + ind.client_id + '" data-tf="1">' +
+        TF_OPTIONS.map(function(tf) { return '<option value="' + tf + '" ' + (tf === curTf ? "selected" : "") + '>' + (tf || "(gleich)") + '</option>'; }).join("") + '</select></div>';
+    }
+    if (kind === "input") {
+      var current = (ind.inputs && ind.inputs[key]) || defaultInputSource(key);
+      var opts = '<optgroup label="OHLCV">';
+      opts += ctx.OHLCV.map(function(c) { return '<option value="' + c + '" ' + (c === current ? "selected" : "") + '>' + c + '</option>'; }).join("");
+      opts += "</optgroup>";
+      if (ctx.priorOptions.length > 0) {
+        opts += '<optgroup label="Indikatoren">';
+        opts += ctx.priorOptions.map(function(o) { return '<option value="' + o.value + '" ' + (o.value === current ? "selected" : "") + '>' + o.label + '</option>'; }).join("");
+        opts += "</optgroup>";
+      }
+      return '<div><label class="form-label">' + key + '</label>' +
+        '<select class="form-select form-select-sm" data-cid="' + ind.client_id + '" data-input="' + key + '">' + opts + '</select></div>';
+    }
+    var dflt = (ctx.metaByName[key] || {}).default;
+    return renderValueWidget(ind, key, ind.params ? ind.params[key] : undefined, dflt);
+  }
+
+  // ---- Stops ----
+  function defaultStops() {
+    return { tp_stop: 0.30, sl_stop: 0.15, tsl_th: null, tsl_stop: null, td_stop: 8, delta_format: "percent", time_delta_format: "rows" };
+  }
+  var STOPS_FIELDS = [
+    { key: "tp_stop", label: "tp_stop", kind: "value", isInt: false },
+    { key: "sl_stop", label: "sl_stop", kind: "value", isInt: false },
+    { key: "tsl_th", label: "tsl_th", kind: "value", isInt: false },
+    { key: "tsl_stop", label: "tsl_stop", kind: "value", isInt: false },
+    { key: "td_stop", label: "td_stop", kind: "value", isInt: true },
+    { key: "delta_format", label: "delta_format", kind: "select", options: ["percent", "absolute", "target"] },
+    { key: "time_delta_format", label: "time_delta_format", kind: "select", options: ["rows", "index"] },
+  ];
+  function toggleStopMode(key) {
+    var cur = vis.stops[key];
+    var f = STOPS_FIELDS.find(function(x) { return x.key === key; }) || {};
+    var isInt = !!f.isInt;
+    if (cur !== null && typeof cur === "object") {
+      return (cur.start != null) ? cur.start : null;
+    }
+    var start = (typeof cur === "number") ? cur : parseFloat(cur);
+    if (start == null || isNaN(start)) {
+      var d = defaultStops()[key];
+      start = (typeof d === "number") ? d : (isInt ? 1 : 0.1);
+    }
+    var step = isInt ? 1 : 0.1;
+    var stop = isInt ? (start + step) : Math.round((start + step) * 1e8) / 1e8;
+    return { type: "arange", start: start, stop: stop, step: step, dtype: isInt ? "int64" : "float64" };
+  }
+  function stopModeToggleHtml(key, isRange) {
+    var title = isRange ? "Zu Einzelwert umschalten" : "Zu Wertebereich umschalten";
+    return '<button type="button" class="cp-param-toggle' + (isRange ? " is-range" : "") + '" data-sttoggle="' + key + '" title="' + title + '" aria-label="' + title + '">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/></svg>' +
+      '</button>';
+  }
+  function renderStopValueWidget(f, val) {
+    var stepAttr = f.isInt ? "1" : "0.01";
+    if (val !== null && typeof val === "object") {
+      var r = paramRangeFields(val, null);
+      var cell = function(cap, range, v, sa) {
+        return '<div class="cp-param-cell"><span class="cp-param-cap">' + cap + '</span>' +
+          '<input class="form-control form-control-sm cp-param-field" type="number" step="' + sa + '" data-st="' + f.key + '" data-strange="' + range + '" value="' + v + '" placeholder="' + cap + '"></div>';
+      };
+      return '<div class="cp-param-group"><div class="cp-param-head"><label class="form-label mb-0">' + f.label + '</label>' + stopModeToggleHtml(f.key, true) + '</div>' +
+        '<div class="cp-param-fields">' + cell("start", "start", r.start, stepAttr) + cell("stop", "stop", r.stop, stepAttr) + cell("step", "step", r.step, "any") + '</div></div>';
+    }
+    var strVal = val == null ? "" : val;
+    return '<div class="cp-param-group"><div class="cp-param-head"><label class="form-label mb-0">' + f.label + '</label>' + stopModeToggleHtml(f.key, false) + '</div>' +
+      '<input class="form-control form-control-sm cp-param-field" type="number" step="' + stepAttr + '" data-st="' + f.key + '" data-stscalar="1" value="' + strVal + '"></div>';
+  }
+  function buildStopsRow() {
+    var row = document.createElement("div");
+    row.className = "card card-sm cp-ind-row cp-stops-row";
+    var body = document.createElement("div");
+    body.className = "card-body";
+    // GEÄNDERT: kein Drag-Griff — die Stops-Zeile sitzt fix am Ende. Position ist keine Config-Eigenschaft.
+    body.innerHTML =
+      '<div class="cp-field-group cp-ind-identity-group">' +
+        '<div class="cp-ind-identity"><div class="cp-ind-name cp-stops-name">Stops</div><div class="cp-ind-typename">tp / sl / tsl / td + Formate</div></div>' +
+      '</div>' +
+      '<div class="cp-field-group cp-stops-fields" id="cfgStopsFields"></div>';
+    row.appendChild(body);
+    return row;
+  }
+  function renderStops() {
+    if (!vis.stops) vis.stops = defaultStops();
+    var container = document.getElementById("cfgStopsFields");
+    if (!container) return;
+    container.innerHTML = "";
+    STOPS_FIELDS.forEach(function(f) {
+      var val = vis.stops[f.key];
+      var div = document.createElement("div");
+      if (f.kind === "select") {
+        var strVal = val == null ? "" : String(val);
+        div.innerHTML = '<div class="cp-param-group"><label class="form-label mb-0">' + f.label + '</label>' +
+          '<select class="form-select form-select-sm" data-st="' + f.key + '">' +
+          f.options.map(function(o) { return '<option value="' + o + '" ' + (o === strVal ? "selected" : "") + '>' + (o || "(leer)") + '</option>'; }).join("") + '</select></div>';
+      } else {
+        div.innerHTML = renderStopValueWidget(f, val);
+      }
+      container.appendChild(div);
+    });
+    container.querySelectorAll("[data-st]").forEach(function(inp) {
+      var handler = function(e) {
+        var key = e.target.dataset.st;
+        if (e.target.tagName === "SELECT") {
+          vis.stops[key] = e.target.value === "" ? null : e.target.value;
+        } else if (e.target.dataset.strange) {
+          var start = "", stop = "", step = "";
+          container.querySelectorAll('[data-st="' + key + '"][data-strange]').forEach(function(ff) {
+            if (ff.dataset.strange === "start") start = ff.value;
+            else if (ff.dataset.strange === "stop") stop = ff.value;
+            else if (ff.dataset.strange === "step") step = ff.value;
+          });
+          var v = buildParamValue(start, stop, step, vis.stops[key]);
+          vis.stops[key] = (v === "") ? null : v;
+        } else {
+          var raw = e.target.value.trim();
+          vis.stops[key] = raw === "" ? null : parseFloat(raw);
+        }
+        syncVisualToJson();
+      };
+      inp.addEventListener("change", handler);
+      if (inp.tagName === "INPUT") inp.addEventListener("input", handler);
+    });
+    container.querySelectorAll("[data-sttoggle]").forEach(function(btn) {
+      btn.onclick = function() {
+        var key = btn.dataset.sttoggle;
+        vis.stops[key] = toggleStopMode(key);
+        renderStops();
+        syncVisualToJson();
+      };
+    });
+  }
+
+  // ---- Katalog + Lookup ----
+  async function loadCatalogVis() {
+    if (vis.catalog) return vis.catalog;
+    var r = await fetch("/api/chart-playground/indicators");
+    var j = await r.json();
+    vis.catalog = j.data;
+    return vis.catalog;
+  }
+  function findIndicatorMeta(indId) {
+    if (!vis.catalog || !indId) return null;
+    var groups = vis.catalog.groups || [];
+    for (var gi = 0; gi < groups.length; gi++) {
+      var inds = groups[gi].indicators || [];
+      for (var ii = 0; ii < inds.length; ii++) {
+        if (inds[ii].id === indId) return inds[ii];
+      }
+    }
+    var norm = function(s) { return String(s).split(":").pop().toLowerCase(); };
+    var target = norm(indId);
+    for (var gj = 0; gj < groups.length; gj++) {
+      var inds2 = groups[gj].indicators || [];
+      for (var ij = 0; ij < inds2.length; ij++) {
+        if (norm(inds2[ij].id) === target) return inds2[ij];
+      }
+    }
+    return null;
+  }
+  // GEÄNDERT: rename ohne Rules (Config-Seite hat keine Regeln) — nur Inputs-Refs (Chaining) propagieren.
+  function renameIndicator(oldName, newName) {
+    if (oldName === newName) return true;
+    if (!/^[a-z][a-z0-9_]*$/.test(newName)) { visStatus("Name muss mit Kleinbuchstabe starten und nur [a-z0-9_] enthalten", "err"); return false; }
+    if (vis.indicators.some(function(i) { return i.name === newName; })) { visStatus("Name bereits vergeben: " + newName, "err"); return false; }
+    var ind = vis.indicators.find(function(i) { return i.name === oldName; });
+    if (!ind) return false;
+    ind.name = newName;
+    var oldRef = "indicator:" + oldName + ":";
+    var newRef = "indicator:" + newName + ":";
+    vis.indicators.forEach(function(other) {
+      Object.entries(other.inputs || {}).forEach(function(kv) {
+        var k = kv[0], v = kv[1];
+        if (typeof v === "string" && v.startsWith(oldRef)) {
+          other.inputs[k] = newRef + v.split(":", 3)[2];
+        }
+      });
+    });
+    return true;
+  }
+
+  // ---- Picker (Indikator hinzufügen) ----
+  function openModal(id) { document.getElementById(id).classList.add("show"); }
+  function closeModal(id) { document.getElementById(id).classList.remove("show"); }
+  async function openPicker() {
+    await loadCatalogVis();
+    renderPicker("");
+    openModal("cfgPickerModal");
+  }
+  function renderPicker(filter) {
+    var list = document.getElementById("cfgPickerList");
+    list.innerHTML = "";
+    var fLower = (filter || "").toLowerCase();
+    (vis.catalog.groups || []).forEach(function(g) {
+      var matched = (g.indicators || []).filter(function(i) { return !fLower || i.id.toLowerCase().includes(fLower) || i.name.toLowerCase().includes(fLower); });
+      if (matched.length === 0) return;
+      var hdr = document.createElement("div");
+      hdr.className = "cp-group-header";
+      hdr.textContent = g.name + " (" + matched.length + ")";
+      list.appendChild(hdr);
+      matched.forEach(function(ind) {
+        var it = document.createElement("div");
+        it.className = "cp-indicator-item";
+        it.textContent = ind.id + "  (" + (ind.inputs || []).join(",") + ")";
+        it.onclick = function() { addIndicator(ind); closeModal("cfgPickerModal"); };
+        list.appendChild(it);
+      });
+    });
+  }
+  // GEÄNDERT: getrimmt — keine Chart-Felder (color/plot_type/chartVisible) im State.
+  function addIndicator(meta) {
+    var defaults = {};
+    (meta.params || []).forEach(function(p) { if (p.default != null) defaults[p.name] = p.default; });
+    var existingNames = new Set(vis.indicators.map(function(i) { return i.name; }));
+    var base = slugifyIndicatorType(meta.id);
+    var name = nextFreeName(base, existingNames);
+    vis.indicators.push({
+      client_id: cid(), name: name, id: meta.id, display_name: meta.id,
+      paramsMeta: meta.params || [], params: defaults,
+      inputNames: meta.inputs || [], outputNames: meta.outputs || [],
+      inputs: {}, timeframe: null,
+    });
+    renderIndicatorList();
+    syncVisualToJson();
+  }
+
+  // ---- Render der Indikator-Liste (getrimmt: ohne Farbe/Plot/Sichtbarkeit/Erweitert) ----
+  function renderIndicatorList() {
+    var panel = document.getElementById("cfgIndicatorList");
+    panel.innerHTML = "";
+    if (vis.indicators.length === 0) {
+      var hint = document.createElement("div");
+      hint.className = "text-muted small mb-2";
+      hint.textContent = "Keine Indikatoren.";
+      panel.appendChild(hint);
+    }
+    var indRows = vis.indicators.map(function(ind, idx) {
+      var row = document.createElement("div");
+      row.className = "card card-sm cp-ind-row";
+      row.dataset.rowKey = ind.client_id;
+      var body = document.createElement("div");
+      body.className = "card-body";
+      row.appendChild(body);
+      var OHLCV = ["open", "high", "low", "close", "volume"];
+      var priorOptions = [];
+      vis.indicators.forEach(function(other, j) {
+        if (j === idx) return;
+        var outs = (other.outputNames && other.outputNames.length > 0) ? other.outputNames : ["result"];
+        outs.forEach(function(on) { priorOptions.push({ value: "indicator:" + other.name + ":" + on, label: other.name + "." + on }); });
+      });
+      var metaByName = {};
+      (ind.paramsMeta || []).forEach(function(p) { metaByName[p.name] = p; });
+      var valueKeys = [];
+      (ind.paramsMeta || []).forEach(function(p) { if (p.name !== "timeframe") valueKeys.push(p.name); });
+      Object.keys(ind.params || {}).forEach(function(n) { if (n !== "timeframe" && !valueKeys.includes(n)) valueKeys.push(n); });
+      var ctx = { priorOptions: priorOptions, metaByName: metaByName, OHLCV: OHLCV };
+      var inputsHtml = (ind.inputNames || []).map(function(k) { return renderField(ind, k, "input", ctx); }).join("");
+      var valuesHtml = valueKeys.map(function(k) { return renderField(ind, k, "value", ctx); }).join("");
+      var tfHtml = renderField(ind, "tf", "timeframe", ctx);
+      // GEÄNDERT: kein Drag-Griff — Indikator-Reihenfolge ist keine Config-Eigenschaft (jsonb normalisiert Keys).
+      body.innerHTML =
+        '<div class="cp-field-group cp-ind-identity-group">' +
+          '<div class="cp-ind-identity">' +
+            '<input class="cp-ind-name cp-ind-name-edit" type="text" data-cid="' + ind.client_id + '" data-name-edit="1" value="' + ind.name + '" title="Name (editierbar) – wird in Chains referenziert">' +
+            '<div class="cp-ind-typename" title="Bibliothek + Indikator (aufgelöste Katalog-ID)">' + ind.display_name + '</div>' +
+          '</div>' +
+        '</div>' +
+        (inputsHtml ? '<div class="cp-field-group">' + inputsHtml + '</div>' : "") +
+        (valuesHtml ? '<div class="cp-field-group">' + valuesHtml + '</div>' : "") +
+        '<div class="cp-field-group">' + tfHtml + '</div>' +
+        '<div class="cp-field-group ms-auto">' +
+          '<button type="button" class="btn btn-sm btn-ghost-danger btn-icon" data-remove="' + ind.client_id + '" title="Indikator entfernen">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>' +
+          '</button>' +
+        '</div>';
+      return row;
+    });
+    // GEÄNDERT: Stops-Zeile fix ans Ende — Position ist keine Config-Eigenschaft (kein _stops_pos).
+    indRows.forEach(function(row) { panel.appendChild(row); });
+    panel.appendChild(buildStopsRow());
+    renderStops();
+    bindIndicatorEvents(panel);
+  }
+
+  // ---- Feld-Events (Schreibrichtung in vis.* + Sync ins JSON) ----
+  function bindIndicatorEvents(panel) {
+    // Entfernen
+    panel.querySelectorAll("[data-remove]").forEach(function(btn) {
+      btn.onclick = function() {
+        vis.indicators = vis.indicators.filter(function(i) { return i.client_id !== btn.dataset.remove; });
+        renderIndicatorList();
+        syncVisualToJson();
+      };
+    });
+    // GEÄNDERT: Kein Drag-Reorder auf der Config-Seite — die Indikator-Reihenfolge ist keine
+    // Eigenschaft einer Indikator-Config (config_json ist jsonb, Postgres normalisiert die Key-Reihenfolge).
+    panel.querySelectorAll("[data-name-edit]").forEach(function(inp) {
+      inp.addEventListener("change", function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (!ind) return;
+        var newName = inp.value.trim();
+        if (newName === ind.name) return;
+        if (!renameIndicator(ind.name, newName)) { inp.value = ind.name; return; }
+        renderIndicatorList();
+        syncVisualToJson();
+      });
+    });
+    panel.querySelectorAll("[data-param]").forEach(function(inp) {
+      var handler = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (!ind) return;
+        var pname = inp.dataset.param;
+        var start = "", stop = "", step = "";
+        panel.querySelectorAll('[data-cid="' + ind.client_id + '"][data-param="' + pname + '"]').forEach(function(f) {
+          if (f.dataset.range === "start") start = f.value;
+          else if (f.dataset.range === "stop") stop = f.value;
+          else if (f.dataset.range === "step") step = f.value;
+        });
+        ind.params[pname] = buildParamValue(start, stop, step, ind.params[pname]);
+        syncVisualToJson();
+      };
+      inp.oninput = handler;
+      inp.onchange = handler;
+    });
+    panel.querySelectorAll("[data-parambool]").forEach(function(inp) {
+      inp.onchange = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (!ind) return;
+        ind.params[inp.dataset.parambool] = inp.checked;
+        syncVisualToJson();
+      };
+    });
+    panel.querySelectorAll("[data-paramscalar]").forEach(function(inp) {
+      var handler = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (!ind) return;
+        var pname = inp.dataset.paramscalar;
+        var val = inp.value;
+        if (inp.dataset.numeric === "1") {
+          ind.params[pname] = (val === "" || isNaN(parseFloat(val))) ? val : parseFloat(val);
+        } else {
+          ind.params[pname] = val;
+        }
+        syncVisualToJson();
+      };
+      inp.oninput = handler;
+      inp.onchange = handler;
+    });
+    panel.querySelectorAll("[data-paramtoggle]").forEach(function(btn) {
+      btn.onclick = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === btn.dataset.cid; });
+        if (!ind) return;
+        ind.params = ind.params || {};
+        ind.params[btn.dataset.paramtoggle] = toggleParamMode(ind, btn.dataset.paramtoggle);
+        renderIndicatorList();
+        syncVisualToJson();
+      };
+    });
+    panel.querySelectorAll("[data-input]").forEach(function(inp) {
+      inp.onchange = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (ind) { ind.inputs = ind.inputs || {}; ind.inputs[inp.dataset.input] = inp.value; syncVisualToJson(); }
+      };
+    });
+    panel.querySelectorAll("[data-tf]").forEach(function(inp) {
+      inp.onchange = function() {
+        var ind = vis.indicators.find(function(i) { return i.client_id === inp.dataset.cid; });
+        if (ind) { ind.timeframe = inp.value || null; syncVisualToJson(); }
+      };
+    });
+  }
+
+  // ---- Serialisierung Visual -> config_json ----
+  function collectIndicatorConfigJson() {
+    var META_KEYS = new Set(["indicator", "tf"]);
+    var config_json = {};
+    var stale = [];
+    vis.indicators.forEach(function(i) {
+      var entry = { indicator: i.id, tf: i.timeframe || null };
+      (i.inputNames || []).forEach(function(iname) {
+        var explicit = i.inputs && i.inputs[iname];
+        entry[iname] = explicit || INPUT_DEFAULTS[iname.toLowerCase()] || iname.toLowerCase();
+      });
+      var knownParams = new Set((i.paramsMeta || []).map(function(p) { return p.name; }));
+      if (i.params) {
+        Object.entries(i.params).forEach(function(kv) {
+          var k = kv[0], v = kv[1];
+          if (META_KEYS.has(k) || (i.inputNames || []).includes(k)) return;
+          if (knownParams.has(k)) entry[k] = v;
+          else stale.push(i.name + "." + k);
+        });
+      }
+      config_json[i.name] = entry;
+    });
+    config_json["_stops"] = Object.assign({}, vis.stops || defaultStops());
+    // GEÄNDERT: kein _stops_pos — Stops-Position ist reine Anzeige, gehört nicht in die Config.
+    return { config_json: config_json, stale: stale };
+  }
+  // GEÄNDERT: Visual-Stand ins JSON schreiben (sortIndicatorConfig behandelt _stops).
+  function syncVisualToJson() {
+    var res = collectIndicatorConfigJson();
+    editor.setValue(JSON.stringify(sortIndicatorConfig(res.config_json), null, 2));
+    if (res.stale.length) visStatus("Altlast-Felder werden beim Speichern verworfen: " + res.stale.join(", "), "warn");
+    else visStatus("", "");
+  }
+
+  // ---- Aufbau Visual aus dem aktuellen config_json ----
+  async function buildVisualFromConfig(parsed) {
+    await loadCatalogVis();
+    var indCfg = (parsed && parsed.indicators && typeof parsed.indicators === "object") ? parsed.indicators : (parsed || {});
+    vis.stops = Object.assign({}, defaultStops(), indCfg._stops || {});
+    var staleAll = [];
+    vis.indicators = Object.entries(indCfg).filter(function(kv) { return !kv[0].startsWith("_"); }).map(function(kv) {
+      var name = kv[0], entry = kv[1];
+      var indId = entry.indicator;
+      var meta = findIndicatorMeta(indId) || {};
+      var split = splitLoadedEntry(name, entry, meta);
+      if (split.stale.length) staleAll.push.apply(staleAll, split.stale);
+      return {
+        client_id: cid(), name: name, id: meta.id || indId, display_name: meta.id || indId,
+        paramsMeta: meta.params || [], params: split.params,
+        inputNames: meta.inputs || [], outputNames: meta.outputs || [],
+        inputs: split.inputs, timeframe: entry.tf || null,
+      };
+    });
+    renderIndicatorList();
+    if (staleAll.length) visStatus("Altlast-Felder ignoriert: " + staleAll.join(", "), "warn");
+    else visStatus("", "");
+  }
+
+  /* Speichern */
+  document.getElementById("config-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    // GEÄNDERT: Schritt 2 — im Visual-Mode zuerst den aktuellen Stand ins JSON serialisieren
+    if (editMode === "visual") syncVisualToJson();
+
+    if (!validateJson()) return;
+
+    var id = document.getElementById("cfg-id").value;
+    var conceptVal = document.getElementById("cfg-strategy-concept").value;
+    var iterationVal = document.getElementById("cfg-strategy-iteration").value;
+    var data = {
+      name: document.getElementById("cfg-name").value,
+      description: document.getElementById("cfg-description").value || null,
+      config_json: JSON.parse(jsonField.value),
+      is_default: document.getElementById("cfg-is-default").checked ? 1 : 0,
+      // GEÄNDERT: Ticket 22 — lose Verknüpfung Concept/Iteration
+      strategy_concept_id: conceptVal ? parseInt(conceptVal) : null,
+      strategy_iteration_id: iterationVal ? parseInt(iterationVal) : null,
+    };
+
+    var url = id ? '/api/config/indicator/' + id : '/api/config/indicator';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(json) {
+      if (json.error) {
+        document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">' + json.error + '</div>';
+        return;
+      }
+      window.location.href = '/config/indicator';
+    })
+    .catch(function(err) {
+      document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+    });
+  });
+
+  // GEÄNDERT: Default-Ansicht beim Laden ist der visuelle Editor.
+  // Über den regulären setEditMode-Pfad, damit der Aufbau (inkl. Fallback auf JSON bei ungültigem JSON) greift.
+  setEditMode("visual");
+});
+</script>
+{% endblock %}

@@ -1,0 +1,1223 @@
+#!/usr/bin/env python3
+"""Objekt-Toolbox für bt_pro_app_v1.
+
+Nimmt eine Liste aus URLs und/oder `<bereich>:<wert>`-Strings und druckt ein
+kompaktes Markdown-Briefing der referenzierten Objekte. Spart pro LLM-Session
+mehrere Einzel-Curls und deckt jede briefbare API-Route ab.
+
+Namens-Konvention: Funktionen heißen `<bereich>_<aktion>` (z.B. `iteration_read`,
+`backtest_config_copy`). Aktionen: read, list, create, copy, start. Keine Jargon-Begriffe.
+
+Damit ist der volle Loop über die Toolbox bedienbar: Konzept/Iteration anlegen ->
+Indicator-/Backtest-Config anlegen -> Backtest starten -> Ranking/Top-Results lesen ->
+IndicatorConfig aus Gewinner-Result erstellen -> Testset-Lauf starten -> Leaderboard lesen.
+
+Beispiele (Lesen — Default, kein Verb):
+  python3 toolbox.py http://localhost:5570/config/strategy-concepts/1/iterations/26/edit \\
+                       http://localhost:5570/config/backtest/553 \\
+                       http://localhost:5570/config/indicator/1970
+
+  python3 toolbox.py iteration:26 indicator-config:1970 backtest-config:552 result:2635737 run:1753
+  python3 toolbox.py concept:1 strategy-config:12 testset:4 leaderboard:88
+  python3 toolbox.py knowledge:"teststrategie exit logik" vault:30_Trading/strategies
+
+Kopieren (Schreib-Aktion — erzeugt neue Objekte, Originale bleiben unverändert):
+  python3 toolbox.py copy iteration:2
+  python3 toolbox.py copy backtest-config:553 indicator-config:1970
+  Kopierbar: iteration, backtest-config, indicator-config.
+
+IndicatorConfig aus Result erstellen (Schreib-Aktion):
+  python3 toolbox.py create-indicator-config result:2706026:Sharpe
+  python3 toolbox.py create-indicator-config result:2755455:Return result:2734638:PF
+  Erstellt aus den Gewinner-Parametern eines Results eine Single-Point-IndicatorConfig
+  (Range -> Skalar) nach Konvention `<KONZEPT> <version> / <Segment> / <ResultID>`.
+  Segment ist optional (Return/Sharpe/PF/WinR90); Trenner ':' oder '/'.
+  Nur Results sind als Quelle zulässig. Für die Vergleichsmessung via Testset.
+
+Listen-Reads (kompaktes Markdown, eigene Verben):
+  python3 toolbox.py concept-list
+  python3 toolbox.py iteration-list 1            # optional: concept_id
+  python3 toolbox.py backtest-config-list
+  python3 toolbox.py indicator-config-list 1 41  # optional: concept_id iteration_id
+  python3 toolbox.py result-list --run 1812 --limit 20   # optional: --symbol --timeframe
+  python3 toolbox.py testset-list
+  python3 toolbox.py leaderboard-list 293        # optional: testset_id
+  python3 toolbox.py symbol-list binance 4h      # exchange timeframe (Pflicht)
+  python3 toolbox.py run-parameter-ranking 1812 sharpe_ratio   # run_id [metric]
+  python3 toolbox.py run-top-results 1812 sharpe_ratio 20 desc # run_id [metric] [limit] [direction]
+  python3 toolbox.py run-winrate-band-best 1812 20 1          # run_id [band_pp=20] [limit=1] — bestes Return im Winrate-Band [max-band, max]
+  python3 toolbox.py run-best 1812 profit_factor 30 1         # run_id metrik [min_trades=30] [limit=1] — bester Metrik-Wert mit >= min_trades Trades
+
+Anlegen (create — Schreib-Aktion). Komplexe Payloads per --file als JSON-Datei.
+KEIN stiller Konverter, kein Fallback: spec_json/config_json wird unverändert
+durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
+  python3 toolbox.py concept-create --slug teststrategie --name "Teststrategie" [--category ... --description ... --status active]
+  python3 toolbox.py iteration-create --concept 1 --file spec.json [--name "v5" --type generic --description ... --parent 41]
+        --file = das spec_json (Flat-Dict indicators + DNF-rules). type=hardcoded braucht --import-path.
+  python3 toolbox.py indicator-config-create --name "Teststrategie Grid" --file config.json [--concept 1 --iteration 41 --description ...]
+        --file = das config_json (Parameter-Raster, arange je Indikator).
+  python3 toolbox.py backtest-config-create --file backtest.json
+        --file = der volle Body (Pflicht: name, start, end, ohlc_start, ohlc_end; Defaults: symbol BTCUSDT, exchange binance, timeframe 4h, size 100, size_type value, init_cash 100, fees 0.001).
+  python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
+
+Ausführen (start — Schreib-Aktion, ID-basiert):
+  python3 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41
+  python3 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973
+  python3 toolbox.py walk-forward-start --result 2706026 --months 6
+
+Ändern (PUT, voller Body per --file): <bereich>-update --id <n> --file body.json
+  concept-update · iteration-update · backtest-config-update · indicator-config-update ·
+  strategy-config-update · testset-update · playground-setup-update
+
+Löschen (DELETE): <bereich>-delete <id>   (concept/iteration zusätzlich: --force --delete_vault)
+  concept-delete · iteration-delete · backtest-config-delete · indicator-config-delete ·
+  strategy-config-delete · result-delete · run-delete · testset-delete · leaderboard-delete ·
+  playground-setup-delete · knowledge-reset
+  Sammellöschen: <bereich>-bulk-delete --ids 1,2,3 (indicator-config/result/run/playground-setup)
+  Alle (außer Favoriten): result-delete-all · run-delete-all
+
+Aktionen (POST): iteration-favorite/iteration-doc-favorite/result-favorite/result-doc-favorite <id> ·
+  concept-vault-create/iteration-vault-create <id> · run-restart <id> · run-remarks <id> --text "..." ·
+  result-full-metrics <id> · run-analyse-start/stop/reset <id>
+
+Weitere Anlegen (POST, --file): strategy-config-create · data-download ·
+  playground-setup-create/compute/run-backtest/run-backtest-lite · knowledge-reindex
+  data-update --timeframe 4h · data-delete-symbol --timeframe 4h --symbol FETUSDT
+
+Weitere Listen/Reads: strategy-config-list · data-files-list · data-jobs-list · filters-list ·
+  run-results/run-summary/run-distribution/run-equity-overview/run-heatmap/run-analyse-progress <id> ·
+  result-stats/result-trades/result-orders/result-positions/result-ohlcv/result-chart-data/result-metrics-level <id> ·
+  knowledge-runs-list · knowledge-run <id> · knowledge-stats ·
+  playground-sources/playground-ohlcv/playground-indicators/playground-setup-list
+
+Generischer Direktzugriff auf JEDE (auch künftige) Route:
+  python3 toolbox.py api GET /api/backtest/runs
+  python3 toolbox.py api POST /api/testsets --file body.json
+  python3 toolbox.py api DELETE /api/backtest/runs/1234
+
+Unterstützte Bereiche:
+  ID-basiert:
+    concept             — Strategie-Konzept
+    iteration           — Iteration
+    indicator-config    — Indicator-Config
+    backtest-config     — Backtest-Config
+    strategy-config     — Strategy-Config (hardcoded/generic, Legacy)
+    result              — Backtest-Result (Stats)
+    run                 — Backtest-Run (Listen-Filter, kein Einzel-GET)
+    testset             — Testset
+    leaderboard         — Leaderboard-Eintrag (Drilldown)
+    playground-setup    — Chart-Playground-Setup
+  String-basiert:
+    knowledge           — semantische Vektorsuche im Vault-Index
+    vault               — indizierte Vault-Dateien (Pfad-Substring)
+"""
+
+import json
+import os
+import re
+import sys
+import urllib.parse
+import urllib.request
+import urllib.error
+
+# Basis-URL des FastAPI-Backends. Default lokal; per Env VBT_APP_BASE_URL überschreibbar.
+BASE = os.environ.get("VBT_APP_BASE_URL", "http://localhost:5570").rstrip("/")
+TIMEOUT = 10
+# Maximale Run-Liste, die für den Run-Filter geladen wird (kein Einzel-GET vorhanden)
+RUN_LIST_LIMIT = 500
+
+URL_PATTERNS = [
+    (re.compile(r"/config/strategy-concepts/\d+/iterations/(\d+)"), "iteration"),
+    (re.compile(r"/strategy/iterations/(\d+)"), "iteration"),
+    (re.compile(r"/config/backtest/(\d+)"), "backtest-config"),
+    (re.compile(r"/config/indicator/(\d+)"), "indicator-config"),
+    (re.compile(r"/config/playground/(\d+)"), "playground-setup"),
+    (re.compile(r"/backtest/results/(\d+)"), "result"),
+    (re.compile(r"/backtest/runs/(\d+)"), "run"),
+    (re.compile(r"/testsets/(\d+)"), "testset"),
+]
+
+# Gültige Bereiche (kanonisch, keine Kurz-Aliasse). Reihenfolge = Doku-Reihenfolge.
+VALID_TYPES = {
+    "concept",
+    "iteration",
+    "indicator-config",
+    "backtest-config",
+    "strategy-config",
+    "result",
+    "run",
+    "testset",
+    "leaderboard",
+    "playground-setup",
+    "knowledge",
+    "vault",
+}
+
+# Bereiche, deren Wert ein String ist (Query/Pfad) statt einer Integer-ID
+STRING_TYPES = {"knowledge", "vault"}
+
+
+def parse_arg(arg: str):
+    """Liefert (typ, wert) oder (None, None). wert ist int (ID-Typen) oder str (String-Typen)."""
+    if arg.startswith("http"):
+        for pat, t in URL_PATTERNS:
+            m = pat.search(arg)
+            if m:
+                return t, int(m.group(1))
+        return None, None
+    if ":" in arg:
+        t, val = arg.split(":", 1)
+        t = t.lower()
+        if t not in VALID_TYPES:
+            return None, None
+        if t in STRING_TYPES:
+            return t, val.strip()
+        if val.isdigit():
+            return t, int(val)
+    return None, None
+
+
+def fetch(path: str) -> dict:
+    with urllib.request.urlopen(f"{BASE}{path}", timeout=TIMEOUT) as r:
+        return json.loads(r.read())
+
+
+def post(path: str, body: dict = None) -> dict:
+    """POST mit optionalem JSON-Body. Gibt die geparste Antwort zurück."""
+    data = json.dumps(body).encode() if body is not None else b""
+    req = urllib.request.Request(
+        f"{BASE}{path}", data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.loads(r.read())
+
+
+def request(method: str, path: str, body: dict = None) -> dict:
+    """Beliebige HTTP-Methode mit optionalem JSON-Body. Leere Antwort -> {}."""
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data is not None else {}
+    req = urllib.request.Request(f"{BASE}{path}", data=data, method=method.upper(), headers=headers)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        raw = r.read()
+        return json.loads(raw) if raw else {}
+
+
+def num(v, fmt: str = "{:.2f}", dash: str = "—") -> str:
+    """None-sichere Zahlenformatierung."""
+    return fmt.format(v) if isinstance(v, (int, float)) else dash
+
+
+def fmt_cond(c: dict) -> str:
+    lhs = c.get("lhs"); op = c.get("op"); rhs = c.get("rhs")
+    lhs_s = c.get("lhs_shift", 0); rhs_s = c.get("rhs_shift", 0)
+    parts = [str(lhs)]
+    if lhs_s: parts.append(f".shift({lhs_s})")
+    parts.append(f" {op} {rhs}")
+    if rhs_s: parts.append(f" (rhs.shift({rhs_s}))")
+    return "".join(parts)
+
+
+def render_spec(spec: dict) -> None:
+    """Druckt Indikatoren und Entry/Exit-Rules aus einem spec_json/strategy_config_json."""
+    inds = spec.get("indicators", {})
+    if inds:
+        print("- Indikatoren:")
+        for name, p in inds.items():
+            params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "tf", "indicator"))
+            # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
+            tag = "" if p.get("enabled", True) else " [deaktiviert]"
+            print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
+    rules = spec.get("rules", {})
+    # GEAENDERT: Ticket 48 — Block-Format (DNF) statt Alt-Format {logic, conditions};
+    # Blöcke sind ODER-verknüpft, Short- und deaktivierte Blöcke (enabled: false) werden markiert.
+    for kind in ("entry", "exit"):
+        r = rules.get(kind) or {}
+        blocks = r.get("blocks") or []
+        if not blocks:
+            continue
+        print(f"- {kind.capitalize()}-Rules (Blöcke ODER-verknüpft):")
+        for n, b in enumerate(blocks, 1):
+            tags = []
+            if b.get("is_short"):
+                tags.append("SHORT")
+            if not b.get("enabled", True):
+                tags.append("deaktiviert")
+            suffix = f" [{', '.join(tags)}]" if tags else ""
+            conds = b.get("conditions", [])
+            cond_txt = " UND ".join(fmt_cond(c) for c in conds) if conds else "(leer)"
+            print(f"  - Block {n}{suffix}: `{cond_txt}`")
+
+
+# ---------------------------------------------------------------------------
+# Lese-Handler (read). Nehmen eine ID, rufen die passende API-Route und drucken
+# ein eingedampftes Markdown-Briefing. Funktionsname: <bereich>_read.
+# ---------------------------------------------------------------------------
+
+def concept_read(i: int) -> None:
+    d = fetch(f"/api/strategy/concepts/{i}")["data"]
+    print(f"## Concept {i} — {d.get('name')} ({d.get('slug')})")
+    print(f"- Status: {d.get('status')} · Kategorie: {d.get('category') or '—'} · Vault: {d.get('vault_exists')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    print()
+
+
+def iteration_read(i: int) -> None:
+    d = fetch(f"/api/strategy/iterations/{i}")["data"]
+    name = d.get("version_name") or d.get("version")
+    print(f"## Iteration {i} — {name}")
+    print(f"- Concept-ID: {d.get('concept_id')} · Typ: {d.get('type')} · Status: {d.get('status')} · Vault: {d.get('vault_exists')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    render_spec(d.get("spec_json") or {})
+    print()
+
+
+def indicator_config_read(i: int) -> None:
+    d = fetch(f"/api/config/indicator/{i}")["data"]
+    print(f"## Indicator-Config {i} — {d.get('name')}")
+    print(f"- Strategie: {d.get('strategy_concept_name')} · Iter: {d.get('strategy_iteration_version')} (id {d.get('strategy_iteration_id')})")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    for name, p in (d.get("config_json") or {}).items():
+        params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "tf", "indicator"))
+        # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
+        tag = "" if p.get("enabled", True) else " [deaktiviert]"
+        print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
+    print()
+
+
+def backtest_config_read(i: int) -> None:
+    d = fetch(f"/api/config/backtest/{i}")["data"]
+    print(f"## Backtest-Config {i} — {d.get('name')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    print(f"- {d['symbol']} {d['timeframe']} · {d['start']} → {d['end']} · exchange {d.get('exchange')}")
+    print(f"- Sizing: {d['size']} {d['size_type']}, init_cash {d['init_cash']}, fees {d['fees']}")
+    print(f"- Stops: td={d['td_stop']} tp={d['tp_stop']} sl={d['sl_stop']} tsl={d['tsl_stop']} (tsl_th={d['tsl_th']})")
+    print()
+
+
+def strategy_config_read(i: int) -> None:
+    d = fetch(f"/api/config/strategy/{i}")["data"]
+    print(f"## Strategy-Config {i} — {d.get('name')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    print(f"- Familie: {d.get('strategy_family')} · Name: {d.get('strategy_name')} · Typ: {d.get('type')}")
+    if d.get("import_path"):
+        print(f"- Import: `{d['import_path']}`")
+    cfg = d.get("strategy_config_json")
+    if cfg:
+        render_spec(cfg)
+    print()
+
+
+def result_read(i: int) -> None:
+    s = fetch(f"/api/backtest/results/{i}/stats")["stats"]
+    print(f"## Result {i}")
+    print(f"- Return: {num(s.get('Total Return [%]'))}% (Benchmark {num(s.get('Benchmark Return [%]'))}%)")
+    print(f"- Sharpe {num(s.get('Sharpe Ratio'))} / Sortino {num(s.get('Sortino Ratio'))} / Calmar {num(s.get('Calmar Ratio'))}")
+    print(f"- Max DD {num(s.get('Max Drawdown [%]'))}% (Dauer {s.get('Max Drawdown Duration')})")
+    print(f"- Trades: {s.get('Total Trades')} · Win-Rate {num(s.get('Win Rate [%]'))}% · Profit-Factor {num(s.get('Profit Factor'))}")
+    print(f"- Value: {s.get('Start Value')} → {num(s.get('End Value'))}")
+    print()
+
+
+def run_read(i: int) -> None:
+    d = fetch(f"/api/backtest/runs?limit={RUN_LIST_LIMIT}")["data"]["items"]
+    r = next((x for x in d if x.get("id") == i), None)
+    if not r:
+        print(f"## Run {i} — nicht in den letzten {RUN_LIST_LIMIT} Runs gefunden\n")
+        return
+    print(f"## Run {i} — {r.get('strategy_name')}")
+    print(f"- Status: {r.get('status')} · {r.get('symbol')} {r.get('timeframe')} · {r.get('n_combinations')} Kombinationen")
+    print(f"- Zeitraum: {str(r.get('start_date', ''))[:10]} → {str(r.get('end_date', ''))[:10]}")
+    # Aggregat-Kennzahlen aus der Analyse (falls berechnet)
+    try:
+        summ = fetch(f"/api/backtest/runs/{i}/analyse/summary")
+        print(f"- Analyse: {summ.get('total_results')} Results · {summ.get('profitable_count')} profitabel · "
+              f"avg Return {num(summ.get('avg_return'))} / avg Sharpe {num(summ.get('avg_sharpe'))} / max Sharpe {num(summ.get('max_sharpe'))}")
+    except Exception:
+        pass
+    # Verlinkte Results
+    try:
+        results = fetch(f"/api/backtest/runs/{i}/results")["data"]["items"]
+        if results:
+            ids = ", ".join(str(x["id"]) for x in results[:5])
+            print(f"- Result-IDs: {ids}{' ...' if len(results) > 5 else ''}")
+    except Exception:
+        pass
+    print()
+
+
+def testset_read(i: int) -> None:
+    d = fetch(f"/api/testsets/{i}")["data"]
+    print(f"## Testset {i} — {d.get('name')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    ids = d.get("backtest_config_ids") or []
+    shown = ", ".join(str(x) for x in ids[:10])
+    print(f"- {len(ids)} Backtest-Configs: {shown}{' ...' if len(ids) > 10 else ''}")
+    if d.get("created_by"):
+        print(f"- Erstellt von: {d['created_by']}")
+    print()
+
+
+def leaderboard_read(i: int) -> None:
+    d = fetch(f"/api/leaderboard/{i}/drilldown")["data"]
+    print(f"## Leaderboard-Eintrag {i}")
+    if d.get("executive_summary"):
+        print(f"- {d['executive_summary']}")
+    results = d.get("results") or []
+    print(f"- {len(results)} Configs:")
+    for r in results[:10]:
+        if r.get("missing"):
+            print(f"  - #{r.get('position')}: (Result fehlt)")
+            continue
+        print(f"  - #{r.get('position')} result:{r.get('result_id')} {r.get('symbol') or ''} — "
+              f"Ret {num(r.get('total_return_pct'))}% / Sharpe {num(r.get('sharpe_ratio'))} / "
+              f"DD {num(r.get('max_drawdown_pct'))}% / {r.get('n_trades')} Trades")
+    print()
+
+
+def playground_setup_read(i: int) -> None:
+    d = fetch(f"/api/chart-playground/setups/{i}")["data"]
+    print(f"## Playground-Setup {i} — {d.get('name')}")
+    if d.get("description"):
+        print(f"- {d['description']}")
+    print()
+
+
+def knowledge_search(query: str) -> None:
+    qs = urllib.parse.urlencode({"q": query, "k": 5})
+    d = fetch(f"/api/knowledge/search?{qs}")
+    results = d.get("results") or []
+    print(f"## Knowledge-Suche — \"{query}\" ({len(results)} Treffer)")
+    for r in results:
+        print(f"- **{r.get('vault_path')}** (Chunk #{r.get('chunk_index')}, sim {num(r.get('similarity'), '{:.3f}')})")
+        if r.get("heading_path"):
+            print(f"  - {r['heading_path']}")
+        content = (r.get("content") or "").strip().replace("\n", " ")
+        if len(content) > 300:
+            content = content[:300] + "…"
+        if content:
+            print(f"  - {content}")
+    print()
+
+
+def vault_list(path: str) -> None:
+    qs = urllib.parse.urlencode({"q": path, "limit": 20})
+    d = fetch(f"/api/knowledge/files?{qs}")
+    files = d.get("files") or []
+    print(f"## Vault-Dateien — Filter \"{path}\" ({d.get('total', len(files))} gesamt)")
+    for f in files[:20]:
+        tags = ", ".join(f.get("tags") or [])
+        print(f"- **{f.get('vault_path')}** — {f.get('chunk_count')} Chunks · Tags: {tags or '—'}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Kopier-Handler (copy). Erzeugen jeweils ein neues Objekt und lassen das
+# Original unverändert. Funktionsname: <bereich>_copy.
+# ---------------------------------------------------------------------------
+
+def backtest_config_copy(i: int) -> None:
+    d = post(f"/api/config/backtest/{i}/copy")["data"]
+    print(f"## Kopiert: Backtest-Config {i} -> **{d['id']}** ({d.get('name')})\n")
+
+
+def indicator_config_copy(i: int) -> None:
+    d = post(f"/api/config/indicator/{i}/copy")["data"]
+    print(f"## Kopiert: Indicator-Config {i} -> **{d['id']}** ({d.get('name')})\n")
+
+
+def iteration_copy(i: int) -> None:
+    d = post(f"/api/strategy/iterations/{i}/copy")["data"]
+    name = d.get("version_name") or d.get("version")
+    print(f"## Kopiert: Iteration {i} -> **{d['id']}** ({name}, Concept {d.get('concept_id')})\n")
+
+
+COPY_HANDLERS = {
+    "iteration": iteration_copy,
+    "backtest-config": backtest_config_copy,
+    "indicator-config": indicator_config_copy,
+}
+
+
+# ---------------------------------------------------------------------------
+# Erstell-Handler: IndicatorConfig aus einem Result erstellen. Friert die
+# Gewinner-Parameter fest (Range -> Skalar) und legt eine Single-Point-Config
+# an. Eigener Parser, weil das Segment-Label (Return/Sharpe/PF/WinR90) kein
+# numerischer Wert ist.
+# ---------------------------------------------------------------------------
+
+def _parse_result_segment_arg(a: str):
+    """Arg -> (result_id:str, segment:str|None).
+
+    Akzeptierte Formen: `result:2706026`, `result:2706026:Sharpe`, `2706026`,
+    `2706026/Sharpe`. Trenner ':' oder '/'. Gibt (None, None) bei ungültig.
+    """
+    s = a.strip()
+    low = s.lower()
+    if low.startswith("result:"):
+        s = s[len("result:"):]
+    s = s.replace("/", ":")
+    parts = s.split(":", 1)
+    rid = parts[0].strip()
+    seg = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+    if not rid.isdigit():
+        return None, None
+    return rid, seg
+
+
+def indicator_config_create_from_result(rid: str, segment) -> None:
+    body = {"segment": segment} if segment else None
+    d = post(f"/api/config/indicator/from-result/{rid}", body)["data"]
+    print(f"## Erstellt: IndicatorConfig **{d['id']}** ({d.get('name')}) aus Result {rid}\n")
+
+
+# ---------------------------------------------------------------------------
+# Flag-Parser für Create-/Start-Verben. Liest `--key value` und `--key=value`
+# in ein Dict. Positionsargumente landen unter "_positional".
+# ---------------------------------------------------------------------------
+
+def _parse_flags(tokens: list) -> dict:
+    """Parst `--key value` / `--key=value` in ein Dict. Rest -> _positional."""
+    flags: dict = {}
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t.startswith("--"):
+            key = t[2:]
+            if "=" in key:
+                k, v = key.split("=", 1)
+                flags[k] = v
+                i += 1
+            elif i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
+                flags[key] = tokens[i + 1]
+                i += 2
+            else:
+                flags[key] = True
+                i += 1
+        else:
+            flags.setdefault("_positional", []).append(t)
+            i += 1
+    return flags
+
+
+def _require(flags: dict, key: str, verb: str):
+    """Holt einen Pflicht-Flag-Wert oder wirft ValueError."""
+    val = flags.get(key)
+    if not val or val is True:
+        raise ValueError(f"--{key} fehlt (z.B. {verb} --{key} <wert>)")
+    return val
+
+
+def _read_json_file(path: str):
+    """Lädt eine JSON-Datei. Wirft bei Fehler — kein stiller Fallback."""
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+# ---------------------------------------------------------------------------
+# Listen-Reads (list). Drucken eine kompakte Markdown-Liste briefbarer Objekte.
+# Funktionsname: <bereich>_list. Argumente positionsbasiert (optional/erforderlich
+# je Verb), result_list nutzt Flags.
+# ---------------------------------------------------------------------------
+
+def concept_list(args: list) -> int:
+    items = fetch("/api/strategy/concepts")["data"]["items"]
+    print(f"## Konzepte ({len(items)})")
+    for c in items:
+        print(f"- concept:{c['id']} **{c.get('name')}** ({c.get('slug')}) · {c.get('status')} · Iter-Zähler {c.get('iteration_counter')}")
+    print()
+    return 0
+
+
+def iteration_list(args: list) -> int:
+    qs = f"?concept_id={int(args[0])}" if args else ""
+    items = fetch(f"/api/strategy/iterations{qs}")["data"]["items"]
+    print(f"## Iterationen ({len(items)})")
+    for it in items:
+        nm = it.get("version_name") or ""
+        print(f"- iteration:{it['id']} v{it.get('version')} {nm} · Concept {it.get('concept_id')} · {it.get('type')} · {it.get('status')}")
+    print()
+    return 0
+
+
+def backtest_config_list(args: list) -> int:
+    items = fetch("/api/config/backtest")["data"]
+    print(f"## Backtest-Configs ({len(items)})")
+    for c in items:
+        print(f"- backtest-config:{c['id']} **{c.get('name')}** · {c.get('symbol')} {c.get('timeframe')} · {c.get('start')} -> {c.get('end')}")
+    print()
+    return 0
+
+
+def indicator_config_list(args: list) -> int:
+    parts = []
+    if len(args) >= 1:
+        parts.append(f"concept_id={int(args[0])}")
+    if len(args) >= 2:
+        parts.append(f"iteration_id={int(args[1])}")
+    q = ("?" + "&".join(parts)) if parts else ""
+    items = fetch(f"/api/config/indicator{q}")["data"]
+    print(f"## Indicator-Configs ({len(items)})")
+    for c in items:
+        print(f"- indicator-config:{c['id']} **{c.get('name')}** · Concept {c.get('strategy_concept_id')} Iter {c.get('strategy_iteration_id')}")
+    print()
+    return 0
+
+
+def result_list(args: list) -> int:
+    f = _parse_flags(args)
+    params = {"limit": f.get("limit", 20)}
+    if f.get("run"):
+        params["run_id"] = f["run"]
+    if f.get("symbol"):
+        params["symbol"] = f["symbol"]
+    if f.get("timeframe"):
+        params["timeframe"] = f["timeframe"]
+    items = fetch(f"/api/backtest/results?{urllib.parse.urlencode(params)}")["data"]["items"]
+    print(f"## Results ({len(items)})")
+    for r in items:
+        print(f"- result:{r['id']} run:{r.get('run_id')} {r.get('symbol')} — "
+              f"Ret {num(r.get('total_return_pct'))}% / Sharpe {num(r.get('sharpe_ratio'))} / "
+              f"DD {num(r.get('max_drawdown_pct'))}% / {r.get('total_trades')} Trades")
+    print()
+    return 0
+
+
+def testset_list(args: list) -> int:
+    items = fetch("/api/testsets")["data"]
+    print(f"## Testsets ({len(items)})")
+    for t in items:
+        n = len(t.get("backtest_config_ids") or [])
+        print(f"- testset:{t['id']} **{t.get('name')}** · {n} Backtest-Configs")
+    print()
+    return 0
+
+
+def leaderboard_list(args: list) -> int:
+    qs = f"?testset_id={int(args[0])}" if args else ""
+    items = fetch(f"/api/leaderboard{qs}")["data"]["items"]
+    print(f"## Leaderboard ({len(items)})")
+    for e in items:
+        print(f"- leaderboard:{e['id']} {e.get('testset_name') or ''} {e.get('strategy_family')} {e.get('strategy_name')} — "
+              f"Ø Ret {num(e.get('total_return_avg'))}% / Sharpe {num(e.get('sharpe_avg'))} / "
+              f"{e.get('configs_win')}W-{e.get('configs_loss')}L")
+    print()
+    return 0
+
+
+def symbol_list(args: list) -> int:
+    if len(args) < 2:
+        raise ValueError("symbol-list braucht <exchange> <timeframe> (z.B. symbol-list binance 4h)")
+    exchange, timeframe = args[0], args[1]
+    qs = urllib.parse.urlencode({"exchange": exchange, "timeframe": timeframe})
+    d = fetch(f"/api/config/symbols?{qs}")["data"]
+    syms = d.get("symbols") or []
+    print(f"## Symbole {exchange}/{timeframe} ({len(syms)}) — Datei {d.get('file')}, vorhanden {d.get('exists')}")
+    if syms:
+        print(", ".join(syms))
+    print()
+    return 0
+
+
+def run_parameter_ranking(args: list) -> int:
+    if not args:
+        raise ValueError("run-parameter-ranking braucht <run_id> [metric]")
+    run_id = int(args[0])
+    metric = args[1] if len(args) > 1 else "sharpe_ratio"
+    d = fetch(f"/api/backtest/runs/{run_id}/analyse/parameter-ranking?metric={urllib.parse.quote(metric)}")
+    print(f"## Parameter-Ranking Run {run_id} — {d.get('metric_label', metric)}")
+    for pname, vals in (d.get("parameters") or {}).items():
+        print(f"- **{pname}**:")
+        for v in vals[:10]:
+            print(f"  - {v.get('value')}: Ø {num(v.get('avg'), '{:.4f}')} "
+                  f"(min {num(v.get('min'), '{:.4f}')} / max {num(v.get('max'), '{:.4f}')}, n {v.get('count')})")
+    print()
+    return 0
+
+
+def run_top_results(args: list) -> int:
+    if not args:
+        raise ValueError("run-top-results braucht <run_id> [metric] [limit] [direction]")
+    run_id = int(args[0])
+    metric = args[1] if len(args) > 1 else "sharpe_ratio"
+    limit = args[2] if len(args) > 2 else "20"
+    direction = args[3] if len(args) > 3 else "desc"
+    qs = urllib.parse.urlencode({"metric": metric, "limit": limit, "direction": direction})
+    d = fetch(f"/api/backtest/runs/{run_id}/analyse/top-results?{qs}")
+    results = d.get("results") or []
+    print(f"## Top-Results Run {run_id} — {d.get('metric_label', metric)} {direction} ({len(results)})")
+    for r in results:
+        params = r.get("actual_params") or {}
+        pstr = ", ".join(f"{k}={v}" for k, v in params.items()) if isinstance(params, dict) else ""
+        print(f"- result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
+              f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
+              f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
+        if pstr:
+            print(f"  - {pstr}")
+    print()
+    return 0
+
+
+def run_winrate_band_best(args: list) -> int:
+    """Bestes Total Return im oberen Win-Rate-Band eines Runs.
+
+    Nimmt die höchste Win-Rate des Runs, zieht <band_pp> Prozentpunkte ab und
+    wählt aus allen Results im Band [max-band_pp, max] die mit dem höchsten
+    Total Return (Top <limit>). Löst das Zwei-Metrik-Selektionskriterium
+    serverseitig (kein Client-Loop): max-Winrate via analyse/top-results,
+    Band-Filter + Return-Sortierung via results/dt (win_rate_pct_min).
+    """
+    if not args:
+        raise ValueError("run-winrate-band-best braucht <run_id> [band_pp=20] [limit=1]")
+    run_id = int(args[0])
+    band = float(args[1]) if len(args) > 1 else 20.0
+    limit = int(args[2]) if len(args) > 2 else 1
+    # 1. Höchste Win-Rate des Runs
+    d = fetch(f"/api/backtest/runs/{run_id}/analyse/top-results?metric=win_rate_pct&limit=1&direction=desc")
+    top = d.get("results") or []
+    if not top or top[0].get("win_rate_pct") is None:
+        print(f"## run-winrate-band-best Run {run_id}: keine Win-Rate-Results\n")
+        return 0
+    max_wr = top[0]["win_rate_pct"]
+    threshold = max_wr - band
+    # 2. Im Band, sortiert nach Total Return (Spalten-Index 19 = total_return_pct)
+    qs = urllib.parse.urlencode({
+        "run_id": run_id, "win_rate_pct_min": threshold,
+        "order[0][column]": 19, "order[0][dir]": "desc",
+        "start": 0, "length": limit, "draw": 1,
+    })
+    dd = fetch(f"/api/backtest/results/dt?{qs}")
+    rows = dd.get("data") or []
+    n_band = dd.get("recordsFiltered")
+    print(f"## Winrate-Band-Best Run {run_id} — Band WinR {num(threshold)}%..{num(max_wr)}% "
+          f"(max - {num(band)} pp, {n_band} Results im Band), Top {limit} nach Total Return")
+    for r in rows:
+        params = r.get("actual_params") or {}
+        pstr = ", ".join(f"{k}={v}" for k, v in params.items()) if isinstance(params, dict) else ""
+        print(f"- result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
+              f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
+              f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
+        if pstr:
+            print(f"  - {pstr}")
+    print()
+    return 0
+
+
+# Spalten-Index im /results/dt-Endpoint (Sortier-Parameter order[0][column])
+_DT_SORT_IDX = {
+    "sharpe_ratio": 13, "max_drawdown_pct": 15, "total_trades": 16,
+    "win_rate_pct": 17, "profit_factor": 18, "total_return_pct": 19,
+}
+_METRIC_LABEL = {
+    "total_return_pct": "Total Return", "win_rate_pct": "Win Rate",
+    "sharpe_ratio": "Sharpe", "profit_factor": "Profit Factor",
+    "max_drawdown_pct": "Max Drawdown", "total_trades": "Trades",
+}
+
+
+def run_best(args: list) -> int:
+    """Bester Result eines Runs nach <metrik>, gefiltert auf >= min_trades.
+
+    Einfaches Regelwerk gegen Low-Trade-Flukes: erst alle Results mit
+    mindestens <min_trades> Trades, davon der höchste Wert der Metrik.
+    Filter (total_trades_min) + Sortierung laufen serverseitig über
+    /api/backtest/results/dt. Default-Floor 30 Trades.
+    """
+    if len(args) < 2:
+        raise ValueError("run-best braucht <run_id> <metrik> [min_trades=30] [limit=1]")
+    run_id = int(args[0])
+    metric = args[1]
+    if metric not in _DT_SORT_IDX:
+        raise ValueError(f"Unbekannte Metrik {metric!r}. Erlaubt: {', '.join(_DT_SORT_IDX)}")
+    min_trades = int(args[2]) if len(args) > 2 else 30
+    limit = int(args[3]) if len(args) > 3 else 1
+    qs = urllib.parse.urlencode({
+        "run_id": run_id, "total_trades_min": min_trades,
+        "order[0][column]": _DT_SORT_IDX[metric], "order[0][dir]": "desc",
+        "start": 0, "length": limit, "draw": 1,
+    })
+    dd = fetch(f"/api/backtest/results/dt?{qs}")
+    rows = dd.get("data") or []
+    n = dd.get("recordsFiltered")
+    print(f"## Best Run {run_id} — {_METRIC_LABEL[metric]} desc, min {min_trades} Trades "
+          f"({n} Results >= {min_trades} Trades), Top {limit}")
+    for r in rows:
+        params = r.get("actual_params") or {}
+        pstr = ", ".join(f"{k}={v}" for k, v in params.items()) if isinstance(params, dict) else ""
+        print(f"- result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
+              f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
+              f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
+        if pstr:
+            print(f"  - {pstr}")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Anlegen (create). Erzeugen jeweils ein neues Objekt per POST. Komplexe
+# Payloads (spec_json, config_json, volle Backtest-Config) per --file als
+# JSON-Datei. KEIN stiller Konverter, kein Fallback: das spec_json/config_json
+# wird unverändert durchgereicht und scheitert beim Lauf laut, wenn falsch
+# geformt. Funktionsname: <bereich>_create.
+# ---------------------------------------------------------------------------
+
+def concept_create(args: list) -> int:
+    f = _parse_flags(args)
+    body = {"slug": _require(f, "slug", "concept-create"), "name": _require(f, "name", "concept-create")}
+    for key in ("category", "description", "status"):
+        if f.get(key):
+            body[key] = f[key]
+    d = post("/api/strategy/concepts", body)["data"]
+    print(f"## Erstellt: Concept **{d['id']}** ({d.get('name')}, {d.get('slug')})\n")
+    return 0
+
+
+def iteration_create(args: list) -> int:
+    f = _parse_flags(args)
+    concept_id = int(_require(f, "concept", "iteration-create"))
+    spec = _read_json_file(_require(f, "file", "iteration-create"))
+    body = {"concept_id": concept_id, "spec_json": spec, "type": f.get("type", "generic")}
+    if f.get("name"):
+        body["version_name"] = f["name"]
+    if f.get("import-path"):
+        body["import_path"] = f["import-path"]
+    if f.get("parent"):
+        body["parent_iteration_id"] = int(f["parent"])
+    if f.get("description"):
+        body["description"] = f["description"]
+    d = post("/api/strategy/iterations", body)["data"]
+    nm = d.get("version_name") or ""
+    print(f"## Erstellt: Iteration **{d['id']}** (v{d.get('version')} {nm}, Concept {d.get('concept_id')})\n")
+    return 0
+
+
+def indicator_config_create(args: list) -> int:
+    f = _parse_flags(args)
+    name = _require(f, "name", "indicator-config-create")
+    config_json = _read_json_file(_require(f, "file", "indicator-config-create"))
+    body = {"name": name, "config_json": config_json}
+    if f.get("concept"):
+        body["strategy_concept_id"] = int(f["concept"])
+    if f.get("iteration"):
+        body["strategy_iteration_id"] = int(f["iteration"])
+    if f.get("description"):
+        body["description"] = f["description"]
+    d = post("/api/config/indicator", body)["data"]
+    print(f"## Erstellt: Indicator-Config **{d['id']}** ({d.get('name')})\n")
+    return 0
+
+
+def backtest_config_create(args: list) -> int:
+    f = _parse_flags(args)
+    body = _read_json_file(_require(f, "file", "backtest-config-create"))
+    d = post("/api/config/backtest", body)["data"]
+    print(f"## Erstellt: Backtest-Config **{d['id']}** ({d.get('name')})\n")
+    return 0
+
+
+def testset_create(args: list) -> int:
+    f = _parse_flags(args)
+    name = _require(f, "name", "testset-create")
+    raw = _require(f, "configs", "testset-create")
+    ids = [int(x) for x in str(raw).split(",") if x.strip()]
+    body = {"name": name, "backtest_config_ids": ids}
+    if f.get("description"):
+        body["description"] = f["description"]
+    d = post("/api/testsets", body)["data"]
+    print(f"## Erstellt: Testset **{d['id']}** ({d.get('name')}, {len(ids)} Backtest-Configs)\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Ausführen (start). Stoßen einen Lauf an. ID-basiert, keine Payload-Datei.
+# Funktionsname: <bereich>_start.
+# ---------------------------------------------------------------------------
+
+def backtest_run_start(args: list) -> int:
+    f = _parse_flags(args)
+    body = {
+        "backtest_config_id": int(_require(f, "backtest-config", "backtest-run-start")),
+        "indicator_config_id": int(_require(f, "indicator-config", "backtest-run-start")),
+        "iteration_id": int(_require(f, "iteration", "backtest-run-start")),
+    }
+    d = post("/api/backtest/start", body)["data"]
+    print(f"## Gestartet: Backtest-Run **{d['run_id']}** "
+          f"(backtest-config {body['backtest_config_id']}, indicator-config {body['indicator_config_id']}, iteration {body['iteration_id']})\n")
+    return 0
+
+
+def testset_run_start(args: list) -> int:
+    f = _parse_flags(args)
+    body = {
+        "testset_id": int(_require(f, "testset", "testset-run-start")),
+        "iteration_id": int(_require(f, "iteration", "testset-run-start")),
+        "indicator_config_id": int(_require(f, "indicator-config", "testset-run-start")),
+    }
+    d = post("/api/testset-runs", body)["data"]
+    run_ids = d.get("run_ids", [])
+    print(f"## Gestartet: Testset-Run **{d['testset_run_id']}** — {len(run_ids)} Runs "
+          f"({', '.join(str(x) for x in run_ids)})\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Ändern / Löschen / Aktionen / restliche Reads. Damit deckt die Toolbox JEDE
+# operative API-Route ab. Einfache Fälle laufen über eine deklarative Tabelle
+# (TABLE_VERBS) mit generischem Executor; Bodies aus mehreren Skalar-Flags haben
+# eigene kleine Handler. Der generische `api`-Befehl erreicht zusätzlich jede
+# beliebige (auch künftige) Route direkt.
+# ---------------------------------------------------------------------------
+
+def _print_data(verb: str, resp) -> None:
+    """Druckt die Antwort einer Route als kompakten JSON-Block."""
+    payload = resp.get("data", resp) if isinstance(resp, dict) else resp
+    print(f"## {verb}")
+    print("```json")
+    print(json.dumps(payload, ensure_ascii=False, indent=2)[:4000])
+    print("```\n")
+
+
+def _run_table_verb(verb: str, spec: tuple, args: list) -> int:
+    """Generischer Executor für TABLE_VERBS.
+
+    spec = (method, path_template, n_path_args, body_mode, use_query)
+      - path_template nutzt '{}' für (max. 1) Pfad-Argument (aus --id oder erstem Positional)
+      - body_mode: None | 'file' (--file = JSON-Body) | 'ids' (--ids 1,2,3 -> {ids:[...]})
+      - use_query: True -> übrige --flags werden als Query-String angehängt
+    """
+    method, path_tmpl, n_path, body_mode, use_query = spec
+    f = _parse_flags(args)
+    pos = f.get("_positional", [])
+    fmt_args = []
+    if n_path:
+        val = f.get("id")
+        if val is None and pos:
+            val = pos[0]
+        if val is None:
+            raise ValueError(f"{verb}: ID fehlt (--id <n> oder als erstes Argument)")
+        fmt_args.append(val)
+    path = path_tmpl.format(*fmt_args)
+
+    if use_query:
+        q = {}
+        for k, v in f.items():
+            if k in ("file", "id", "ids", "_positional"):
+                continue
+            q[k] = "true" if v is True else v
+        if q:
+            path += ("&" if "?" in path else "?") + urllib.parse.urlencode(q)
+
+    body = None
+    if body_mode == "file":
+        body = _read_json_file(_require(f, "file", verb))
+    elif body_mode == "ids":
+        raw = f.get("ids") or (pos[0] if pos else None)
+        if not raw:
+            raise ValueError(f"{verb}: --ids 1,2,3 fehlt")
+        body = {"ids": [int(x) for x in str(raw).split(",") if x.strip()]}
+
+    resp = request(method, path, body)
+    if method == "GET":
+        _print_data(verb, resp)
+    else:
+        payload = resp.get("data", resp) if isinstance(resp, dict) else resp
+        print(f"## {verb}: OK — {json.dumps(payload, ensure_ascii=False)[:300]}\n")
+    return 0
+
+
+def api_call(args: list) -> int:
+    """Generischer Direktaufruf: api <METHOD> <pfad> [--file body.json].
+
+    Erreicht JEDE Route — auch solche ohne eigenes Verb und künftige.
+    """
+    if len(args) < 2:
+        raise ValueError("api braucht <METHOD> <pfad> (z.B. api GET /api/backtest/runs)")
+    method = args[0].upper()
+    path = args[1]
+    if not path.startswith("/"):
+        path = "/" + path
+    f = _parse_flags(args[2:])
+    body = _read_json_file(f["file"]) if f.get("file") else None
+    resp = request(method, path, body)
+    _print_data(f"api {method} {path}", resp)
+    return 0
+
+
+# Flag-Body-Handler: Bodies aus mehreren Skalar-Flags (kein --file).
+
+def walk_forward_start(args: list) -> int:
+    f = _parse_flags(args)
+    body = {"result_id": int(_require(f, "result", "walk-forward-start"))}
+    if f.get("months"):
+        body["months"] = int(f["months"])
+    if f.get("metric"):
+        body["metric"] = f["metric"]
+    d = post("/api/backtest/walk-forward", body)["data"]
+    print(f"## Gestartet: Walk-Forward-Run **{d['run_id']}** "
+          f"(aus Result {d.get('parent_result_id')}, {d.get('start')} → {d.get('end')})\n")
+    return 0
+
+
+def run_remarks_set(args: list) -> int:
+    f = _parse_flags(args)
+    pos = f.get("_positional", [])
+    rid = f.get("id") or (pos[0] if pos else None)
+    if not rid:
+        raise ValueError("run-remarks: ID fehlt (--id <n> oder erstes Argument)")
+    text = _require(f, "text", "run-remarks")
+    request("PUT", f"/api/backtest/runs/{int(rid)}/remarks", {"remarks": text})
+    print(f"## run-remarks: OK — Run {int(rid)} Bemerkung gesetzt\n")
+    return 0
+
+
+def data_update(args: list) -> int:
+    f = _parse_flags(args)
+    body = {"exchange": f.get("exchange", "binance"), "timeframe": _require(f, "timeframe", "data-update")}
+    d = post("/api/config/data/update", body)["data"]
+    print(f"## data-update: OK — Job {d.get('id')} (rq {d.get('rq_job_id')})\n")
+    return 0
+
+
+def data_delete_symbol(args: list) -> int:
+    f = _parse_flags(args)
+    body = {
+        "exchange": f.get("exchange", "binance"),
+        "timeframe": _require(f, "timeframe", "data-delete-symbol"),
+        "symbol": _require(f, "symbol", "data-delete-symbol"),
+    }
+    d = request("POST", "/api/config/data/delete-symbol", body).get("data", {})
+    print(f"## data-delete-symbol: OK — {d}\n")
+    return 0
+
+
+# Deklarative Tabelle: verb -> (METHOD, pfad_template, n_pfad_args, body_mode, use_query)
+TABLE_VERBS = {
+    # Ändern (PUT, voller Body per --file)
+    "concept-update": ("PUT", "/api/strategy/concepts/{}", 1, "file", False),
+    "iteration-update": ("PUT", "/api/strategy/iterations/{}", 1, "file", False),
+    "backtest-config-update": ("PUT", "/api/config/backtest/{}", 1, "file", False),
+    "indicator-config-update": ("PUT", "/api/config/indicator/{}", 1, "file", False),
+    "strategy-config-update": ("PUT", "/api/config/strategy/{}", 1, "file", False),
+    "testset-update": ("PUT", "/api/testsets/{}", 1, "file", False),
+    "playground-setup-update": ("PUT", "/api/chart-playground/setups/{}", 1, "file", False),
+    # Löschen (DELETE). concept/iteration unterstützen --force und --delete_vault.
+    "concept-delete": ("DELETE", "/api/strategy/concepts/{}", 1, None, True),
+    "iteration-delete": ("DELETE", "/api/strategy/iterations/{}", 1, None, True),
+    "backtest-config-delete": ("DELETE", "/api/config/backtest/{}", 1, None, False),
+    "indicator-config-delete": ("DELETE", "/api/config/indicator/{}", 1, None, False),
+    "strategy-config-delete": ("DELETE", "/api/config/strategy/{}", 1, None, False),
+    "result-delete": ("DELETE", "/api/backtest/results/{}", 1, None, False),
+    "result-delete-all": ("DELETE", "/api/backtest/results", 0, None, False),
+    "run-delete": ("DELETE", "/api/backtest/runs/{}", 1, None, False),
+    "run-delete-all": ("DELETE", "/api/backtest/runs", 0, None, False),
+    "testset-delete": ("DELETE", "/api/testsets/{}", 1, None, False),
+    "leaderboard-delete": ("DELETE", "/api/leaderboard/{}", 1, None, False),
+    "playground-setup-delete": ("DELETE", "/api/chart-playground/setups/{}", 1, None, False),
+    "knowledge-reset": ("DELETE", "/api/knowledge/reset", 0, None, False),
+    # Sammellöschen (POST, --ids 1,2,3)
+    "indicator-config-bulk-delete": ("POST", "/api/config/indicator/bulk-delete", 0, "ids", False),
+    "result-bulk-delete": ("POST", "/api/backtest/results/bulk-delete", 0, "ids", False),
+    "run-bulk-delete": ("POST", "/api/backtest/runs/bulk-delete", 0, "ids", False),
+    "playground-setup-bulk-delete": ("POST", "/api/chart-playground/setups/bulk-delete", 0, "ids", False),
+    # Aktionen / Toggles (POST, kein Body)
+    "indicator-config-generate-labels": ("POST", "/api/config/indicator/{}/generate-labels", 1, None, False),
+    "iteration-favorite": ("POST", "/api/strategy/iterations/{}/favorite", 1, None, False),
+    "iteration-doc-favorite": ("POST", "/api/strategy/iterations/{}/doc_favorite", 1, None, False),
+    "result-favorite": ("POST", "/api/backtest/results/{}/favorite", 1, None, False),
+    "result-doc-favorite": ("POST", "/api/backtest/results/{}/doc_favorite", 1, None, False),
+    "concept-vault-create": ("POST", "/api/strategy/concepts/{}/vault-create", 1, None, False),
+    "iteration-vault-create": ("POST", "/api/strategy/iterations/{}/vault-create", 1, None, False),
+    "run-restart": ("POST", "/api/backtest/runs/{}/restart", 1, None, False),
+    "result-full-metrics": ("POST", "/api/backtest/results/{}/full-metrics", 1, None, False),
+    "run-analyse-start": ("POST", "/api/backtest/runs/{}/analyse/start", 1, None, False),
+    "run-analyse-stop": ("POST", "/api/backtest/runs/{}/analyse/stop", 1, None, False),
+    "run-analyse-reset": ("POST", "/api/backtest/runs/{}/analyse/reset", 1, None, False),
+    "playground-setup-from-result": ("POST", "/api/chart-playground/setups/from-result/{}", 1, None, False),
+    # Anlegen (POST, voller Body per --file)
+    "strategy-config-create": ("POST", "/api/config/strategy", 0, "file", False),
+    "data-download": ("POST", "/api/config/data/download", 0, "file", False),
+    "playground-setup-create": ("POST", "/api/chart-playground/setups", 0, "file", False),
+    "playground-compute": ("POST", "/api/chart-playground/compute", 0, "file", False),
+    "playground-run-backtest": ("POST", "/api/chart-playground/run-backtest", 0, "file", False),
+    "playground-run-backtest-lite": ("POST", "/api/chart-playground/run-backtest-lite", 0, "file", False),
+    "knowledge-reindex": ("POST", "/api/knowledge/reindex", 0, None, False),
+    # Lesen (GET)
+    "strategy-config-list": ("GET", "/api/config/strategy", 0, None, False),
+    "data-files-list": ("GET", "/api/config/data/files", 0, None, False),
+    "data-jobs-list": ("GET", "/api/config/data/jobs", 0, None, True),
+    "filters-list": ("GET", "/api/backtest/filters", 0, None, False),
+    "run-results": ("GET", "/api/backtest/runs/{}/results", 1, None, True),
+    "result-stats": ("GET", "/api/backtest/results/{}/stats", 1, None, False),
+    "result-trades": ("GET", "/api/backtest/results/{}/trades", 1, None, False),
+    "result-orders": ("GET", "/api/backtest/results/{}/orders", 1, None, False),
+    "result-positions": ("GET", "/api/backtest/results/{}/positions", 1, None, False),
+    "result-ohlcv": ("GET", "/api/backtest/results/{}/ohlcv", 1, None, False),
+    "result-chart-data": ("GET", "/api/backtest/results/{}/chart-data", 1, None, False),
+    "result-metrics-level": ("GET", "/api/backtest/results/{}/metrics-level", 1, None, False),
+    "run-summary": ("GET", "/api/backtest/runs/{}/analyse/summary", 1, None, False),
+    "run-distribution": ("GET", "/api/backtest/runs/{}/analyse/distribution", 1, None, False),
+    "run-equity-overview": ("GET", "/api/backtest/runs/{}/analyse/equity-overview", 1, None, True),
+    "run-heatmap": ("GET", "/api/backtest/runs/{}/analyse/heatmap", 1, None, True),
+    "run-analyse-progress": ("GET", "/api/backtest/runs/{}/analyse/progress", 1, None, False),
+    "knowledge-runs-list": ("GET", "/api/knowledge/runs", 0, None, False),
+    "knowledge-run": ("GET", "/api/knowledge/runs/{}", 1, None, False),
+    "knowledge-stats": ("GET", "/api/knowledge/stats", 0, None, False),
+    "playground-sources": ("GET", "/api/chart-playground/sources", 0, None, False),
+    "playground-ohlcv": ("GET", "/api/chart-playground/ohlcv", 0, None, True),
+    "playground-indicators": ("GET", "/api/chart-playground/indicators", 0, None, False),
+    "playground-setup-list": ("GET", "/api/chart-playground/setups", 0, None, False),
+}
+
+
+# Einzel-Verben mit eigener Argument-Form (Liste/Create/Start). Erstes CLI-Argument.
+SINGLE_VERBS = {
+    "api": api_call,
+    "walk-forward-start": walk_forward_start,
+    "run-remarks": run_remarks_set,
+    "data-update": data_update,
+    "data-delete-symbol": data_delete_symbol,
+    "concept-list": concept_list,
+    "iteration-list": iteration_list,
+    "backtest-config-list": backtest_config_list,
+    "indicator-config-list": indicator_config_list,
+    "result-list": result_list,
+    "testset-list": testset_list,
+    "leaderboard-list": leaderboard_list,
+    "symbol-list": symbol_list,
+    "run-parameter-ranking": run_parameter_ranking,
+    "run-top-results": run_top_results,
+    "run-winrate-band-best": run_winrate_band_best,
+    "run-best": run_best,
+    "concept-create": concept_create,
+    "iteration-create": iteration_create,
+    "indicator-config-create": indicator_config_create,
+    "backtest-config-create": backtest_config_create,
+    "testset-create": testset_create,
+    "backtest-run-start": backtest_run_start,
+    "testset-run-start": testset_run_start,
+}
+
+
+HANDLERS = {
+    "concept": concept_read,
+    "iteration": iteration_read,
+    "indicator-config": indicator_config_read,
+    "backtest-config": backtest_config_read,
+    "strategy-config": strategy_config_read,
+    "result": result_read,
+    "run": run_read,
+    "testset": testset_read,
+    "leaderboard": leaderboard_read,
+    "playground-setup": playground_setup_read,
+    "knowledge": knowledge_search,
+    "vault": vault_list,
+}
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+
+    # Einzel-Verben (Liste/Create/Start): erstes Argument ist das Verb, jedes Verb
+    # parst seine eigene Argument-Form. Zentrale Fehlerbehandlung inkl. Server-Body.
+    verb = args[0].lower()
+    if verb in SINGLE_VERBS:
+        try:
+            return SINGLE_VERBS[verb](args[1:])
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="replace")
+            print(f"## {verb} — HTTP {e.code} {e.reason}\n{body}\n")
+            return 1
+        except (ValueError, FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"## {verb} — {e}\n")
+            return 1
+        except Exception as e:
+            print(f"## {verb} — Fehler: {e}\n")
+            return 1
+
+    # Tabellen-Verben (Ändern/Löschen/Aktionen/restliche Reads): generischer Executor.
+    if verb in TABLE_VERBS:
+        try:
+            return _run_table_verb(verb, TABLE_VERBS[verb], args[1:])
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="replace")
+            print(f"## {verb} — HTTP {e.code} {e.reason}\n{body}\n")
+            return 1
+        except (ValueError, FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"## {verb} — {e}\n")
+            return 1
+        except Exception as e:
+            print(f"## {verb} — Fehler: {e}\n")
+            return 1
+
+    # Verb-Modi: erstes Argument ist "copy" oder "create-indicator-config", Rest sind Ziel-IDs
+    mode = "read"
+    if args[0].lower() == "copy":
+        mode = "copy"
+        args = args[1:]
+        if not args:
+            print("## copy: keine Ziel-IDs angegeben (z.B. `copy iteration:2 backtest-config:553`)\n")
+            return 2
+    elif args[0].lower() == "create-indicator-config":
+        mode = "create-indicator-config"
+        args = args[1:]
+        if not args:
+            print("## create-indicator-config: keine Result-IDs angegeben (z.B. `create-indicator-config result:2706026:Sharpe`)\n")
+            return 2
+    if mode == "copy":
+        print(f"# Kopier-Aktion (Ziel: {BASE})\n")
+    elif mode == "create-indicator-config":
+        print(f"# IndicatorConfig aus Result erstellen (Ziel: {BASE})\n")
+    else:
+        print(f"# Briefing (Quelle: {BASE})\n")
+    rc = 0
+    for a in args:
+        if mode == "create-indicator-config":
+            rid, seg = _parse_result_segment_arg(a)
+            if not rid:
+                print(f"## Konnte nicht parsen: `{a}` (erwartet result:ID oder result:ID:Segment)\n")
+                rc = 1
+                continue
+            try:
+                indicator_config_create_from_result(rid, seg)
+            except urllib.error.HTTPError as e:
+                print(f"## result:{rid} — HTTP {e.code} {e.reason}\n")
+                rc = 1
+            except Exception as e:
+                print(f"## result:{rid} — Fehler: {e}\n")
+                rc = 1
+            continue
+        t, val = parse_arg(a)
+        if not t:
+            print(f"## Konnte nicht parsen: `{a}`\n")
+            rc = 1
+            continue
+        if mode == "copy":
+            handler = COPY_HANDLERS.get(t)
+            if not handler:
+                print(f"## copy {t}:{val} — nicht kopierbar (kein Copy-Endpoint; kopierbar: iteration, backtest-config, indicator-config)\n")
+                rc = 1
+                continue
+        else:
+            handler = HANDLERS[t]
+        try:
+            handler(val)
+        except urllib.error.HTTPError as e:
+            print(f"## {t}:{val} — HTTP {e.code} {e.reason}\n")
+            rc = 1
+        except Exception as e:
+            print(f"## {t}:{val} — Fehler: {e}\n")
+            rc = 1
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

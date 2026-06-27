@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Run #{{ run.id }} - {{ run.strategy_name }} - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <div class="page-pretitle">
+          <a href="/backtest/runs" class="text-muted">Backtests</a> /
+          Run #{{ run.id }}
+        </div>
+        <h2 class="page-title">
+          <span class="badge bg-purple-lt me-2">{{ run.strategy_family }}</span>
+          {{ run.strategy_name }}
+          <span class="badge bg-azure-lt ms-2">{{ run.symbol }}</span>
+          <span class="badge bg-green-lt ms-1">{{ run.timeframe }}</span>
+        </h2>
+      </div>
+      <div class="col-auto ms-auto">
+        <span class="text-secondary">
+          {{ run.start_date.strftime('%d.%m.%Y') }} — {{ run.end_date.strftime('%d.%m.%Y') }}
+          | {{ run.n_combinations }} Kombinationen
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Results (<span id="results-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <div class="input-group input-group-sm" style="width: 220px;">
+        <span class="input-group-text">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="text" id="results-search" class="form-control" placeholder="Suchen..." autocomplete="off">
+        <button id="results-search-clear" class="btn btn-sm btn-ghost-secondary d-none" type="button" style="position:absolute;right:0;top:0;bottom:0;z-index:5;border:0;padding:0 .5rem;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="results-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="text-nowrap">Parameter</th>
+            <th class="text-nowrap">TP</th>
+            <th class="text-nowrap">SL</th>
+            <th class="text-nowrap">Sharpe</th>
+            <th class="text-nowrap">Sortino</th>
+            <th class="text-nowrap">Max DD %</th>
+            <th class="text-nowrap">Trades</th>
+            <th class="text-nowrap">Win Rate %</th>
+            <th class="text-nowrap">Profit Factor</th>
+            <th class="text-nowrap">Expectancy</th>
+            <th class="text-nowrap">Return %</th>
+            <th class="text-nowrap">Final Value</th>
+            <th class="text-nowrap">Calmar</th>
+            <th class="text-nowrap">Omega</th>
+            <th class="text-nowrap">Speichern</th>
+            <th class="w-1"></th>
+            <th class="w-1"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmtNum(val, decimals) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  return parseFloat(val).toFixed(decimals || 2);
+}
+
+function fmtColor(val, decimals) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  var n = parseFloat(val);
+  var cls = n >= 0 ? "val-pos" : "val-neg";
+  return '<span class="' + cls + '">' + n.toFixed(decimals || 2) + '</span>';
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  var table = new DataTable("#results-table", {
+    ajax: {
+      url: "/api/backtest/runs/{{ run.id }}/results?limit=10000",
+      dataSrc: function(json) {
+        document.getElementById("results-total").textContent = json.data.total;
+        return json.data.items;
+      }
+    },
+    columns: [
+      {
+        data: "actual_params",
+        render: function(data) {
+          if (!data) return '-';
+          var badges = [];
+          for (var key in data) {
+            if (key === 'symbol') continue;
+            var val = data[key];
+            if (typeof val === 'number') val = parseFloat(val.toFixed(4));
+            badges.push('<span class="badge bg-secondary-lt me-1">' + key + '=' + val + '</span>');
+          }
+          return badges.join('');
+        }
+      },
+      {
+        data: "tp_stop",
+        render: function(data) { return data !== null && data !== undefined ? fmtNum(data * 100) : '<span class="text-muted">-</span>'; }
+      },
+      {
+        data: "sl_stop",
+        render: function(data) { return data !== null && data !== undefined ? fmtNum(data * 100) : '<span class="text-muted">-</span>';
+        }
+      },
+      {
+        data: "sharpe_ratio",
+        render: function(data) { return fmtColor(data); }
+      },
+      {
+        data: "sortino_ratio",
+        render: function(data) { return fmtColor(data); }
+      },
+      {
+        data: "max_drawdown_pct",
+        render: function(data) {
+          if (data === null || data === undefined) return '<span class="text-muted">-</span>';
+          return '<span class="val-neg">' + parseFloat(data).toFixed(2) + '</span>';
+        }
+      },
+      {
+        data: "total_trades",
+        render: function(data) { return data !== null ? data : '-'; }
+      },
+      {
+        data: "win_rate_pct",
+        render: function(data) { return fmtNum(data); }
+      },
+      {
+        data: "profit_factor",
+        render: function(data) { return fmtColor(data); }
+      },
+      {
+        data: "expectancy",
+        render: function(data) { return fmtColor(data, 4); }
+      },
+      {
+        data: "total_return_pct",
+        render: function(data) { return fmtColor(data); }
+      },
+      {
+        data: "final_value",
+        render: function(data) { return fmtNum(data); }
+      },
+      {
+        data: "calmar_ratio",
+        render: function(data) { return fmtColor(data); }
+      },
+      {
+        data: "omega_ratio",
+        render: function(data) { return fmtNum(data); }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data) {
+          // GEÄNDERT: Ticket 42 — Playground-Button (flüchtig, kein Setup)
+          return '<a href="/backtest/results/' + data + '/chart" class="btn btn-sm btn-outline-primary">Chart</a>'
+               + ' <a href="/chart-playground?resultid=' + data + '" class="btn btn-sm btn-outline-success" title="Im Playground öffnen (flüchtig)">PG</a>';
+        }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data) {
+          return '<button class="btn btn-sm btn-outline-secondary btn-save-backtest-config" data-id="' + data + '" title="Backtest-Config speichern">BC</button>'
+               + ' <button class="btn btn-sm btn-outline-secondary btn-save-indicator-config" data-id="' + data + '" title="Indikator-Config speichern">IC</button>'
+               + ' <button class="btn btn-sm btn-outline-secondary btn-save-setup" data-id="' + data + '" title="Setup speichern">Setup</button>';
+        }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data) {
+          return '<button class="btn btn-sm btn-outline-danger btn-delete-result" data-id="' + data + '" title="Result löschen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></button>';
+        }
+      }
+    ],
+    pageLength: 25,
+    deferRender: true,
+    lengthMenu: [[10, 25, 50, 100, 250, -1], [10, 25, 50, 100, 250, "Alle"]],
+    order: [[11, "desc"]],
+    language: {
+      search: "Suche:",
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_ Einträgen",
+      infoEmpty: "Keine Einträge",
+      infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+      zeroRecords: "Keine passenden Einträge gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  /* Einzelnes Result löschen */
+  document.getElementById("results-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-delete-result");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Result #" + id + " wirklich löschen?")) return;
+    fetch("/api/backtest/results/" + id, { method: "DELETE" })
+      .then(function() { table.ajax.reload(); });
+  });
+
+  /* Speichern-Aktionen aus Result (Ticket 43) */
+  function _saveFromResult(endpoint, label, id) {
+    fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          alert('Fehler beim Speichern (' + label + '): ' + data.error);
+        } else {
+          alert(label + ' gespeichert: ' + (data.data && data.data.name ? data.data.name : 'OK'));
+        }
+      })
+      .catch(function() { alert('Netzwerkfehler beim Speichern (' + label + ').'); });
+  }
+
+  document.getElementById('results-table').addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-save-backtest-config');
+    if (btn) { _saveFromResult('config/backtest', 'Backtest-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-indicator-config');
+    if (btn) { _saveFromResult('config/indicator', 'Indikator-Config', btn.getAttribute('data-id')); return; }
+    btn = e.target.closest('.btn-save-setup');
+    if (btn) { _saveFromResult('chart-playground/setups', 'Setup', btn.getAttribute('data-id')); return; }
+  });
+
+  var searchInput = document.getElementById("results-search");
+  var clearBtn = document.getElementById("results-search-clear");
+  searchInput.addEventListener("input", function() {
+    table.search(this.value).draw();
+    document.getElementById("results-total").textContent = table.page.info().recordsDisplay;
+    clearBtn.classList.toggle("d-none", !this.value);
+  });
+  clearBtn.addEventListener("click", function() {
+    searchInput.value = "";
+    table.search("").draw();
+    document.getElementById("results-total").textContent = table.page.info().recordsDisplay;
+    clearBtn.classList.add("d-none");
+    searchInput.focus();
+  });
+});
+</script>
+{% endblock %}

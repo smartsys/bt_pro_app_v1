@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Neue Strategie' if not config else 'Strategie bearbeiten' }} - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">{{ 'Neue Strategie' if not config else 'Strategie bearbeiten: ' + config.name }}</h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/strategy-concepts" class="btn btn-outline-secondary">Abbrechen</a>
+        <button type="submit" form="config-form" class="btn btn-primary">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="config-form">
+  <input type="hidden" id="cfg-id" value="{{ config_id if config_id else '' }}">
+
+  <!-- Allgemein -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Allgemein</h3></div>
+    <div class="card-body">
+      <div class="row mb-3">
+        <div class="col-md-8">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-control" id="cfg-name" value="{{ config.name if config else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Standard-Strategie</label>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="cfg-is-default" {{ 'checked' if config and config.is_default else '' }}>
+            <label class="form-check-label" for="cfg-is-default">Als Default markieren</label>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-12">
+          <label class="form-label">Beschreibung</label>
+          <textarea class="form-control" id="cfg-description" rows="2">{{ config.description if config and config.description else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Strategie-Details -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Strategie-Details</h3></div>
+    <div class="card-body">
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Strategy Family</label>
+          <input type="text" class="form-control" id="cfg-strategy-family" value="{{ config.strategy_family if config else '' }}" required placeholder="z.B. teststrategie">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Strategy Name</label>
+          <input type="text" class="form-control" id="cfg-strategy-name" value="{{ config.strategy_name if config else '' }}" required placeholder="z.B. teststrategie_v1">
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-12">
+          <label class="form-label">Import-Pfad</label>
+          <input type="text" class="form-control" id="cfg-import-path" value="{{ config.import_path if config else '' }}" required placeholder="z.B. user_data.strategies.teststrategie.v1.teststrategie_4h_range.teststrategie_4h_range">
+        </div>
+      </div>
+    </div>
+  </div>
+
+</form>
+
+<div id="save-status" class="mt-2"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  /* Speichern */
+  document.getElementById("config-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    var id = document.getElementById("cfg-id").value;
+    var data = {
+      name: document.getElementById("cfg-name").value,
+      description: document.getElementById("cfg-description").value || null,
+      strategy_family: document.getElementById("cfg-strategy-family").value,
+      strategy_name: document.getElementById("cfg-strategy-name").value,
+      import_path: document.getElementById("cfg-import-path").value,
+      is_default: document.getElementById("cfg-is-default").checked ? 1 : 0
+    };
+
+    var url = id ? '/api/config/strategy/' + id : '/api/config/strategy';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(json) {
+      if (json.error) {
+        document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">' + json.error + '</div>';
+        return;
+      }
+      window.location.href = '/config/strategy';
+    })
+    .catch(function(err) {
+      document.getElementById("save-status").innerHTML = '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+    });
+  });
+});
+</script>
+{% endblock %}

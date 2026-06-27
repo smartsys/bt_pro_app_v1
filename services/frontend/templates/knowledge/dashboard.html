@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}Wissens-Index Übersicht - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Wissens-Index Übersicht</h2>
+        <div class="page-pretitle">Wissens-Index</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button id="btn-refresh" class="btn btn-outline-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+          Aktualisieren
+        </button>
+        <button id="btn-reindex" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M7 4v16l13 -8z"/></svg>
+          Reindex starten
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Toast-Container -->
+<div id="toast-container" style="position:fixed;top:1.5rem;right:1.5rem;z-index:9999;min-width:280px;"></div>
+
+<!-- Reihe 1: KPI-Karten -->
+<div class="row row-deck row-cards mb-3">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Chunks gesamt</div>
+        <div class="h1 mb-0" id="kpi-chunk-count">–</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Dateien indiziert</div>
+        <div class="h1 mb-0" id="kpi-file-count">–</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Läufe gesamt</div>
+        <div class="h1 mb-0" id="kpi-runs-total">–</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Erfolgsquote</div>
+        <div class="h1 mb-0">
+          <span id="kpi-success-rate" class="badge bg-secondary-lt fs-3 px-2 py-1">–</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Reihe 2: Index-Karte + Runs-Karte -->
+<div class="row row-deck row-cards mb-3">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title">Index-Details</h3>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5 text-secondary">Chunks / Datei (Ø)</dt>
+          <dd class="col-7 mb-2" id="idx-avg-chunks">–</dd>
+
+          <dt class="col-5 text-secondary">Index-Größe</dt>
+          <dd class="col-7 mb-2" id="idx-size">–</dd>
+
+          <dt class="col-5 text-secondary">Embedding-Dimension</dt>
+          <dd class="col-7 mb-2" id="idx-emb-dim">–</dd>
+
+          <dt class="col-5 text-secondary">Embedding-Größe (est.)</dt>
+          <dd class="col-7 mb-2" id="idx-emb-size">–</dd>
+
+          <dt class="col-5 text-secondary">Letztes Update</dt>
+          <dd class="col-7 mb-2" id="idx-last-indexed">–</dd>
+
+          <dt class="col-5 text-secondary">Ältester Eintrag</dt>
+          <dd class="col-7 mb-0" id="idx-oldest-indexed">–</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title">Lauf-Details</h3>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-6 text-secondary">Letzter Lauf</dt>
+          <dd class="col-6 mb-2" id="run-last-run">–</dd>
+
+          <dt class="col-6 text-secondary">Letzter Erfolg</dt>
+          <dd class="col-6 mb-2" id="run-last-success">–</dd>
+
+          <dt class="col-6 text-secondary">Letzter Fehler</dt>
+          <dd class="col-6 mb-2" id="run-last-failure">–</dd>
+
+          <dt class="col-6 text-secondary">Ø Dauer (letzte 10)</dt>
+          <dd class="col-6 mb-2" id="run-avg-duration">–</dd>
+
+          <dt class="col-6 text-secondary">Ø Chunks/s (letzte 10)</dt>
+          <dd class="col-6 mb-2" id="run-avg-cps">–</dd>
+
+          <dt class="col-6 text-secondary">Trigger-Verteilung</dt>
+          <dd class="col-6 mb-0" id="run-triggers">–</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Reihe 3: Top-10-Tabelle -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Top-10 Dateien nach Chunk-Anzahl</h3>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Vault-Pfad</th>
+            <th class="text-end">Chunks</th>
+          </tr>
+        </thead>
+        <tbody id="top-paths-tbody">
+          <tr><td colspan="3" class="text-center text-secondary py-3">Lade Daten…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var pollTimer = null;
+  var AUTO_REFRESH_INTERVAL = 15000;
+
+  function fmtDateDe(iso) {
+    if (!iso) return '–';
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+           ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  }
+
+  function fmtBytes(bytes) {
+    if (bytes === null || bytes === undefined) return '–';
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+  }
+
+  function showToast(msg, type) {
+    var container = document.getElementById('toast-container');
+    var div = document.createElement('div');
+    var bgClass = type === 'error' ? 'bg-danger' : 'bg-success';
+    div.className = 'alert ' + bgClass + ' text-white mb-2 shadow';
+    div.style.opacity = '1';
+    div.style.transition = 'opacity 0.5s';
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(function() {
+      div.style.opacity = '0';
+      setTimeout(function() { container.removeChild(div); }, 500);
+    }, 4000);
+  }
+
+  function setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val !== null && val !== undefined ? String(val) : '–';
+  }
+
+  function setHtml(id, html) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+
+  function renderSuccessRate(total, successCount) {
+    var el = document.getElementById('kpi-success-rate');
+    if (!el) return;
+    if (total === 0) {
+      el.className = 'badge bg-secondary-lt fs-3 px-2 py-1';
+      el.textContent = '–';
+      return;
+    }
+    var rate = (successCount / total) * 100;
+    var colorClass;
+    if (rate >= 95) {
+      colorClass = 'bg-success-lt';
+    } else if (rate >= 80) {
+      colorClass = 'bg-warning-lt';
+    } else {
+      colorClass = 'bg-danger-lt';
+    }
+    el.className = 'badge ' + colorClass + ' fs-3 px-2 py-1';
+    el.textContent = rate.toFixed(1) + ' %';
+  }
+
+  function renderTriggers(byTrigger) {
+    var parts = [];
+    ['api', 'scheduler', 'cli'].forEach(function(t) {
+      var cnt = byTrigger[t] || 0;
+      parts.push('<span class="me-2"><strong>' + cnt + '</strong> <span class="text-secondary">' + t + '</span></span>');
+    });
+    setHtml('run-triggers', parts.join(''));
+  }
+
+  function renderTopPaths(topPaths) {
+    var tbody = document.getElementById('top-paths-tbody');
+    if (!tbody) return;
+    if (!topPaths || topPaths.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary py-3">Keine Daten</td></tr>';
+      return;
+    }
+    var rows = topPaths.map(function(entry, i) {
+      var link = '/knowledge/files?q=' + encodeURIComponent(entry.vault_path);
+      return '<tr>' +
+        '<td class="text-secondary">' + (i + 1) + '</td>' +
+        '<td><a href="' + link + '" class="text-reset">' + escapeHtml(entry.vault_path) + '</a></td>' +
+        '<td class="text-end">' + entry.chunks + '</td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = rows.join('');
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function hasActiveRuns(byStatus) {
+    return (byStatus.running || 0) > 0 || (byStatus.queued || 0) > 0;
+  }
+
+  function applyStats(data) {
+    var idx = data.index;
+    var runs = data.runs;
+
+    // KPI-Karten
+    setText('kpi-chunk-count', idx.chunk_count);
+    setText('kpi-file-count', idx.file_count);
+    setText('kpi-runs-total', runs.total);
+    renderSuccessRate(runs.total, runs.by_status.success || 0);
+
+    // Index-Karte
+    setText('idx-avg-chunks', idx.avg_chunks_per_file !== null ? idx.avg_chunks_per_file : '–');
+    setText('idx-size', fmtBytes(idx.vault_size_bytes));
+    setText('idx-emb-dim', idx.embedding_dim);
+    setText('idx-emb-size', idx.embedding_size_bytes_est !== null ? fmtBytes(idx.embedding_size_bytes_est) : '–');
+    setText('idx-last-indexed', fmtDateDe(idx.last_indexed_at));
+    setText('idx-oldest-indexed', fmtDateDe(idx.oldest_indexed_at));
+
+    // Runs-Karte
+    setText('run-last-run', fmtDateDe(runs.last_run_at));
+    setText('run-last-success', fmtDateDe(runs.last_success_at));
+    setText('run-last-failure', fmtDateDe(runs.last_failure_at));
+    setText('run-avg-duration', runs.avg_duration_seconds_last_10 !== null ? runs.avg_duration_seconds_last_10.toFixed(1) + ' s' : '–');
+    setText('run-avg-cps', runs.avg_chunks_per_second_last_10 !== null ? runs.avg_chunks_per_second_last_10.toFixed(1) + ' Chunks/s' : '–');
+    renderTriggers(runs.by_trigger);
+
+    // Top-Pfade
+    renderTopPaths(data.top_paths_by_chunks);
+
+    // Auto-Refresh steuern
+    if (hasActiveRuns(runs.by_status)) {
+      startPoll();
+    } else {
+      stopPoll();
+    }
+  }
+
+  function loadStats() {
+    fetch('/api/knowledge/stats')
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(function(data) {
+        applyStats(data);
+      })
+      .catch(function(err) {
+        showToast('Fehler beim Laden der Statistiken: ' + err.message, 'error');
+      });
+  }
+
+  function startPoll() {
+    if (pollTimer !== null) return;
+    pollTimer = setInterval(loadStats, AUTO_REFRESH_INTERVAL);
+  }
+
+  function stopPoll() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // Aktualisieren-Button
+  document.getElementById('btn-refresh').addEventListener('click', function() {
+    loadStats();
+  });
+
+  // Reindex starten
+  document.getElementById('btn-reindex').addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var resp = await fetch('/api/knowledge/reindex', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+      });
+      if (!resp.ok) {
+        var err = await resp.text();
+        showToast('Fehler: ' + err, 'error');
+        return;
+      }
+      var data = await resp.json();
+      showToast('Reindex gestartet. Job-ID: ' + data.job_id, 'success');
+      // Kurze Pause damit der queued-Status in der DB ist, dann neu laden
+      setTimeout(loadStats, 500);
+    } catch (e) {
+      showToast('Netzwerkfehler: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Erste Ladung beim Seitenaufruf
+  loadStats();
+
+});
+</script>
+{% endblock %}

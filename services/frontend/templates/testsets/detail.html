@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}{% if testset %}TestSet {{ testset.name }}{% else %}Neues TestSet{% endif %} - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">{% if testset %}{{ testset.name }}{% else %}Neues TestSet{% endif %}</h2>
+
+        <div class="page-pretitle"><a href="/testsets">TestSets</a></div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        {% if testset %}<button class="btn btn-outline-danger" id="btn-delete">Löschen</button>{% endif %}
+        <a href="/testsets" class="btn btn-outline-secondary">Abbrechen</a>
+        <button class="btn btn-primary" id="btn-save">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Stammdaten</h3>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required">Name</label>
+          <input type="text" class="form-control" id="field-name" value="{{ testset.name if testset else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Beschreibung</label>
+          <textarea class="form-control" id="field-description" rows="3">{{ (testset.description if testset else '') or '' }}</textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-check form-switch">
+            <input type="checkbox" class="form-check-input" id="field-leaderboard-enabled"{% if testset and testset.leaderboard_enabled %} checked{% endif %}>
+            <span class="form-check-label">Leaderboard-Eintrag erstellen</span>
+          </label>
+          <small class="form-hint">Nur wenn aktiv, erzeugt ein abgeschlossener Lauf dieses Testsets einen Leaderboard-Eintrag.</small>
+        </div>
+        <div class="{{ 'mb-3' if testset else 'mb-0' }}">
+          <label class="form-label">Erstellt von</label>
+          <input type="text" class="form-control" id="field-created-by" value="{{ (testset.created_by if testset else '') or '' }}">
+        </div>
+        {% if testset %}
+        <div class="mb-0">
+          <label class="form-label">Erstellt am</label>
+          <div class="form-control-plaintext text-muted">{{ testset.created_at }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <h3 class="card-title mb-0">Backtest-Configs (<span id="selected-count">{{ testset.backtest_config_ids | length if testset else 0 }}</span> ausgewählt)</h3>
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary" id="btn-symbols-to-desc" title="Symbole der ausgewählten Configs in die Beschreibung schreiben">Symbole in Beschreibung übernehmen</button>
+          <select id="tf-filter" class="form-select form-select-sm" style="width: auto;" title="Nach Timeframe filtern">
+            <option value="">Alle Timeframes</option>
+            {% for tf in all_configs | map(attribute='timeframe') | unique | sort %}
+            <option value="{{ tf }}">{{ tf }}</option>
+            {% endfor %}
+          </select>
+          <div class="dt-search-input" style="width: 240px;">
+            <span class="dt-search-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+            </span>
+            <input type="search" id="configs-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+            <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="configs-search">&times;</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table id="configs-table" class="table table-vcenter card-table table-striped">
+            <thead>
+              <tr>
+                <th style="width:32px"><input type="checkbox" id="check-all" class="form-check-input m-0" title="Alle auswählen"></th>
+                <th>Name</th>
+                <th>Symbol</th>
+                <th>Timeframe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in all_configs %}
+              <tr data-id="{{ c.id }}" data-symbol="{{ c.symbol }}">
+                <td><input type="checkbox" class="form-check-input m-0 row-check" value="{{ c.id }}"{% if testset and c.id in testset.backtest_config_ids %} checked{% endif %}></td>
+                <td>{{ c.name }}</td>
+                <td>{{ c.symbol }}</td>
+                <td>{{ c.timeframe }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var testsetId = {{ testset.id if testset else 'null' }};
+
+  // Sortier-Plugin: Checkbox-Spalte nach Auswahl-Zustand sortierbar machen
+  // (ausgewählte Configs zuerst). Liest den Live-Zustand der Checkboxen.
+  if (!DataTable.ext.order['dom-checkbox']) {
+    DataTable.ext.order['dom-checkbox'] = function(settings, col) {
+      return this.api().column(col, { order: 'index' }).nodes().map(function(td) {
+        var cb = td.querySelector('input.row-check');
+        return cb && cb.checked ? '1' : '0';
+      });
+    };
+  }
+
+  var table = new DataTable('#configs-table', {
+    pageLength: 25,
+    // Ausgewählte zuerst (Spalte 0 absteigend), dann nach Name. Einmalig beim
+    // Laden — beim Anklicken springen die Zeilen nicht.
+    order: [[0, 'desc'], [1, 'asc']],
+    columnDefs: [{ targets: 0, orderable: true, orderDataType: 'dom-checkbox', searchable: false }],
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    language: { url: '/static/datatables-de.json' }
+  });
+
+  // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
+  var searchInput = document.getElementById('configs-search');
+  searchInput.addEventListener('input', function() {
+    table.search(this.value).draw();
+  });
+
+  // Timeframe-Filter (Optionen serverseitig per Jinja gerendert)
+  var tfFilter = document.getElementById('tf-filter');
+  tfFilter.addEventListener('change', function() {
+    // Exakter Spalten-Match (Regex), damit z.B. "1h" nicht "1d" trifft
+    var val = this.value ? '^' + this.value + '$' : '';
+    table.column(3).search(val, true, false).draw();
+  });
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.dt-search-clear');
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  function getSelectedRows() {
+    return Array.from(document.querySelectorAll('#configs-table .row-check:checked'));
+  }
+
+  function updateCount() {
+    document.getElementById('selected-count').textContent = getSelectedRows().length;
+  }
+  updateCount();
+
+  document.getElementById('configs-table').addEventListener('change', function(e) {
+    if (e.target.classList.contains('row-check')) updateCount();
+  });
+
+  // Klick auf die Header-Checkbox darf nicht die Spalten-Sortierung auslösen
+  document.getElementById('check-all').addEventListener('click', function(e) {
+    e.stopPropagation();
+  });
+
+  // Alle auswählen/abwählen (nur sichtbare Zeilen der aktuellen Seite)
+  document.getElementById('check-all').addEventListener('change', function() {
+    var checked = this.checked;
+    table.rows({ page: 'current' }).nodes().each(function(tr) {
+      var cb = tr.querySelector('.row-check');
+      if (cb) cb.checked = checked;
+    });
+    updateCount();
+  });
+
+  // Symbole der ausgewählten Configs in die Beschreibung übernehmen
+  document.getElementById('btn-symbols-to-desc').addEventListener('click', function() {
+    var rows = getSelectedRows();
+    if (rows.length === 0) { alert('Keine Configs ausgewählt.'); return; }
+    var symbols = Array.from(new Set(rows.map(function(cb) {
+      return cb.closest('tr').dataset.symbol;
+    }).filter(Boolean))).sort();
+    document.getElementById('field-description').value = symbols.join(', ');
+  });
+
+  // Speichern
+  document.getElementById('btn-save').addEventListener('click', function() {
+    var name = document.getElementById('field-name').value.trim();
+    var description = document.getElementById('field-description').value.trim() || null;
+    var createdBy = document.getElementById('field-created-by').value.trim() || null;
+    var leaderboardEnabled = document.getElementById('field-leaderboard-enabled').checked;
+    var ids = getSelectedRows().map(function(cb) { return parseInt(cb.value); });
+
+    if (!name) { alert('Name ist Pflichtfeld.'); return; }
+
+    // Create- vs. Edit-Modus: testsetId ist null wenn neu angelegt wird
+    var isCreate = (testsetId === null);
+    if (isCreate && ids.length === 0) { alert('Mindestens eine Backtest-Config auswählen.'); return; }
+
+    fetch(isCreate ? '/api/testsets' : '/api/testsets/' + testsetId, {
+      method: isCreate ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, description: description, backtest_config_ids: ids, created_by: createdBy, leaderboard_enabled: leaderboardEnabled })
+    }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+      .then(function(res) {
+        if (!res.ok) {
+          alert('Fehler: ' + (res.json.detail || JSON.stringify(res.json)));
+          return;
+        }
+        window.location.href = '/testsets';
+      });
+  });
+
+  // Löschen (nur im Edit-Modus vorhanden)
+  var btnDelete = document.getElementById('btn-delete');
+  if (btnDelete) {
+    btnDelete.addEventListener('click', function() {
+      if (!confirm('TestSet wirklich löschen?')) return;
+      fetch('/api/testsets/' + testsetId, { method: 'DELETE' })
+        .then(function() { window.location.href = '/testsets'; });
+    });
+  }
+})();
+</script>
+{% endblock %}

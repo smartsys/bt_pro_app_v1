@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Indicator-Configs - BT Pro{% endblock %}
+
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Indicator-Configs</h2>
+
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button id="btn-import-config" class="btn btn-outline-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 11l3 3l3 -3"/><path d="M12 4l0 10"/></svg>
+          Importieren
+        </button>
+        <a href="/config/indicator/new" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+          Neue Config
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{# Versteckter Datei-Dialog für den Config-Import #}
+<input type="file" id="config-import-file" accept=".json,application/json" style="display:none">
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Alle Configs (<span id="configs-total">...</span>)</h3>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-danger d-none" id="btn-bulk-delete">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+        <span id="bulk-delete-count">0</span> löschen
+      </button>
+      <div class="dt-search-input" style="width: 260px;">
+        <span class="dt-search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        </span>
+        <input type="search" id="configs-search" class="form-control form-control-sm" placeholder=" " autocomplete="off">
+        <button type="button" class="dt-search-clear" aria-label="Suche löschen" data-clear-for="configs-search">&times;</button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="configs-table" class="table table-vcenter card-table table-striped">
+        <thead>
+          <tr>
+            <th class="w-1"><input class="form-check-input" type="checkbox" id="select-all"></th>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Beschreibung</th>
+            <th>Konzept</th>
+            <th>Iteration</th>
+            <th class="text-center text-nowrap">Indikatoren</th>
+            <th>Erstellt</th>
+            <th style="min-width:120px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var table = new DataTable("#configs-table", {
+    ajax: {
+      url: "/api/config/indicator",
+      dataSrc: function(json) {
+        document.getElementById("configs-total").textContent = json.data.length;
+        return json.data;
+      }
+    },
+    columns: [
+      {
+        data: "id",
+        orderable: false,
+        searchable: false,
+        render: function(data) {
+          return '<input class="form-check-input row-select" type="checkbox" value="' + data + '">';
+        }
+      },
+      { data: "id" },
+      {
+        data: null,
+        render: function(data) {
+          var badge = data.is_default ? ' <span class="badge bg-green-lt ms-1">Default</span>' : '';
+          return '<strong>' + data.name + '</strong>' + badge;
+        }
+      },
+      {
+        data: "description",
+        render: function(d) { return d ? '<span class="text-secondary">' + d + '</span>' : '-'; }
+      },
+      {
+        data: "strategy_concept_name",
+        render: function(d) { return d ? '<span class="badge bg-blue-lt">' + d + '</span>' : '<span class="text-muted">-</span>'; }
+      },
+      {
+        // GEÄNDERT: Versionsnummer + Name, anklickbar — öffnet die Iteration im Bearbeitungsmodus (neues Tab)
+        data: null,
+        render: function(row) {
+          var iid = row.strategy_iteration_id;
+          var cid = row.strategy_concept_id;
+          if (!iid) { return '<span class="text-muted">-</span>'; }
+          var num = row.strategy_iteration_number;
+          var name = row.strategy_iteration_version;
+          var label = (num != null ? num : '');
+          if (name != null && name !== num) { label += (label !== '' ? ' — ' : '') + name; }
+          var badge = '<span class="badge bg-cyan-lt">' + label + '</span>';
+          if (cid) {
+            var url = '/config/strategy-concepts/' + cid + '/iterations/' + iid + '/edit';
+            return '<a href="' + url + '" target="_blank" rel="noopener" class="text-decoration-none" title="Iteration im Bearbeitungsmodus öffnen">' + badge + '</a>';
+          }
+          return badge;
+        }
+      },
+      {
+        data: "config_json",
+        className: "text-center text-nowrap",
+        render: function(d) {
+          var keys = Object.keys(d || {});
+          return keys.map(function(k) {
+            var cls = (d[k] && d[k].enabled === false) ? 'bg-danger-lt' : 'bg-success-lt';
+            return '<span class="badge ' + cls + ' me-1">' + k + '</span>';
+          }).join('');
+        }
+      },
+      {
+        data: "created_at",
+        className: "text-nowrap",
+        render: function(data) {
+          if (!data) return '-';
+          var d = new Date(data);
+          if (isNaN(d.getTime())) return data;
+          var pad = function(n) { return String(n).padStart(2, '0'); };
+          return '<span class="text-secondary">' +
+            pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() +
+            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) +
+          '</span>';
+        }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data) {
+          return '<div class="text-end text-nowrap">' +
+            '<a href="/config/indicator/' + data + '" class="btn btn-sm btn-outline-primary me-1" title="Bearbeiten"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/><path d="M16 5l3 3"/></svg></a>' +
+            '<button class="btn btn-sm btn-outline-info btn-copy me-1" data-id="' + data + '" title="Kopieren"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></svg></button>' +
+            '<button class="btn btn-sm btn-outline-secondary btn-export me-1" data-id="' + data + '" title="Als JSON-Datei exportieren"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 8l3 -3l3 3"/><path d="M12 5l0 9"/></svg></button>' +
+            '<button class="btn btn-sm btn-outline-danger btn-delete" data-id="' + data + '" title="Löschen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></button>' +
+            '</div>';
+        }
+      }
+    ],
+    pageLength: 25,
+    dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+    order: [[0, "desc"]],
+    language: {
+      search: "Suche:",
+      lengthMenu: "_MENU_ pro Seite",
+      info: "_START_ bis _END_ von _TOTAL_",
+      infoEmpty: "Keine Configs",
+      zeroRecords: "Keine Configs gefunden",
+      paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
+    }
+  });
+
+  /* Suche; X-Sichtbarkeit per CSS, Klick via Delegation */
+  var searchInput = document.getElementById("configs-search");
+  searchInput.addEventListener("input", function() {
+    table.search(this.value).draw();
+  });
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest(".dt-search-clear");
+    if (!btn) return;
+    var input = document.getElementById(btn.dataset.clearFor);
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+  });
+
+  /* Kopieren */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-copy");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    fetch('/api/config/indicator/' + id + '/copy', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.error) { alert(json.error); return; }
+        table.ajax.reload();
+      });
+  });
+
+  /* Exportieren — schreibt eine JSON-Datei in den Backup-Ordner */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-export");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    btn.disabled = true;
+    fetch('/api/config/indicator/' + id + '/export', { method: 'POST' })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+      .then(function(res) {
+        btn.disabled = false;
+        if (!res.ok || (res.json && res.json.error)) {
+          alert('Export fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+          return;
+        }
+        alert('Config exportiert nach:\n' + res.json.data.path);
+      })
+      .catch(function(err) { btn.disabled = false; alert('Fehler: ' + err); });
+  });
+
+  /* Importieren — Datei-Dialog öffnen und hochgeladene JSON anlegen */
+  document.getElementById("btn-import-config").addEventListener("click", function() {
+    document.getElementById("config-import-file").click();
+  });
+  document.getElementById("config-import-file").addEventListener("change", function() {
+    var inp = this;
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    var fd = new FormData();
+    fd.append('file', f);
+    fetch('/api/config/indicator/import', { method: 'POST', body: fd })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+      .then(function(res) {
+        if (!res.ok || (res.json && res.json.error)) {
+          alert('Import fehlgeschlagen: ' + ((res.json && (res.json.detail || res.json.error)) || ''));
+          return;
+        }
+        alert('Config "' + res.json.data.name + '" importiert.');
+        table.ajax.reload();
+      })
+      .catch(function(err) { alert('Fehler: ' + err); })
+      .finally(function() { inp.value = ''; });
+  });
+
+  /* Löschen */
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-delete");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Config #" + id + " wirklich löschen?")) return;
+    fetch('/api/config/indicator/' + id, { method: 'DELETE' })
+      .then(function() { table.ajax.reload(); updateBulkBtn(); });
+  });
+
+  /* Select-All */
+  document.getElementById("select-all").addEventListener("change", function() {
+    var checked = this.checked;
+    document.querySelectorAll(".row-select").forEach(function(cb) { cb.checked = checked; });
+    updateBulkBtn();
+  });
+
+  /* Einzelne Checkbox */
+  document.getElementById("configs-table").addEventListener("change", function(e) {
+    if (!e.target.classList.contains("row-select")) return;
+    // Select-All Zustand aktualisieren
+    var all = document.querySelectorAll(".row-select");
+    var allChecked = document.querySelectorAll(".row-select:checked");
+    document.getElementById("select-all").checked = all.length > 0 && all.length === allChecked.length;
+    updateBulkBtn();
+  });
+
+  function updateBulkBtn() {
+    var selected = document.querySelectorAll(".row-select:checked");
+    var btn = document.getElementById("btn-bulk-delete");
+    document.getElementById("bulk-delete-count").textContent = selected.length;
+    if (selected.length > 0) { btn.classList.remove("d-none"); } else { btn.classList.add("d-none"); }
+  }
+
+  /* Bulk-Delete */
+  document.getElementById("btn-bulk-delete").addEventListener("click", function() {
+    var selected = document.querySelectorAll(".row-select:checked");
+    var ids = [];
+    selected.forEach(function(cb) { ids.push(parseInt(cb.value)); });
+    if (ids.length === 0) return;
+    if (!confirm(ids.length + " Configs wirklich löschen?")) return;
+    fetch('/api/config/indicator/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        document.getElementById("select-all").checked = false;
+        updateBulkBtn();
+        table.ajax.reload();
+      });
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,766 @@
+{% extends "base.html" %}
+
+{% block title %}Backtest starten - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">        <h2 class="page-title">Backtest starten</h2>
+
+        <div class="page-pretitle">Backtesting</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+
+    <!-- GEÄNDERT: Tab-Navigation Einzel-Lauf / TestSet-Lauf (Ticket 05) -->
+    <ul class="nav nav-tabs mb-3" id="start-tabs">
+      <li class="nav-item">
+        <a class="nav-link active" id="tab-single" href="#" data-tab="single">Einzel-Lauf</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" id="tab-testset" href="#" data-tab="testset">TestSet-Lauf</a>
+      </li>
+    </ul>
+
+    <!-- ================================================================== -->
+    <!-- Panel: Einzel-Lauf                                                  -->
+    <!-- ================================================================== -->
+    <div id="panel-single">
+
+      <!-- Strategie -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Strategie</h3>
+          <div class="card-actions">
+            <a href="/config/strategy-concepts" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <!-- GEÄNDERT: Ticket 11 — zweistufiges Concept/Iteration-Dropdown -->
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Konzept</label>
+            <select class="form-select" id="sel-concept">
+              <option value="">Wird geladen...</option>
+            </select>
+          </div>
+          <div id="iteration-select-wrap">
+            <label class="form-label small mb-1">Iteration</label>
+            <select class="form-select" id="sel-iteration" disabled>
+              <option value="">-- Zuerst Konzept wählen --</option>
+            </select>
+          </div>
+          <div id="strategy-details" class="mt-3" style="display:none;">
+            <div class="text-secondary">
+              <span class="badge bg-purple-lt me-1" id="strat-concept"></span>
+              <span class="badge bg-green-lt" id="strat-iteration"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Backtest-Config -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Backtest-Config</h3>
+          <div class="card-actions">
+            <a href="/config/backtest" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <select class="form-select" id="sel-backtest-config">
+            <option value="">Wird geladen...</option>
+          </select>
+          <div id="bt-config-details" class="mt-3" style="display:none;">
+            <div class="row text-secondary">
+              <div class="col-auto"><strong>Symbol:</strong> <span id="bt-symbol"></span></div>
+              <div class="col-auto"><strong>Exchange:</strong> <span id="bt-exchange"></span></div>
+              <div class="col-auto"><strong>TF:</strong> <span id="bt-timeframe"></span></div>
+              <div class="col-auto"><strong>Zeitraum:</strong> <span id="bt-period"></span></div>
+              <div class="col-auto"><strong>Size:</strong> <span id="bt-size"></span></div>
+              <div class="col-auto"><strong>Fees:</strong> <span id="bt-fees"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Indicator-Config -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Indicator-Config</h3>
+          <div class="card-actions">
+            <a href="/config/indicator" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <select class="form-select" id="sel-indicator-config">
+            <option value="">Wird geladen...</option>
+          </select>
+          <div id="ind-config-details" class="mt-3" style="display:none;">
+            <div id="ind-indicators"></div>
+            <div class="text-secondary mt-1"><small id="ind-description"></small></div>
+            <div class="mt-2"><span id="ind-combos" class="fw-bold"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Start-Button -->
+      <div class="card">
+        <div class="card-body text-center">
+          <button id="btn-start" class="btn btn-primary btn-lg" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>
+            Backtest starten
+          </button>
+          <div id="start-status" class="mt-3"></div>
+        </div>
+      </div>
+
+    </div><!-- /panel-single -->
+
+    <!-- ================================================================== -->
+    <!-- Panel: TestSet-Lauf (GEÄNDERT: Ticket 05)                          -->
+    <!-- ================================================================== -->
+    <div id="panel-testset" style="display:none;">
+
+      <!-- Strategie (Konzept + Iteration wie Einzel-Lauf) -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Strategie</h3>
+          <div class="card-actions">
+            <a href="/config/strategy-concepts" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Konzept</label>
+            <select class="form-select" id="ts-sel-concept">
+              <option value="">Wird geladen...</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label small mb-1">Iteration</label>
+            <select class="form-select" id="ts-sel-iteration" disabled>
+              <option value="">-- Zuerst Konzept wählen --</option>
+            </select>
+          </div>
+          <div id="ts-strategy-details" class="mt-3" style="display:none;">
+            <div class="text-secondary">
+              <span class="badge bg-purple-lt me-1" id="ts-strat-concept"></span>
+              <span class="badge bg-green-lt" id="ts-strat-iteration"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TestSet -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">TestSet</h3>
+          <div class="card-actions">
+            <a href="/testsets" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <select class="form-select" id="ts-sel-testset">
+            <option value="">Wird geladen...</option>
+          </select>
+          <div id="ts-testset-details" class="mt-2 text-secondary" style="display:none;">
+            <small id="ts-testset-info"></small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Indicator-Config -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Indicator-Config</h3>
+          <div class="card-actions">
+            <a href="/config/indicator" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <select class="form-select" id="ts-sel-indicator">
+            <option value="">Wird geladen...</option>
+          </select>
+          <div id="ts-ind-config-details" class="mt-3" style="display:none;">
+            <div id="ts-ind-indicators"></div>
+            <div class="text-secondary mt-1"><small id="ts-ind-description"></small></div>
+            <div class="mt-2"><span id="ts-ind-combos" class="fw-bold"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Start-Button -->
+      <div class="card">
+        <div class="card-body text-center">
+          <button id="ts-btn-start" class="btn btn-primary btn-lg" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>
+            TestSet-Lauf starten
+          </button>
+          <div id="ts-start-status" class="mt-3"></div>
+        </div>
+      </div>
+
+    </div><!-- /panel-testset -->
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  // =========================================================================
+  // Tab-Navigation
+  // =========================================================================
+  document.querySelectorAll('#start-tabs .nav-link').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.querySelectorAll('#start-tabs .nav-link').forEach(function(l) { l.classList.remove('active'); });
+      link.classList.add('active');
+      var tab = link.getAttribute('data-tab');
+      document.getElementById('panel-single').style.display = tab === 'single' ? '' : 'none';
+      document.getElementById('panel-testset').style.display = tab === 'testset' ? '' : 'none';
+    });
+  });
+
+  // =========================================================================
+  // Einzel-Lauf
+  // =========================================================================
+  var selBt = document.getElementById("sel-backtest-config");
+  // GEÄNDERT: Ticket 11 — zweistufiges Concept/Iteration-Dropdown
+  var selConcept = document.getElementById("sel-concept");
+  var selIteration = document.getElementById("sel-iteration");
+  var selInd = document.getElementById("sel-indicator-config");
+  var btnStart = document.getElementById("btn-start");
+  var statusEl = document.getElementById("start-status");
+
+  var btConfigs = [];
+  var indConfigs = [];
+  var concepts = [];
+  var iterationsCache = {};  // concept_id -> iterations[]
+
+  /* Backtest-Configs laden */
+  fetch('/api/config/backtest')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      btConfigs = json.data;
+      // GEÄNDERT: Favoriten und übrige Configs als getrennte optgroups in der Dropdown —
+      // Favoriten oben, optischer Trenner durch die Gruppen-Labels, jeweils alphabetisch.
+      function byName(a, b) { return (a.name || '').localeCompare(b.name || ''); }
+      var favConfigs = btConfigs.filter(function(c) { return c.is_favorite; }).sort(byName);
+      var restConfigs = btConfigs.filter(function(c) { return !c.is_favorite; }).sort(byName);
+
+      function optHtml(c) {
+        var label = c.name + ' (' + c.symbol + ' / ' + c.exchange + ' / ' + c.timeframe + ')';
+        return '<option value="' + c.id + '">' + label + '</option>';
+      }
+      function groupHtml(label, configs) {
+        if (!configs.length) return '';
+        return '<optgroup label="' + label + '">' + configs.map(optHtml).join('') + '</optgroup>';
+      }
+
+      var html = '<option value="">-- Backtest-Config wählen --</option>';
+      html += groupHtml('Favoriten', favConfigs);
+      html += groupHtml(favConfigs.length ? 'Weitere Configs' : 'Configs', restConfigs);
+      selBt.innerHTML = html;
+
+      // GEÄNDERT: erste Favoriten-Config vorauswählen (ersetzt die Default-Vorauswahl).
+      if (favConfigs.length) { selBt.value = favConfigs[0].id; showBtDetails(favConfigs[0]); }
+      updateStartButton();
+    });
+
+  /* Konzepte laden (nur aktive) */
+  fetch('/api/strategy/concepts')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      var items = (json.data && json.data.items) ? json.data.items : [];
+      concepts = items.filter(function(c) { return c.status === 'active'; });
+      selConcept.innerHTML = '<option value="">-- Konzept wählen --</option>';
+      concepts.forEach(function(c) {
+        selConcept.innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+      });
+      updateStartButton();
+    });
+
+  /* GEÄNDERT: Ticket 22 — Label "Name — Concept/Iteration" + serverseitige Sortierung
+     nach optional gewähltem Concept/Iteration. */
+  function _buildIndLabel(c) {
+    // GEÄNDERT: ID immer zuerst (ohne Raute), dann Name
+    var label = c.id + ' — ' + c.name;
+    var concept = c.strategy_concept_name || '';
+    var iter = c.strategy_iteration_version || '';
+    var suffix = '';
+    if (concept && iter) suffix = concept + '/' + iter;
+    else if (concept) suffix = concept;
+    else if (iter) suffix = iter;
+    if (suffix) label += ' — ' + suffix;
+    if (c.is_default) label += ' [Default]';
+    return label;
+  }
+
+  function loadIndConfigs(conceptId, iterationId) {
+    var qs = [];
+    if (conceptId) qs.push('concept_id=' + encodeURIComponent(conceptId));
+    if (iterationId) qs.push('iteration_id=' + encodeURIComponent(iterationId));
+    var url = '/api/config/indicator' + (qs.length ? '?' + qs.join('&') : '');
+    return fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        indConfigs = json.data || [];
+        // Auswahl vor Re-Render merken
+        var prev = selInd.value;
+        selInd.innerHTML = '<option value="">-- Indicator-Config wählen --</option>';
+        indConfigs.forEach(function(c) {
+          selInd.innerHTML += '<option value="' + c.id + '">' + _buildIndLabel(c) + '</option>';
+        });
+        // Bevorzugung: vorherige Auswahl beibehalten; sonst erster Eintrag im Top-Bucket (= sortierter Listenanfang),
+        // sonst Default; sonst nichts.
+        if (prev && indConfigs.find(function(c) { return c.id == prev; })) {
+          selInd.value = prev;
+        } else if (indConfigs.length > 0) {
+          selInd.value = indConfigs[0].id;
+        }
+        var current = indConfigs.find(function(c) { return c.id == selInd.value; });
+        if (current) showIndDetails(current); else document.getElementById("ind-config-details").style.display = 'none';
+        updateStartButton();
+        // TestSet-Tab-Indicator-Dropdown befüllen (mit gleicher Sortier-Quelle als Start)
+        _fillTsIndicators(indConfigs);
+        return indConfigs;
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Bei Fehler sichtbar machen statt Indicator-Dropdown im Limbo lassen
+        console.error('[START] Indicator-Configs laden fehlgeschlagen:', e);
+        selInd.innerHTML = '<option value="">-- Fehler beim Laden --</option>';
+        updateStartButton();
+        return [];
+      });
+  }
+
+  // Initialladen (noch ohne Concept-Filter, da concept-Select beim Start leer ist)
+  loadIndConfigs(null, null);
+
+  /* Details anzeigen */
+  function showBtDetails(c) {
+    document.getElementById("bt-symbol").textContent = c.symbol;
+    document.getElementById("bt-exchange").textContent = c.exchange;
+    document.getElementById("bt-timeframe").textContent = c.timeframe;
+    document.getElementById("bt-period").textContent = c.start + ' - ' + c.end;
+    document.getElementById("bt-size").textContent = c.size + ' (' + c.size_type + ')';
+    document.getElementById("bt-fees").textContent = c.fees;
+    document.getElementById("bt-config-details").style.display = '';
+  }
+
+  function showStrategyDetails(concept, iteration) {
+    document.getElementById("strat-concept").textContent = concept ? concept.name : '';
+    document.getElementById("strat-iteration").textContent = iteration ? (iteration.version_name || iteration.version) : '';
+    document.getElementById("strategy-details").style.display = concept && iteration ? '' : 'none';
+  }
+
+  // GEÄNDERT: Einzige Zähl-Wahrheit — Kombinationen über den Server-Endpunkt
+  // (describe_combos). Listen, Stops und das gekoppelte TSL-Paar zählen korrekt.
+  async function updateIndCombos(config_json, el) {
+    try {
+      var resp = await fetch('/api/config/indicator/count-combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_json: config_json || {} })
+      });
+      var j = await resp.json();
+      if (!resp.ok || j.error) {
+        el.textContent = j.error || 'Fehler bei der Berechnung';
+        el.title = '';
+        el.className = 'fw-bold text-danger';
+        return;
+      }
+      var total = j.data.total;
+      el.textContent = total.toLocaleString('de-DE') + ' Kombinationen';
+      el.title = (j.data.details || []).join('\n');
+      el.className = 'fw-bold ' + (total > 50000 ? 'text-danger' : total > 10000 ? 'text-warning' : 'text-success');
+    } catch (e) {
+      el.textContent = 'Fehler bei der Berechnung';
+      el.title = '';
+      el.className = 'fw-bold text-danger';
+    }
+  }
+
+  function showIndDetails(c) {
+    var keys = Object.keys(c.config_json || {});
+    document.getElementById("ind-indicators").innerHTML = keys.map(function(k) {
+      return '<span class="badge bg-purple-lt me-1">' + k + '</span>';
+    }).join('');
+    document.getElementById("ind-description").textContent = c.description || '';
+    updateIndCombos(c.config_json || {}, document.getElementById("ind-combos"));
+    document.getElementById("ind-config-details").style.display = '';
+  }
+
+  function updateStartButton() {
+    btnStart.disabled = !(selBt.value && selConcept.value && selIteration.value && selInd.value);
+  }
+
+  /* Iterationen für gewähltes Konzept laden */
+  function loadIterations(conceptId) {
+    if (!conceptId) {
+      selIteration.innerHTML = '<option value="">-- Zuerst Konzept wählen --</option>';
+      selIteration.disabled = true;
+      showStrategyDetails(null, null);
+      updateStartButton();
+      return;
+    }
+    if (iterationsCache[conceptId]) {
+      fillIterationSelect(conceptId, iterationsCache[conceptId]);
+      return;
+    }
+    fetch('/api/strategy/iterations?concept_id=' + conceptId)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) ? json.data.items : [];
+        var activeItems = items.filter(function(it) { return it.status === 'active'; });
+        // GEÄNDERT: Sortiert nach version DESC (höchste zuerst)
+        activeItems.sort(function(a, b) {
+          return (b.version || 0) - (a.version || 0);
+        });
+        iterationsCache[conceptId] = activeItems;
+        fillIterationSelect(conceptId, activeItems);
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Bei Fehler sichtbar machen statt Dropdown im Limbo lassen
+        console.error('[START] Iterationen laden fehlgeschlagen:', e);
+        selIteration.innerHTML = '<option value="">-- Fehler beim Laden --</option>';
+        selIteration.disabled = true;
+        updateStartButton();
+      });
+  }
+
+  function fillIterationSelect(conceptId, iterations) {
+    selIteration.innerHTML = '<option value="">-- Iteration wählen --</option>';
+    iterations.forEach(function(it) {
+      // GEÄNDERT: Versionsnummer (ID) voran, dann Beschreibung — ohne Raute
+      var label = it.version + (it.version_name ? ' — ' + it.version_name : '');
+      selIteration.innerHTML += '<option value="' + it.id + '">' + label + '</option>';
+    });
+    if (iterations.length > 0) {
+      // Default: erste (neueste) aktive Iteration
+      selIteration.value = iterations[0].id;
+      selIteration.disabled = false;
+      var concept = concepts.find(function(c) { return c.id == conceptId; });
+      showStrategyDetails(concept, iterations[0]);
+    } else {
+      selIteration.disabled = true;
+    }
+    updateStartButton();
+  }
+
+  selBt.addEventListener("change", function() {
+    var c = btConfigs.find(function(x) { return x.id == selBt.value; });
+    if (c) showBtDetails(c); else document.getElementById("bt-config-details").style.display = 'none';
+    updateStartButton();
+  });
+
+  selConcept.addEventListener("change", function() {
+    loadIterations(selConcept.value);
+    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept neu sortieren
+    loadIndConfigs(selConcept.value || null, null);
+  });
+
+  selIteration.addEventListener("change", function() {
+    var conceptId = selConcept.value;
+    var itId = selIteration.value;
+    var concept = concepts.find(function(c) { return c.id == conceptId; });
+    var iterations = iterationsCache[conceptId] || [];
+    var iteration = iterations.find(function(it) { return it.id == itId; });
+    showStrategyDetails(concept, iteration);
+    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept+Iteration neu sortieren
+    loadIndConfigs(conceptId || null, itId || null);
+    updateStartButton();
+  });
+
+  selInd.addEventListener("change", function() {
+    var c = indConfigs.find(function(x) { return x.id == selInd.value; });
+    if (c) showIndDetails(c); else document.getElementById("ind-config-details").style.display = 'none';
+    updateStartButton();
+  });
+
+  /* Backtest starten */
+  btnStart.addEventListener("click", function() {
+    btnStart.disabled = true;
+    btnStart.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Wird gestartet...';
+    statusEl.innerHTML = '';
+
+    // GEÄNDERT: Ticket 11 — iteration_id statt strategy_config_id
+    fetch('/api/backtest/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        backtest_config_id: parseInt(selBt.value),
+        iteration_id: parseInt(selIteration.value),
+        indicator_config_id: parseInt(selInd.value),
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (json.error) {
+        statusEl.innerHTML = '<div class="alert alert-danger">' + json.error + '</div>';
+        btnStart.disabled = false;
+        btnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>Backtest starten';
+        return;
+      }
+      // GEÄNDERT: Kein Redirect mehr — auf der Seite bleiben und Erfolgsmeldung zeigen
+      var runId = json.data && json.data.run_id;
+      statusEl.innerHTML = '<div class="alert alert-success">Backtest gestartet'
+        + (runId ? ' (Run #' + runId + ')' : '')
+        + '. <a href="/backtest/runs">Zu den Runs</a></div>';
+      btnStart.disabled = false;
+      btnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>Backtest starten';
+    })
+    .catch(function(err) {
+      statusEl.innerHTML = '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+      btnStart.disabled = false;
+      btnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>Backtest starten';
+    });
+  });
+
+  // =========================================================================
+  // TestSet-Lauf — gleiche Auswahl wie Einzel-Lauf, nur N statt 1 Runs
+  // =========================================================================
+  var tsSelConcept = document.getElementById("ts-sel-concept");
+  var tsSelIteration = document.getElementById("ts-sel-iteration");
+  var tsSelTestset = document.getElementById("ts-sel-testset");
+  var tsSelIndicator = document.getElementById("ts-sel-indicator");
+  var tsBtnStart = document.getElementById("ts-btn-start");
+  var tsStatusEl = document.getElementById("ts-start-status");
+
+  var tsTestSets = [];
+  var tsIterationsCache = {};  // concept_id -> iterations[]
+
+  function _fillTsIndicators(configs) {
+    // GEÄNDERT: Ticket 22 — Label "Name — Concept/Iteration", vorherige Auswahl beibehalten
+    var prev = tsSelIndicator.value;
+    tsSelIndicator.innerHTML = '<option value="">-- Indicator-Config wählen --</option>';
+    configs.forEach(function(c) {
+      tsSelIndicator.innerHTML += '<option value="' + c.id + '">' + _buildIndLabel(c) + '</option>';
+    });
+    if (prev && configs.find(function(c) { return c.id == prev; })) {
+      tsSelIndicator.value = prev;
+    } else if (configs.length > 0) {
+      tsSelIndicator.value = configs[0].id;
+    }
+    var current = configs.find(function(c) { return c.id == tsSelIndicator.value; });
+    if (current) _showTsIndDetails(current);
+    _updateTsStartButton();
+  }
+
+  // GEÄNDERT: Ticket 22 — TestSet-eigener Re-Fetch nach Concept/Iteration
+  function loadTsIndConfigs(conceptId, iterationId) {
+    var qs = [];
+    if (conceptId) qs.push('concept_id=' + encodeURIComponent(conceptId));
+    if (iterationId) qs.push('iteration_id=' + encodeURIComponent(iterationId));
+    var url = '/api/config/indicator' + (qs.length ? '?' + qs.join('&') : '');
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        indConfigs = json.data || [];
+        _fillTsIndicators(indConfigs);
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Bei Fehler sichtbar machen statt Indicator-Dropdown im Limbo lassen
+        console.error('[START] TestSet-Indicator-Configs laden fehlgeschlagen:', e);
+        tsSelIndicator.innerHTML = '<option value="">-- Fehler beim Laden --</option>';
+        _updateTsStartButton();
+      });
+  }
+
+  function _showTsIndDetails(c) {
+    var keys = Object.keys(c.config_json || {});
+    document.getElementById("ts-ind-indicators").innerHTML = keys.map(function(k) {
+      return '<span class="badge bg-purple-lt me-1">' + k + '</span>';
+    }).join('');
+    document.getElementById("ts-ind-description").textContent = c.description || '';
+    // GEÄNDERT: Einzige Zähl-Wahrheit über den Server-Endpunkt (wie Einzel-Lauf),
+    // statt der entfernten clientseitigen calcCombinations-Funktion
+    updateIndCombos(c.config_json || {}, document.getElementById("ts-ind-combos"));
+    document.getElementById("ts-ind-config-details").style.display = '';
+  }
+
+  /* Konzepte für TestSet-Tab: gleiche Daten wie Einzel-Lauf */
+  function _fillTsConcepts() {
+    tsSelConcept.innerHTML = '<option value="">-- Konzept wählen --</option>';
+    concepts.forEach(function(c) {
+      tsSelConcept.innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+    });
+  }
+  // concepts wird vom Einzel-Lauf-Fetch befüllt — auf Verfügbarkeit warten
+  (function _waitForConcepts() {
+    if (concepts && concepts.length > 0) {
+      _fillTsConcepts();
+    } else {
+      setTimeout(_waitForConcepts, 100);
+    }
+  })();
+
+  /* TestSets laden */
+  fetch('/api/testsets')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      tsTestSets = json.data || [];
+      tsSelTestset.innerHTML = '<option value="">-- TestSet wählen --</option>';
+      tsTestSets.forEach(function(ts) {
+        var label = ts.name + ' (' + (ts.backtest_config_ids || []).length + ' Configs)';
+        // GEÄNDERT: Hinweis am Ende, wenn das TestSet ins Leaderboard aufgenommen wird
+        if (ts.leaderboard_enabled) { label += ' — Leaderboard'; }
+        tsSelTestset.innerHTML += '<option value="' + ts.id + '">' + label + '</option>';
+      });
+      _updateTsStartButton();
+    });
+
+  function _showTsStrategyDetails(concept, iteration) {
+    document.getElementById('ts-strat-concept').textContent = concept ? concept.name : '';
+    document.getElementById('ts-strat-iteration').textContent = iteration ? (iteration.version_name || iteration.version) : '';
+    document.getElementById('ts-strategy-details').style.display = concept && iteration ? '' : 'none';
+  }
+
+  function _updateTsStartButton() {
+    tsBtnStart.disabled = !(tsSelTestset.value && tsSelIteration.value && tsSelIndicator.value);
+  }
+
+  function _loadTsIterations(conceptId) {
+    if (!conceptId) {
+      tsSelIteration.innerHTML = '<option value="">-- Zuerst Konzept wählen --</option>';
+      tsSelIteration.disabled = true;
+      _showTsStrategyDetails(null, null);
+      _updateTsStartButton();
+      return;
+    }
+    if (tsIterationsCache[conceptId]) {
+      _fillTsIterationSelect(conceptId, tsIterationsCache[conceptId]);
+      return;
+    }
+    fetch('/api/strategy/iterations?concept_id=' + conceptId)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var items = (json.data && json.data.items) ? json.data.items : [];
+        var activeItems = items.filter(function(it) { return it.status === 'active'; });
+        // GEÄNDERT: Sortiert nach version DESC (höchste zuerst)
+        activeItems.sort(function(a, b) {
+          return (b.version || 0) - (a.version || 0);
+        });
+        tsIterationsCache[conceptId] = activeItems;
+        _fillTsIterationSelect(conceptId, activeItems);
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Bei Fehler sichtbar machen statt Dropdown im Limbo lassen
+        console.error('[START] TestSet-Iterationen laden fehlgeschlagen:', e);
+        tsSelIteration.innerHTML = '<option value="">-- Fehler beim Laden --</option>';
+        tsSelIteration.disabled = true;
+        _updateTsStartButton();
+      });
+  }
+
+  function _fillTsIterationSelect(conceptId, iterations) {
+    tsSelIteration.innerHTML = '<option value="">-- Iteration wählen --</option>';
+    iterations.forEach(function(it) {
+      // GEÄNDERT: Versionsnummer (ID) voran, dann Beschreibung — ohne Raute
+      var label = it.version + (it.version_name ? ' — ' + it.version_name : '');
+      tsSelIteration.innerHTML += '<option value="' + it.id + '">' + label + '</option>';
+    });
+    if (iterations.length > 0) {
+      tsSelIteration.value = iterations[0].id;
+      tsSelIteration.disabled = false;
+      var concept = concepts.find(function(c) { return c.id == conceptId; });
+      _showTsStrategyDetails(concept, iterations[0]);
+    } else {
+      tsSelIteration.disabled = true;
+    }
+    _updateTsStartButton();
+  }
+
+  tsSelConcept.addEventListener('change', function() {
+    _loadTsIterations(tsSelConcept.value);
+    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept neu sortieren
+    loadTsIndConfigs(tsSelConcept.value || null, null);
+  });
+
+  tsSelIteration.addEventListener('change', function() {
+    var conceptId = tsSelConcept.value;
+    var itId = tsSelIteration.value;
+    var concept = concepts.find(function(c) { return c.id == conceptId; });
+    var iterations = tsIterationsCache[conceptId] || [];
+    var iteration = iterations.find(function(it) { return it.id == itId; });
+    _showTsStrategyDetails(concept, iteration);
+    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept+Iteration neu sortieren
+    loadTsIndConfigs(conceptId || null, itId || null);
+    _updateTsStartButton();
+  });
+
+  tsSelTestset.addEventListener('change', function() {
+    var ts = tsTestSets.find(function(x) { return x.id == tsSelTestset.value; });
+    if (ts) {
+      document.getElementById('ts-testset-info').textContent =
+        (ts.description ? ts.description + ' — ' : '') +
+        (ts.backtest_config_ids || []).length + ' BacktestConfigs';
+      document.getElementById('ts-testset-details').style.display = '';
+    } else {
+      document.getElementById('ts-testset-details').style.display = 'none';
+    }
+    _updateTsStartButton();
+  });
+
+  tsSelIndicator.addEventListener('change', function() {
+    var c = indConfigs.find(function(x) { return x.id == tsSelIndicator.value; });
+    if (c) _showTsIndDetails(c);
+    else document.getElementById('ts-ind-config-details').style.display = 'none';
+    _updateTsStartButton();
+  });
+
+  /* TestSet-Lauf starten */
+  tsBtnStart.addEventListener('click', function() {
+    tsBtnStart.disabled = true;
+    tsBtnStart.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Wird gestartet...';
+    tsStatusEl.innerHTML = '';
+
+    var body = {
+      testset_id: parseInt(tsSelTestset.value),
+      iteration_id: parseInt(tsSelIteration.value),
+      indicator_config_id: parseInt(tsSelIndicator.value),
+    };
+
+    fetch('/api/testset-runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (json.error) {
+        tsStatusEl.innerHTML = '<div class="alert alert-danger">' + json.error + '</div>';
+        tsBtnStart.disabled = false;
+        tsBtnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>TestSet-Lauf starten';
+        return;
+      }
+      var tsRunId = json.data.testset_run_id;
+      var runIds = json.data.run_ids;
+      tsStatusEl.innerHTML =
+        '<div class="alert alert-success">' +
+        'TestSet-Lauf #' + tsRunId + ' gestartet — ' + runIds.length + ' Runs enqueued.' +
+        ' <a href="/backtest/runs?testset_run_id=' + tsRunId + '" class="alert-link">Runs ansehen</a>' +
+        '</div>';
+      tsBtnStart.disabled = false;
+      tsBtnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>TestSet-Lauf starten';
+    })
+    .catch(function(err) {
+      tsStatusEl.innerHTML = '<div class="alert alert-danger">Fehler: ' + err + '</div>';
+      tsBtnStart.disabled = false;
+      tsBtnStart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><path d="M7 4v16l13 -8z"/></svg>TestSet-Lauf starten';
+    });
+  });
+
+});
+</script>
+{% endblock %}

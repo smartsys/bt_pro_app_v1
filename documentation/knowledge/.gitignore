@@ -1,0 +1,9 @@
+# documentation/knowledge/ enthaelt interne KI/Dev-Doku (interne IPs, Homelab-Topologie,
+# private Vault-/Projekt-Pfade) und wird NICHT oeffentlich versioniert.
+# Der Ordner bleibt erhalten, sein Inhalt wird ignoriert.
+# Ausnahme: assets/ (Screenshots, die in der oeffentlichen Doku verwendet werden).
+/*
+!.gitignore
+!assets/
+!indicators.md
+!metrics-catalog.md

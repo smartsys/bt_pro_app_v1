@@ -1,0 +1,18 @@
+BT Pro App
+Copyright 2026 BT Pro App authors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------
+This product loads the following third-party software:
+
+Lightweight Charts™
+Copyright 2023 TradingView, Inc.
+Licensed under the Apache License, Version 2.0.
+https://www.tradingview.com/
+https://github.com/tradingview/lightweight-charts
+
+Apache ECharts
+Copyright 2017-2024 The Apache Software Foundation
+Licensed under the Apache License, Version 2.0.
+https://echarts.apache.org/
