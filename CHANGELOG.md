@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.8] - 29.06.2026
+
+### Added
+- Toolbox-Verb run-bestwerte: die vier kanonischen Bestwerte je Multiparameter-Lauf ziehen und idempotent als Doku-Favorit markieren
+  - Neues ds-strategie-session-Verb run-bestwerte (--run | --iteration | --strategy [--version] | --testset-run): kapselt die vier festen Bestwerte (max Total Return, bestes Return im oberen Win-Rate-Band, max Sharpe, max Profitfaktor mit mindestens 30 Trades) ausführbar in einem Aufruf und setzt je Sieger den roten Doku-Favoriten; idempotent - bereits markierte Results werden nicht erneut getoggelt
+  - Fix Determinismus: Sortierung in /api/backtest/results/dt ist bei Wertgleichstand jetzt reproduzierbar - sekundär nach geringstem Drawdown, dann Result-ID. Zuvor kürte die Bestwert-Auswahl bei wertgleichen Parameter-Kombinationen (Raster-Dubletten) mal das eine, mal das andere Result; latent betraf das auch run-best/run-winrate-band-best und die Frontend-Results-Tabelle
+  - run-list gruppiert jetzt nach Testset-Lauf (testset_run_id = Auftrags-ID) und zeigt diese ID an, run-read ebenfalls - macht den schon vorhandenen --testset-run-Selektor sichtbar nutzbar
+  - SKILL.md und Workflow multiparameter-lauf.md (Auswertungs-Sektion) auf run-bestwerte als Normalweg umgestellt; die Einzelverben bleiben als Ad-hoc-Unterbau erhalten
+
+### Files
+- services/api/routes/api_backtest.py
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+
+
+
 ## [1.30.7] - 29.06.2026
 
 ### Added

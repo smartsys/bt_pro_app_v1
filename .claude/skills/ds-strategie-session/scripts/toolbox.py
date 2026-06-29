@@ -56,6 +56,8 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py run-top-results 1812 sharpe_ratio 20 desc # run_id [metric] [limit] [direction]
   python3 toolbox.py run-winrate-band-best 1812 20 1          # run_id [band_pp=20] [limit=1] — bestes Return im Winrate-Band [max-band, max]
   python3 toolbox.py run-best 1812 profit_factor 30 1         # run_id metrik [min_trades=30] [limit=1] — bester Metrik-Wert mit >= min_trades Trades
+  python3 toolbox.py run-bestwerte --run 1812                 # vier feste Bestwerte je Run ziehen + als Doku-Favorit (roter Stern) markieren (idempotent)
+                                                              #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
 
 Anlegen (create — Schreib-Aktion). Komplexe Payloads per --file als JSON-Datei.
 KEIN stiller Konverter, kein Fallback: spec_json/config_json wird unverändert
@@ -348,7 +350,10 @@ def run_read(i: int) -> None:
     print(f"## Run {i} — {label} · {r.get('symbol')} {r.get('timeframe')}")
     print(f"- Status: {r.get('status')} · {r.get('n_combinations')} Kombinationen")
     if r.get("testset_name"):
-        print(f"- Testset: {r.get('testset_name')} (testset:{r.get('testset_id')})")
+        ts = f"testset:{r.get('testset_id')}"
+        if r.get("testset_run_id"):
+            ts += f" · testset-run:{r.get('testset_run_id')}"
+        print(f"- Testset: {r.get('testset_name')} ({ts})")
     print(f"- Zeitraum: {str(r.get('start_date', ''))[:10]} → {str(r.get('end_date', ''))[:10]}")
     # Aggregat-Kennzahlen aus der Analyse (falls berechnet)
     try:
@@ -637,15 +642,23 @@ def run_list(args: list) -> int:
         print("- (keine)\n")
         return 0
 
-    # Nach Testset gruppieren; Einzel-Backtests ohne TestSet-Lauf in eigene Gruppe.
+    # Nach Testset-Lauf (testset_run_id = Auftrags-ID) gruppieren: ein Testset-Lauf
+    # umfasst alle Symbol-Runs eines Auftrags. So ist sichtbar, welche Runs als ein
+    # Auftrag zusammengehören — und die ID ist direkt als --testset-run-Selektor nutzbar.
+    # Einzel-Backtests ohne Testset-Lauf kommen in eine eigene Gruppe.
     groups: dict = {}
     for r in items:
-        key = r.get("testset_name") or "Einzel-Backtests (kein Testset)"
-        groups.setdefault(key, []).append(r)
-    for name in sorted(groups):
-        rs = sorted(groups[name], key=lambda x: x["id"])
-        tsid = rs[0].get("testset_id")
-        print(f"\n### {name}{f' (testset:{tsid})' if tsid else ''}")
+        groups.setdefault(r.get("testset_run_id"), []).append(r)
+    # Auftrags-Gruppen zuerst (nach ID), Einzel-Backtests (None) ans Ende.
+    for gkey in sorted(groups, key=lambda k: (k is None, k or 0)):
+        rs = sorted(groups[gkey], key=lambda x: x["id"])
+        if gkey is None:
+            print("\n### Einzel-Backtests (kein Testset-Lauf)")
+        else:
+            name = rs[0].get("testset_name") or "Testset-Lauf"
+            tsid = rs[0].get("testset_id")
+            ts = f"testset:{tsid} · " if tsid else ""
+            print(f"\n### {name} ({ts}testset-run:{gkey})")
         for r in rs:
             print(f"- run:{r['id']} · {r.get('symbol')} {r.get('timeframe')} · {r.get('status')} · "
                   f"{r.get('n_combinations')} Kombinationen · "
@@ -820,6 +833,166 @@ def run_best(args: list) -> int:
               f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
         if pstr:
             print(f"  - {pstr}")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Bestwerte (bestwerte). EIN Verb, das die kanonische 4er-Definition aus
+# multiparameter-lauf.md ausführbar kapselt — damit sie nicht je Aufruf von Hand
+# falsch zusammengesetzt wird — und die Gewinner als Doku-Favorit (roter Stern)
+# markiert. Die Definitionswerte (Band 20 pp, PF-Floor 30 Trades) sind bewusst
+# fest verdrahtet, NICHT parametrisierbar: das Verb IST die Definition.
+# ---------------------------------------------------------------------------
+
+# Feste Definitionswerte der vier Bestwerte (multiparameter-lauf.md Schritt 5)
+_WINRATE_BAND_PP = 20.0
+_PF_MIN_TRADES = 30
+
+
+def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
+              total_trades_min=None, length: int = 1) -> tuple:
+    """Top-<length> Results eines Runs nach Spalte <order_idx> absteigend.
+
+    Geteilte Low-Level-Abfrage über /api/backtest/results/dt für die vier
+    Bestwerte (Spalten-Indizes in _DT_SORT_IDX). Optionale serverseitige Filter
+    win_rate_pct_min / total_trades_min. Gibt (rows, recordsFiltered) zurück.
+    """
+    params = {
+        "run_id": run_id,
+        "order[0][column]": order_idx, "order[0][dir]": "desc",
+        "start": 0, "length": length, "draw": 1,
+    }
+    if win_rate_pct_min is not None:
+        params["win_rate_pct_min"] = win_rate_pct_min
+    if total_trades_min is not None:
+        params["total_trades_min"] = total_trades_min
+    dd = fetch(f"/api/backtest/results/dt?{urllib.parse.urlencode(params)}")
+    return dd.get("data") or [], dd.get("recordsFiltered")
+
+
+def _bestwerte_for_run(run_id: int) -> list:
+    """Die vier kanonischen Bestwerte eines Runs als Liste (label, result|None, info).
+
+    1) Max Total Return (kein Trade-Floor)
+    2) Bestes Total Return im oberen Win-Rate-Band (höchste Win-Rate des Runs minus 20 pp)
+    3) Max Sharpe (kein Trade-Floor)
+    4) Max Profitfaktor mit mindestens 30 Trades
+    """
+    out = []
+    # 1) Max Total Return
+    rows, _ = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"])
+    out.append(("Max Total Return", rows[0] if rows else None, ""))
+    # 2) Win-Rate-Band -> bestes Total Return
+    wr_rows, _ = _dt_query(run_id, _DT_SORT_IDX["win_rate_pct"])
+    if wr_rows and wr_rows[0].get("win_rate_pct") is not None:
+        max_wr = wr_rows[0]["win_rate_pct"]
+        threshold = max_wr - _WINRATE_BAND_PP
+        band_rows, n_band = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"],
+                                      win_rate_pct_min=threshold)
+        info = f"Band {num(threshold)}%..{num(max_wr)}% ({n_band} im Band)"
+        out.append(("Bestes Return im Win-Rate-Band", band_rows[0] if band_rows else None, info))
+    else:
+        out.append(("Bestes Return im Win-Rate-Band", None, "keine Win-Rate-Results"))
+    # 3) Max Sharpe
+    rows, _ = _dt_query(run_id, _DT_SORT_IDX["sharpe_ratio"])
+    out.append(("Max Sharpe", rows[0] if rows else None, ""))
+    # 4) Max Profitfaktor mit >= 30 Trades
+    rows, n = _dt_query(run_id, _DT_SORT_IDX["profit_factor"], total_trades_min=_PF_MIN_TRADES)
+    out.append((f"Max Profitfaktor (>= {_PF_MIN_TRADES} Trades)",
+                rows[0] if rows else None, f"{n} mit >= {_PF_MIN_TRADES} Trades"))
+    return out
+
+
+def _fmt_result_line(r: dict) -> str:
+    """Eine Result-Zeile mit Kennzahlen + actual_params (gleiches Format wie run-best)."""
+    params = r.get("actual_params") or {}
+    pstr = ", ".join(f"{k}={v}" for k, v in params.items()) if isinstance(params, dict) else ""
+    line = (f"result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
+            f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
+            f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
+    return line + (f"  ·  {pstr}" if pstr else "")
+
+
+def run_bestwerte(args: list) -> int:
+    """Vier feste Bestwerte je Run ziehen UND als Doku-Favorit (roter Stern) markieren.
+
+    Flags: --run <id> | --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id> [--limit <n>]
+    Kapselt die kanonische 4er-Definition aus multiparameter-lauf.md (max Total
+    Return · bestes Return im oberen Win-Rate-Band [Max-WinR - 20 pp] · max Sharpe ·
+    max Profitfaktor mit >= 30 Trades), damit sie nicht von Hand falsch
+    zusammengesetzt werden kann. Mehrere Runs über die gleiche Auflösung wie
+    run-list (Strategie+Version / Iteration / TestSet-Lauf).
+
+    Markiert idempotent: Ein Gewinner-Result, das den roten Stern schon trägt
+    (oder ihn in diesem Lauf als Mehrfach-Sieger bereits bekommen hat), wird NICHT
+    erneut getoggelt — der doc_favorite-Endpunkt ist ein Toggle.
+    """
+    f = _parse_flags(args)
+    if f.get("run"):
+        runs = [{"id": int(f["run"])}]
+        scope = f"run:{f['run']}"
+    else:
+        params: dict = {"limit": f.get("limit", 10000)}
+        if f.get("strategy"):
+            params["strategy"] = f["strategy"]
+        if f.get("version"):
+            params["version"] = f["version"]
+        if f.get("iteration"):
+            params["iteration_id"] = f["iteration"]
+        if f.get("testset-run"):
+            params["testset_run_id"] = f["testset-run"]
+        if len(params) == 1:
+            raise ValueError("run-bestwerte braucht einen Selektor: --run | --strategy [--version] | --iteration | --testset-run")
+        runs = fetch(f"/api/backtest/runs?{urllib.parse.urlencode(params)}")["data"]["items"]
+        sc = []
+        if f.get("strategy"):
+            sc.append(str(f["strategy"]).upper() + (f" v{f['version']}" if f.get("version") else ""))
+        if f.get("iteration"):
+            sc.append(f"iteration:{f['iteration']}")
+        if f.get("testset-run"):
+            sc.append(f"testset-run:{f['testset-run']}")
+        scope = " · ".join(sc) if sc else "alle"
+
+    print(f"## Bestwerte — {scope} ({len(runs)} Run(s)) — vier feste Kriterien, rote Doku-Favoriten")
+    if not runs:
+        print("- (keine Runs)\n")
+        return 0
+
+    now_on: set = set()   # Result-IDs, die nach diesem Lauf den roten Stern tragen
+    newly: set = set()    # davon: in diesem Lauf neu gesetzt
+    for run in sorted(runs, key=lambda x: x["id"]):
+        rid = run["id"]
+        meta = []
+        if run.get("symbol"):
+            meta.append(f"{run['symbol']} {run.get('timeframe', '')}".strip())
+        if run.get("testset_name"):
+            tn = run["testset_name"]
+            if run.get("testset_run_id"):
+                tn += f" (testset-run:{run['testset_run_id']})"
+            meta.append(tn)
+        print(f"\n### run:{rid}{(' · ' + ' · '.join(meta)) if meta else ''}")
+        for label, res, info in _bestwerte_for_run(rid):
+            suffix = f" — {info}" if info else ""
+            if not res:
+                print(f"- **{label}**{suffix}: kein Result")
+                continue
+            print(f"- **{label}**{suffix}")
+            print(f"  - {_fmt_result_line(res)}")
+            res_id = res["id"]
+            if res_id in now_on or res.get("is_doc_favorite"):
+                now_on.add(res_id)
+                print("  - roter Stern: bereits gesetzt")
+            else:
+                post(f"/api/backtest/results/{res_id}/doc_favorite")
+                now_on.add(res_id)
+                newly.add(res_id)
+                print("  - roter Stern: gesetzt")
+
+    already = len(now_on) - len(newly)
+    print(f"\n**{len(now_on)} Results sind rote Doku-Favoriten** — {len(newly)} neu gesetzt, {already} bereits zuvor markiert.")
+    if newly:
+        print(f"Neu: {', '.join(f'result:{i}' for i in sorted(newly))}")
     print()
     return 0
 
@@ -1160,6 +1333,7 @@ SINGLE_VERBS = {
     "run-top-results": run_top_results,
     "run-winrate-band-best": run_winrate_band_best,
     "run-best": run_best,
+    "run-bestwerte": run_bestwerte,
     "concept-create": concept_create,
     "iteration-create": iteration_create,
     "indicator-config-create": indicator_config_create,

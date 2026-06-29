@@ -681,7 +681,17 @@ def get_results_datatable(request: Request) -> dict:
                 # auf- oder absteigend. Sonst tauchen "-"-Werte bei DESC oben auf (PostgreSQL
                 # legt NULLS bei DESC standardmäßig nach vorne).
                 ordered = sort_col.desc() if order_dir == 'desc' else sort_col.asc()
-                query = query.order_by(ordered.nullslast())
+                # GEÄNDERT: Deterministischer Tiebreaker bei Wertgleichstand der Sortierspalte.
+                # Wertgleiche Parameter-Kombinationen (z.B. Raster-Dubletten) liefern sonst eine
+                # willkürliche, nicht reproduzierbare Reihenfolge — die Bestwert-Auswahl kürt dann
+                # mal das eine, mal das andere Result. Erst das risikoärmere Result bevorzugen
+                # (geringster Drawdown = größter, weil negativ gespeichert), dann die ID als
+                # final eindeutiger Anker.
+                query = query.order_by(
+                    ordered.nullslast(),
+                    BacktestResult.max_drawdown_pct.desc().nullslast(),
+                    BacktestResult.id.desc(),
+                )
         else:
             query = query.order_by(BacktestResult.total_return_pct.desc().nullslast())
 

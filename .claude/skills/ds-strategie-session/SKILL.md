@@ -159,7 +159,7 @@ toolbox.py concept-create --slug teststrategie --name "Teststrategie"  # anlegen
 toolbox.py iteration-create --concept 1 --file spec.json #   komplexe Payloads (spec_json/config_json/Backtest-Body) per --file
 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41  # Lauf starten
 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973  # 1 Run pro Config; Leaderboard nur bei leaderboard_enabled
-toolbox.py run-list --strategy vwma --version 1           # Runs zu Strategie+Version finden (nach Testset gruppiert)
+toolbox.py run-list --strategy vwma --version 1           # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
 toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body)
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
@@ -178,14 +178,24 @@ toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nac
 
 ### Auswertung eines Multiparameter-Laufs — die vier Bestwerte
 
-Aus jedem fertigen Sweep-Run werden genau **vier** Bestwerte gezogen (Detail + Raster-Format: `documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md`). Jede Metrik hat eine eigene Regel — nicht vereinheitlichen:
+Aus jedem fertigen Sweep-Run werden genau **vier** Bestwerte gezogen und als **roter Doku-Favorit** markiert (schützt vor „Alle löschen"). Das übernimmt **ein** Verb — die Definition ist serverseitig gekapselt und idempotent, kann also nicht von Hand falsch zusammengesetzt oder doppelt gesetzt werden:
 
-1. **Max Total Return** — `toolbox.py run-top-results <run_id> total_return_pct 1 desc`
-2. **Win-Rate-Band → bestes Return** — `toolbox.py run-winrate-band-best <run_id>` (Band = höchste WinR − 20 pp; daraus das höchste Total Return)
-3. **Max Sharpe** — `toolbox.py run-top-results <run_id> sharpe_ratio 1 desc`
-4. **Max Profitfaktor mit ≥30 Trades** — `toolbox.py run-best <run_id> profit_factor 30` (Trade-Floor gegen Low-Trade-Flukes; gilt NUR für PF)
+```bash
+toolbox.py run-bestwerte --run 1812          # ein Run: vier Bestwerte ziehen + roten Stern setzen
+toolbox.py run-bestwerte --iteration 2       # alle Runs einer Iteration (Strategie+Version)
+toolbox.py run-bestwerte --testset-run 3     # alle Runs eines Testset-Laufs (Auftrags-ID)
+```
 
-`run-top-results`-Zeilen zeigen Ret/WinR/Sharpe/DD/PF/Trades. Die vier Sieger-Results als **roten Doku-Favoriten** markieren: `toolbox.py result-doc-favorite <result_id>` (schützt vor „Alle löschen"). Der Run liegt mit allen Kombinationen ohnehin in der DB — extra speichern ist nicht nötig. **Kein** Promotions-/Akzeptanz-/Folgeschritt; der wird bei Bedarf neu definiert.
+Die vier Kriterien (Detail + Raster-Format: `documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md`) — jede Metrik hat eine eigene Regel, nicht vereinheitlichen:
+
+1. **Max Total Return** — reines Maximum, kein Trade-Floor
+2. **Win-Rate-Band → bestes Return** — Band = höchste WinR − 20 pp; daraus das höchste Total Return
+3. **Max Sharpe** — reines Maximum, kein Trade-Floor
+4. **Max Profitfaktor mit ≥30 Trades** — Trade-Floor gegen Low-Trade-Flukes; gilt NUR für PF
+
+**Bei Wertgleichstand** (z. B. Raster-Dubletten mit identischem Ergebnis) wählt die Auswahl deterministisch: zuerst das risikoärmere Result (**geringster Drawdown**), dann die **ID** als finaler Anker — so ist die Markierung reproduzierbar. Der Run liegt mit allen Kombinationen ohnehin in der DB, extra speichern ist nicht nötig. **Kein** Promotions-/Akzeptanz-/Folgeschritt; der wird bei Bedarf neu definiert.
+
+Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-results <run_id> <metrik> 1 desc`, `run-winrate-band-best <run_id>`, `run-best <run_id> profit_factor 30`, Markierung einzeln via `result-doc-favorite <result_id>`.
 
 ### Vollständige Referenz (Detail-Flags, alle Routen)
 
