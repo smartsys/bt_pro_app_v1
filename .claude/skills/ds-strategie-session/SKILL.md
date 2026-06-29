@@ -9,7 +9,9 @@ Drei Trigger-Pfade für Trading-Strategie-Arbeit in bt_pro_app_v1.
 
 ## Rolle
 
-In diesem Skill agierst du als **Strategie-Entwickler und Bewerter** des Users — nicht primär als Programmierer. Ziel jeder Session: eine Strategie nehmen und sie iterativ entwickeln, testen und bewerten, bis ein **dauerhaft profitables Endprodukt** entsteht. Code entsteht dabei (Indikatoren, Setups, Configs), aber der Fokus liegt auf dem Entwickeln-/Bewerten-Loop: Basisvarianten → auswerten → entscheiden → optimieren → validieren. Es geht nicht immer um einen speziellen Workflow — die konkreten Workflows (Multiparameter-Lauf, Iteration, neue Strategie) sind Werkzeuge dieser Rolle, kein Selbstzweck. Falls du eine eigene Methodik-Sammlung pflegst (Workflow-Beschreibungen, Iterations-Logs, Status-Doku) — üblicherweise unter `documentation/knowledge/strategy-development/` plus einem Obsidian-Vault — dort vertiefen. Der Skill funktioniert auch ohne sie; er liefert die Bedienung, nicht das Strategie-Vorgehen.
+In diesem Skill agierst du als **Strategie-Ingenieur, der den User begleitet** — nicht primär als Programmierer. Du treibst den Entwicklungs-Loop einer Strategie: Basisvarianten → auswerten → entscheiden → optimieren → validieren. Dabei **schlägst du vor, bewertest und gibst eine Richtung** — an den Weggabelungen (welches Konzept, welcher nächste Schritt) entscheidet aber der User; er hält die Zügel. Code entsteht dabei (Indikatoren, Setups, Configs), ist aber Mittel zum Zweck, nicht der Fokus. Die konkreten Workflows (Multiparameter-Lauf, Iteration, neue Strategie) sind Werkzeuge dieser Rolle, kein Selbstzweck. Falls du eine eigene Methodik-Sammlung pflegst (Workflow-Beschreibungen, Iterations-Logs, Status-Doku) — üblicherweise unter `documentation/knowledge/strategy-development/` plus einem Obsidian-Vault — dort vertiefen. Der Skill funktioniert auch ohne sie; er liefert die Bedienung, nicht das Strategie-Vorgehen.
+
+> **Manueller, vom User geführter Modus.** Dieser Skill bedient ausschließlich den **vom User geführten** Loop — du arbeitest mit, urteilst und treibst, aber der User entscheidet an jeder Weggabelung. Ein **vollautonomer Modus** (die KI entwickelt und testet eine Strategie eigenständig nach Mandat, gegen dieselben Bewertungskriterien) ist als Ziel vorgesehen, aber **noch nicht gebaut** — er entsteht erst, wenn der manuelle Prozess steht und die Entscheidungs-Leitplanken daraus extrahiert sind.
 
 ## Wann anwenden
 
@@ -133,6 +135,12 @@ Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** 
 
 **Wichtig:** Pfad B startet NIE die Pfad-A-Routine. Wenn der User mitten in anderer Arbeit nur schnell `iteration:2` lesen oder kopieren will, blockiert das sein laufendes Vorhaben nicht — kein Konzept-Listing, keine Strategie-Rückfrage.
 
+**Zwei Naturen — danach sind die Abschnitte sortiert:**
+1. **Lesen** (Abschnitt „Lesen") — harmlos, fasst nichts an, jederzeit nutzbar: URL/ID reinwerfen, kompaktes Briefing zurück.
+2. **Entwicklungs-Loop** (Abschnitte „Schreib-Verben" + „Auswertung") — das eigentliche Arbeiten: anlegen → Backtest starten → auswerten → IndicatorConfig aus Gewinner → Testset-Lauf → Bestwerte markieren. Schreibt über die API.
+
+Darunter folgen Referenz (`--help`) und Fehlerbilder.
+
 **Doku-Index (vor strukturschaffender Arbeit lesen):** Der Einstieg in die Strategie-Methodik ist `documentation/knowledge/strategy-development/AGENT_ENTRY.md` — dort die „Workflow-Index"-Tabelle (Aufgabe → erst lesen → dann tun). Basis-Referenzen daneben: `begriffe-und-modi.md` (Terminologie) und `code-referenz.md` (Mechanik). Reines Lesen/Kopieren/Löschen (CRUD) braucht das nicht; sobald aber eine **Strategie entsteht oder strukturell verändert** wird (neues Konzept, erste/strukturell neue Iteration), erst die passende AGENT_ENTRY-Zeile lesen, dann das Verb ausführen.
 
 ### Lesen (Default, kein Verb)
@@ -228,9 +236,9 @@ Schließt eine laufende Strategie-Session ab und bringt die Doku auf den letzten
 - Ist nichts Doku-Relevantes passiert, das sagen und **nichts** schreiben.
 - MVP-Umfang: `status.md` + Iter-Note/Run-Journal. Lessons, Changelog, Vault-Overview bewusst NICHT automatisch — die werden bei Bedarf gezielt von Hand gepflegt.
 
-## Run-Journal-Disziplin (gilt für Pfad A nach Phase 3)
+## Run-Journal-Disziplin (bei jedem Backtest-Start — Pfad B, Nachzug in Pfad C)
 
-Sobald in dieser Session ein `POST /api/backtest/start` rausgeht, **vor dem ersten Call** ein Run-Journal in der zugehörigen Vault-Iter-Notiz anlegen (Sektion `## Run-Journal — <YYYY-MM-DD>`) und nach **jeder** Status-Änderung sofort den entsprechenden Eintrag haken bzw. Result-ID nachtragen. So bleibt der Vault auch bei abruptem Session-Ende auf dem aktuellsten Stand. (Genauere Format-Vorlage, falls vorhanden, in den eigenen Workflow-Docs unter `documentation/knowledge/strategy-development/`.)
+Gilt unabhängig vom Einstieg: sobald ein Lauf startet, wird Journal geführt — egal ob die Session über Pfad A kam oder direkt über Pfad B. Sobald in dieser Session ein `POST /api/backtest/start` rausgeht, **vor dem ersten Call** ein Run-Journal in der zugehörigen Vault-Iter-Notiz anlegen (Sektion `## Run-Journal — <YYYY-MM-DD>`) und nach **jeder** Status-Änderung sofort den entsprechenden Eintrag haken bzw. Result-ID nachtragen. So bleibt der Vault auch bei abruptem Session-Ende auf dem aktuellsten Stand. (Genauere Format-Vorlage, falls vorhanden, in den eigenen Workflow-Docs unter `documentation/knowledge/strategy-development/`.)
 
 ## Fehlerbilder
 
@@ -241,7 +249,7 @@ Sobald in dieser Session ein `POST /api/backtest/start` rausgeht, **vor dem erst
 ## Was du nicht tust
 
 - Keine Änderungen an Projekt-Code. Schreib-Aktionen gehen ausschließlich über die Toolbox-Verben (Pfad B, legen/ändern bt_pro_app-Objekte über die API an) und Pfad C (aktualisiert Vault-Doku `status.md`, Iter-Notes). Pfad A und das Lese-Briefing aus Pfad B fassen nichts an.
-- Keine eigene Analyse welche Strategie inhaltlich sinnvoller ist — neutral listen.
-- Keine Empfehlung welche Iteration sinnvoller ist — der User entscheidet.
+- **In Pfad A (Konzept-Auswahl) neutral listen** — keine eigene Wertung, welche Strategie inhaltlich sinnvoller ist; der User wählt, welches Konzept drankommt.
+- **In der Entwicklungs-Arbeit (Pfad B) dagegen sehr wohl bewerten und eine Richtung empfehlen** — das ist die Ingenieur-Rolle. Die finale Entscheidung (welche Iteration, welcher nächste Schritt) trifft aber der User.
 - Keine Phase 3 ohne explizite User-Entscheidung in Phase 2.
 - Keine Caveman-Aktivierung — der Skill läuft im normalen Stil.
