@@ -45,7 +45,8 @@
           <tr>
             <th class="w-1"></th>
             <th class="w-1"><input type="checkbox" id="runs-select-all" class="form-check-input" title="Alle auf dieser Seite auswählen"></th>
-            <th class="text-nowrap">ID</th>
+            <th class="text-nowrap text-center" title="Testset-Run-ID (gemeinsame Klammer aller Runs eines Testset-Laufs)">TR</th>
+            <th class="text-nowrap text-center">ID</th>
             <th class="text-nowrap">Strategie</th>
             <th class="text-nowrap">Symbol</th>
             <th class="text-nowrap">Indikator-Config</th>
@@ -126,7 +127,16 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       },
       {
-        data: "id"
+        // GEÄNDERT: TR = Testset-Run-ID (gemeinsame Klammer aller Runs eines Testset-Laufs)
+        data: "testset_run_id",
+        className: "text-center",
+        render: function(data) {
+          return data ? data : '<span class="text-muted">–</span>';
+        }
+      },
+      {
+        data: "id",
+        className: "text-center"
       },
       {
         data: null,
@@ -279,7 +289,7 @@ document.addEventListener("DOMContentLoaded", function() {
     deferRender: true,
     dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
     lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Alle"]],
-    order: [[2, "desc"]],
+    order: [[3, "desc"]],
     language: {
       search: "Suche:",
       lengthMenu: "_MENU_ pro Seite",

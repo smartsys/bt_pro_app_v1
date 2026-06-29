@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.9] - 29.06.2026
+
+### Added
+- Backtest-Runs-Tabelle: Spalte TR (Testset-Run-ID) links vor der ID-Spalte
+  - Neue Spalte TR zeigt die testset_run_id - die gemeinsame Klammer aller Runs eines Testset-Laufs
+  - TR und ID zentriert; Einzel-Runs ohne Testset zeigen -
+  - API lieferte testset_run_id bereits (BacktestRunOut), nur Frontend-Template angepasst
+  - Sortierung auf ID nachgezogen (Spaltenindex 2 auf 3)
+
+### Files
+- services/frontend/templates/backtest/runs.html
+
+
+
 ## [1.30.8] - 29.06.2026
 
 ### Added
