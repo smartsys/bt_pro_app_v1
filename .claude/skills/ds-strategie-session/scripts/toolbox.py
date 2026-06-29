@@ -12,6 +12,13 @@ Damit ist der volle Loop über die Toolbox bedienbar: Konzept/Iteration anlegen 
 Indicator-/Backtest-Config anlegen -> Backtest starten -> Ranking/Top-Results lesen ->
 IndicatorConfig aus Gewinner-Result erstellen -> Testset-Lauf starten -> Leaderboard lesen.
 
+Wichtig zum Leaderboard: Ein Testset-Lauf erzeugt NICHT automatisch einen Leaderboard-
+Eintrag. Das passiert nur, wenn das Testset 'leaderboard_enabled=True' gesetzt hat
+(Opt-in, Default False). Sinn: Viele Testsets dienen nur dem Testen über mehrere Symbole/
+kurze Zeiträume; ins Leaderboard gehören bewusst nur wenige, über lange Zeiträume
+vergleichbare Läufe. Ein leeres Leaderboard ist also KEIN Beleg dafür, dass kein
+Testset-Lauf stattfand.
+
 Beispiele (Lesen — Default, kein Verb):
   python3 toolbox.py http://localhost:5570/config/strategy-concepts/1/iterations/26/edit \\
                        http://localhost:5570/config/backtest/553 \\
@@ -40,6 +47,8 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py backtest-config-list
   python3 toolbox.py indicator-config-list 1 41  # optional: concept_id iteration_id
   python3 toolbox.py result-list --run 1812 --limit 20   # optional: --symbol --timeframe
+  python3 toolbox.py run-list --strategy vwma --version 1 # Runs zu Strategie+Version, nach Testset gruppiert
+                                                          #   alt: --iteration <id> | --testset-run <id>
   python3 toolbox.py testset-list
   python3 toolbox.py leaderboard-list 293        # optional: testset_id
   python3 toolbox.py symbol-list binance 4h      # exchange timeframe (Pflicht)
@@ -330,8 +339,16 @@ def run_read(i: int) -> None:
     if not r:
         print(f"## Run {i} — nicht in den letzten {RUN_LIST_LIMIT} Runs gefunden\n")
         return
-    print(f"## Run {i} — {r.get('strategy_name')}")
-    print(f"- Status: {r.get('status')} · {r.get('symbol')} {r.get('timeframe')} · {r.get('n_combinations')} Kombinationen")
+    # Sprechendes Label: Strategie+Version statt nackter ID (strategy_family=Slug,
+    # strategy_name=Versionsnummer). Testset-Zugehoerigkeit, falls der Run aus einem
+    # TestSet-Lauf stammt.
+    fam = (r.get("strategy_family") or "").upper()
+    ver = r.get("strategy_name")
+    label = f"{fam} v{ver}" if fam else f"Run {i}"
+    print(f"## Run {i} — {label} · {r.get('symbol')} {r.get('timeframe')}")
+    print(f"- Status: {r.get('status')} · {r.get('n_combinations')} Kombinationen")
+    if r.get("testset_name"):
+        print(f"- Testset: {r.get('testset_name')} (testset:{r.get('testset_id')})")
     print(f"- Zeitraum: {str(r.get('start_date', ''))[:10]} → {str(r.get('end_date', ''))[:10]}")
     # Aggregat-Kennzahlen aus der Analyse (falls berechnet)
     try:
@@ -585,6 +602,54 @@ def result_list(args: list) -> int:
         print(f"- result:{r['id']} run:{r.get('run_id')} {r.get('symbol')} — "
               f"Ret {num(r.get('total_return_pct'))}% / Sharpe {num(r.get('sharpe_ratio'))} / "
               f"DD {num(r.get('max_drawdown_pct'))}% / {r.get('total_trades')} Trades")
+    print()
+    return 0
+
+
+def run_list(args: list) -> int:
+    """Runs zu einer Strategie+Version (oder Iteration / TestSet-Lauf), nach Testset gruppiert.
+
+    Flags: --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id> [--limit <n>]
+    Die API loest (Slug, Version) serverseitig zu iteration_ids auf — der Aufrufer
+    denkt in Strategie+Version, nicht in Datensatz-IDs.
+    """
+    f = _parse_flags(args)
+    params: dict = {"limit": f.get("limit", 10000)}
+    if f.get("strategy"):
+        params["strategy"] = f["strategy"]
+    if f.get("version"):
+        params["version"] = f["version"]
+    if f.get("iteration"):
+        params["iteration_id"] = f["iteration"]
+    if f.get("testset-run"):
+        params["testset_run_id"] = f["testset-run"]
+    items = fetch(f"/api/backtest/runs?{urllib.parse.urlencode(params)}")["data"]["items"]
+
+    scope = []
+    if f.get("strategy"):
+        scope.append(str(f["strategy"]).upper() + (f" v{f['version']}" if f.get("version") else ""))
+    if f.get("iteration"):
+        scope.append(f"iteration:{f['iteration']}")
+    if f.get("testset-run"):
+        scope.append(f"testset-run:{f['testset-run']}")
+    print(f"## Runs — {' · '.join(scope) if scope else 'alle'} ({len(items)})")
+    if not items:
+        print("- (keine)\n")
+        return 0
+
+    # Nach Testset gruppieren; Einzel-Backtests ohne TestSet-Lauf in eigene Gruppe.
+    groups: dict = {}
+    for r in items:
+        key = r.get("testset_name") or "Einzel-Backtests (kein Testset)"
+        groups.setdefault(key, []).append(r)
+    for name in sorted(groups):
+        rs = sorted(groups[name], key=lambda x: x["id"])
+        tsid = rs[0].get("testset_id")
+        print(f"\n### {name}{f' (testset:{tsid})' if tsid else ''}")
+        for r in rs:
+            print(f"- run:{r['id']} · {r.get('symbol')} {r.get('timeframe')} · {r.get('status')} · "
+                  f"{r.get('n_combinations')} Kombinationen · "
+                  f"{str(r.get('start_date', ''))[:10]}→{str(r.get('end_date', ''))[:10]}")
     print()
     return 0
 
@@ -1087,6 +1152,7 @@ SINGLE_VERBS = {
     "backtest-config-list": backtest_config_list,
     "indicator-config-list": indicator_config_list,
     "result-list": result_list,
+    "run-list": run_list,
     "testset-list": testset_list,
     "leaderboard-list": leaderboard_list,
     "symbol-list": symbol_list,

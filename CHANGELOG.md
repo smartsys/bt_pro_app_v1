@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.7] - 29.06.2026
+
+### Added
+- Runs nach Strategie+Version/Testset filterbar und sprechende Run-Labels
+  - API GET /api/backtest/runs nimmt jetzt optionale Filter iteration_id, strategy+version und testset_run_id; (Slug, Version) wird serverseitig zu den passenden iteration_ids aufgeloest (leere Liste statt Fehler, wenn nicht vorhanden)
+  - BacktestRunOut gibt iteration_id aus (Anker fuer 'Runs zu Strategie+Version')
+  - Toolbox: neues Verb run-list --strategy <slug> --version <n> (auch --iteration / --testset-run), Ergebnis nach Testset gruppiert
+  - Toolbox: run:<id> zeigt sprechendes Label 'VWMA v1 - SYMBOL TF' plus Testset-Zugehoerigkeit statt nackter ID
+  - Skill-Doku praezisiert: ein Testset-Lauf erzeugt einen Leaderboard-Eintrag nur bei leaderboard_enabled=True (Opt-in); leeres Leaderboard ist kein Beleg gegen einen Testset-Lauf
+
+### Files
+- services/api/routes/api_backtest.py
+- services/api/schemas/__init__.py
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+
+
+
 ## [1.30.6] - 28.06.2026
 
 ### Changed

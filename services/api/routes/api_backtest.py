@@ -270,11 +270,50 @@ def start_walk_forward(request_body: dict):
 
 
 @router.get('/runs', response_model=ApiResponse)
-def get_runs(limit: int = Query(10000), offset: int = Query(0)) -> ApiResponse:
-    """Alle Backtest-Runs als JSON."""
+def get_runs(
+    limit: int = Query(10000),
+    offset: int = Query(0),
+    iteration_id: Optional[int] = Query(None),
+    strategy: Optional[str] = Query(None),
+    version: Optional[int] = Query(None),
+    testset_run_id: Optional[int] = Query(None),
+) -> ApiResponse:
+    """Backtest-Runs als JSON, optional gefiltert.
+
+    Filter (alle UND-verknuepft):
+    - iteration_id: nur Runs dieser Iteration (FK backtest_runs.iteration_id).
+    - strategy (Konzept-Slug) + optional version: serverseitig zu den
+      passenden iteration_ids aufgeloest (Concept.slug [+ Iteration.version]),
+      damit der Aufrufer in Strategie+Version denkt statt in Datensatz-IDs.
+      Ohne version werden alle Versionen der Strategie einbezogen. Existiert
+      die Strategie/Version nicht, kommt eine leere Liste zurueck.
+    - testset_run_id: nur Runs dieses TestSet-Laufs.
+    """
     session = get_session()
     try:
         query = session.query(BacktestRun).order_by(BacktestRun.created_at.desc())
+
+        # GEAENDERT: (Slug, Version) -> iteration_ids aufloesen, damit der Aufrufer
+        # ueber Strategie+Version filtern kann, nicht ueber interne Datensatz-IDs.
+        if strategy is not None:
+            iter_q = (
+                session.query(StrategyIteration.id)
+                .join(StrategyConcept, StrategyIteration.concept_id == StrategyConcept.id)
+                .filter(StrategyConcept.slug == strategy)
+            )
+            if version is not None:
+                iter_q = iter_q.filter(StrategyIteration.version == version)
+            iter_ids = [row[0] for row in iter_q.all()]
+            if not iter_ids:
+                # Strategie/Version gibt es nicht -> leeres Ergebnis statt Fehler
+                return ApiResponse(data=PaginatedData(items=[], total=0, limit=limit, offset=offset))
+            query = query.filter(BacktestRun.iteration_id.in_(iter_ids))
+
+        if iteration_id is not None:
+            query = query.filter(BacktestRun.iteration_id == iteration_id)
+        if testset_run_id is not None:
+            query = query.filter(BacktestRun.testset_run_id == testset_run_id)
+
         total = query.count()
         runs = query.offset(offset).limit(limit).all()
         items = [BacktestRunOut.model_validate(r).model_dump(mode='json') for r in runs]

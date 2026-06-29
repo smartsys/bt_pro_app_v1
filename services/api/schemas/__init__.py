@@ -50,6 +50,8 @@ class BacktestRunOut(BaseModel):
     total_chunks: Optional[int] = None
     remarks: Optional[str] = None
     testset_run_id: Optional[int] = None
+    # GEÄNDERT: Iteration-Verknüpfung (FK) ausgeben — Anker für "Runs zu Strategie+Version"
+    iteration_id: Optional[int] = None
     # GEÄNDERT: Ticket 15 — _json-Suffix
     backtest_config_json: Optional[dict] = None
     indicators_config_json: Optional[dict] = None

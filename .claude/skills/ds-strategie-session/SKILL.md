@@ -129,7 +129,7 @@ Danach **eine** Anschluss-Frage außerhalb des Briefings, z.B.:
 
 ## Pfad B — Ad-hoc Objekt-Toolbox
 
-Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten** — und so den vollen Entwicklungs-Loop zu fahren (anlegen → Backtest starten → auswerten → IndicatorConfig aus Gewinner → Testset-Lauf → Leaderboard). Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
+Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten** — und so den vollen Entwicklungs-Loop zu fahren (anlegen → Backtest starten → auswerten → IndicatorConfig aus Gewinner → Testset-Lauf → Leaderboard **nur bei aktiviertem Testset**, siehe unten). Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
 
 **Wichtig:** Pfad B startet NIE die Pfad-A-Routine. Wenn der User mitten in anderer Arbeit nur schnell `iteration:2` lesen oder kopieren will, blockiert das sein laufendes Vorhaben nicht — kein Konzept-Listing, keine Strategie-Rückfrage.
 
@@ -158,7 +158,8 @@ toolbox.py create-indicator-config result:2706026:Sharpe # Gewinner-Params → r
 toolbox.py concept-create --slug teststrategie --name "Teststrategie"  # anlegen: concept, iteration, *-config, testset
 toolbox.py iteration-create --concept 1 --file spec.json #   komplexe Payloads (spec_json/config_json/Backtest-Body) per --file
 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41  # Lauf starten
-toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973
+toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973  # 1 Run pro Config; Leaderboard nur bei leaderboard_enabled
+toolbox.py run-list --strategy vwma --version 1           # Runs zu Strategie+Version finden (nach Testset gruppiert)
 toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body)
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
