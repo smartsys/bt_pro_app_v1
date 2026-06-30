@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.14] - 01.07.2026
+
+### Added
+- 3D-Heatmap-Tab in der Run-Analyse plus Heatmap-Verbesserungen
+  - Neuer Tab "3D-Heatmap" auf der Run-Analyse-Seite: interaktiver 3D-Plot ueber drei Parameter-Achsen, serverseitig via VBT volume() als Plotly-Figur gerendert (neuer Endpoint /api/backtest/runs/{id}/analyse/volume, aspectmode cube, plotly.js per CDN)
+  - Heatmap-Aggregation pro Zelle zwischen Max (Default) und Average umschaltbar ueber ein neues Dropdown neben dem zweiten Parameter; Endpoint /analyse/heatmap erhaelt agg-Parameter
+  - Metrik-Button "Return %" zu "Total Return %" umbenannt und Y-Achsentitel der Heatmaps sichtbar gemacht
+  - Fix: Heatmap-Slider zeigte bei aktivem dritten Parameter nichts an (Float-Key-Mismatch zwischen Backend-Dict und JS-Lookup, jetzt index-basierte Slices)
+  - Fix: Max-Drawdown-Farbskala und Top-Results-Sortierung waren invertiert (max_drawdown_pct ist negativ gespeichert, naeher 0 = besser); jetzt normale Skala und absteigende Sortierung fuer alle Metriken
+
+### Files
+- services/api/routes/api_backtest.py
+- services/frontend/templates/backtest/analyse.html
+
+
+
 ## [1.30.13] - 30.06.2026
 
 ### Added

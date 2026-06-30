@@ -2004,13 +2004,20 @@ def get_heatmap(
     param_x: str = Query(...),
     param_y: str = Query(...),
     param_z: str = Query(None),
+    agg: str = Query('max'),
 ) -> dict:
-    """Heatmap: Durchschnittliche Metrik für jede Kombination zweier Parameter.
+    """Heatmap: aggregierte Metrik je Kombination zweier Parameter.
 
-    Optional mit param_z als dritte Dimension (Slider).
+    ``agg`` bestimmt die Aggregation über die nicht gewählten Parameter:
+    'max' = bester Wert pro Zelle, 'avg' = Durchschnitt. Optional ``param_z``
+    als dritte Dimension (Slider).
     """
     if metric not in _ANALYSE_METRICS:
         raise HTTPException(status_code=400, detail=f"Unbekannte Metrik: {metric}")
+    if agg not in ('avg', 'max'):
+        raise HTTPException(status_code=400, detail=f"Unbekannte Aggregation: {agg}")
+    # Whitelist-Mapping → sichere SQL-Interpolation (kein User-String in die Query)
+    agg_fn = 'MAX' if agg == 'max' else 'AVG'
 
     engine = get_engine()
     with engine.connect() as conn:
@@ -2019,7 +2026,7 @@ def get_heatmap(
             rows = conn.execute(text("""
                 SELECT px.param_value AS x_val, py.param_value AS y_val,
                        pz.param_value AS z_val,
-                       AVG(r.""" + metric + """) AS avg_val, COUNT(*) AS cnt
+                       """ + agg_fn + """(r.""" + metric + """) AS agg_val, COUNT(*) AS cnt
                 FROM backtest_results r
                 JOIN backtest_result_params px ON px.result_id = r.id AND px.param_name = :px
                 JOIN backtest_result_params py ON py.result_id = r.id AND py.param_name = :py
@@ -2033,18 +2040,17 @@ def get_heatmap(
             y_set = sorted(set(r.y_val for r in rows))
             z_set = sorted(set(r.z_val for r in rows))
 
-            # Daten nach Z-Wert gruppieren
-            slices = {}
+            # Slices als Liste parallel zu z_set: Frontend greift per Index zu und
+            # vermeidet so den Float-Key-Mismatch zwischen Python-dict und JS-Lookup
+            slices_by_z: dict = {z: [] for z in z_set}
             for r in rows:
-                z_key = r.z_val
-                if z_key not in slices:
-                    slices[z_key] = []
-                slices[z_key].append({
+                slices_by_z[r.z_val].append({
                     'x': r.x_val,
                     'y': r.y_val,
-                    'avg': round(r.avg_val, 2) if r.avg_val else None,
+                    'value': round(r.agg_val, 2) if r.agg_val is not None else None,
                     'count': r.cnt,
                 })
+            slices = [slices_by_z[z] for z in z_set]
 
             return {
                 'run_id': run_id,
@@ -2052,6 +2058,7 @@ def get_heatmap(
                 'param_x': param_x,
                 'param_y': param_y,
                 'param_z': param_z,
+                'agg': agg,
                 'x_values': x_set,
                 'y_values': y_set,
                 'z_values': z_set,
@@ -2060,7 +2067,7 @@ def get_heatmap(
         else:
             rows = conn.execute(text("""
                 SELECT px.param_value AS x_val, py.param_value AS y_val,
-                       AVG(r.""" + metric + """) AS avg_val, COUNT(*) AS cnt
+                       """ + agg_fn + """(r.""" + metric + """) AS agg_val, COUNT(*) AS cnt
                 FROM backtest_results r
                 JOIN backtest_result_params px ON px.result_id = r.id AND px.param_name = :px
                 JOIN backtest_result_params py ON py.result_id = r.id AND py.param_name = :py
@@ -2077,7 +2084,7 @@ def get_heatmap(
                 cells.append({
                     'x': r.x_val,
                     'y': r.y_val,
-                    'avg': round(r.avg_val, 2) if r.avg_val else None,
+                    'value': round(r.agg_val, 2) if r.agg_val is not None else None,
                     'count': r.cnt,
                 })
 
@@ -2086,10 +2093,80 @@ def get_heatmap(
                 'metric': metric,
                 'param_x': param_x,
                 'param_y': param_y,
+                'agg': agg,
                 'x_values': x_set,
                 'y_values': y_set,
                 'cells': cells,
             }
+
+
+@router.get('/runs/{run_id}/analyse/volume')
+def get_volume(
+    run_id: int,
+    metric: str = Query('sharpe_ratio'),
+    param_x: str = Query(...),
+    param_y: str = Query(...),
+    param_z: str = Query(...),
+) -> JSONResponse:
+    """3D-Volumen-Plot über drei Parameter-Achsen (VBT-Visualisierung als Plotly-JSON).
+
+    Bildet die Durchschnitts-Metrik je Kombination der drei gewählten Parameter und
+    rendert sie über VBTs eigene ``volume()``-Methode. Übrige (nicht gewählte)
+    Parameter werden — wie bei der Heatmap — weggemittelt. Liefert die fertige
+    Plotly-Figur als JSON, das das Frontend per ``Plotly.newPlot`` zeichnet.
+    """
+    if metric not in _ANALYSE_METRICS:
+        raise HTTPException(status_code=400, detail=f"Unbekannte Metrik: {metric}")
+    if len({param_x, param_y, param_z}) < 3:
+        raise HTTPException(status_code=400, detail="Drei verschiedene Parameter erforderlich")
+
+    # GEÄNDERT: vbt/numpy lazy importieren (schwere Lib, vgl. worker_tasks.py)
+    import numpy as np
+    import vectorbtpro as vbt  # noqa: F401  (Accessor .vbt wird durch den Import registriert)
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT px.param_value AS x_val, py.param_value AS y_val,
+                   pz.param_value AS z_val,
+                   MAX(r.""" + metric + """) AS avg_val
+            FROM backtest_results r
+            JOIN backtest_result_params px ON px.result_id = r.id AND px.param_name = :px
+            JOIN backtest_result_params py ON py.result_id = r.id AND py.param_name = :py
+            JOIN backtest_result_params pz ON pz.result_id = r.id AND pz.param_name = :pz
+            WHERE r.run_id = :run_id AND r.""" + metric + """ IS NOT NULL
+            GROUP BY px.param_value, py.param_value, pz.param_value
+        """), {"run_id": run_id, "px": param_x, "py": param_y, "pz": param_z}).fetchall()
+
+    if not rows:
+        return JSONResponse({"figure": None, "message": "Keine Daten für diese Parameter"})
+
+    # Series mit 3-Level-MultiIndex auf lückenlosem Kreuzprodukt bauen (fehlende = NaN)
+    x_set = sorted(set(r.x_val for r in rows))
+    y_set = sorted(set(r.y_val for r in rows))
+    z_set = sorted(set(r.z_val for r in rows))
+    val_map = {(r.x_val, r.y_val, r.z_val): r.avg_val for r in rows}
+    full_index = pd.MultiIndex.from_product(
+        [x_set, y_set, z_set], names=[param_x, param_y, param_z]
+    )
+    values = [val_map.get(tuple(ix), np.nan) for ix in full_index]
+    sr = pd.Series(values, index=full_index, dtype=float)
+
+    fig = sr.vbt.volume(
+        trace_kwargs=dict(
+            colorscale="icefire",
+            colorbar=dict(title=_ANALYSE_METRICS[metric]),
+        ),
+        return_fig=True,
+    )
+    # Würfel-Darstellung (gleichlange Achsen) wie im VBT-Beispiel statt nach
+    # Datenbereich gestreckt; aspectmode="cube" normiert alle drei Achsen.
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        scene=dict(aspectmode="cube"),
+    )
+
+    return JSONResponse(json.loads(fig.to_json()))
 
 
 # ========================================================================

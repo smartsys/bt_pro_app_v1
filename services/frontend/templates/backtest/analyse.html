@@ -41,7 +41,7 @@
   <div class="card-body py-2">
     <div class="d-flex align-items-center gap-2">
       <span class="text-muted small me-1">Metrik:</span>
-      <button class="btn btn-sm btn-outline-primary metric-btn active" data-metric="total_return_pct">Return %</button>
+      <button class="btn btn-sm btn-outline-primary metric-btn active" data-metric="total_return_pct">Total Return %</button>
       <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="total_trades">Trades</button>
       <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="win_rate_pct">Win Rate %</button>
       <button class="btn btn-sm btn-outline-primary metric-btn" data-metric="profit_factor">PF</button>
@@ -62,6 +62,9 @@
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="tab-indicators" data-bs-toggle="tab" data-bs-target="#pane-indicators" type="button" role="tab">Indikatoren</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-volume" data-bs-toggle="tab" data-bs-target="#pane-volume" type="button" role="tab">3D-Heatmap</button>
   </li>
 </ul>
 
@@ -125,6 +128,29 @@
     </div>
     {% endfor %}
   </div>
+
+  <!-- Tab: 3D-Volumen (VBT volume() via Plotly) -->
+  <div class="tab-pane fade" id="pane-volume" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0">3D-Heatmap <small class="text-muted ms-2" id="volume-metric-label">Total Return %</small></h3>
+        <div class="card-actions d-flex gap-2 align-items-center" id="volume-axis-controls">
+          <span class="text-muted small">X</span>
+          <select id="volume-x" class="form-select form-select-sm" style="width:auto"></select>
+          <span class="text-muted small">Y</span>
+          <select id="volume-y" class="form-select form-select-sm" style="width:auto"></select>
+          <span class="text-muted small">Z</span>
+          <select id="volume-z" class="form-select form-select-sm" style="width:auto"></select>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="volume-hint" class="text-muted" style="height:200px; display:none; align-items:center; justify-content:center; text-align:center">
+          Die 3D-Heatmap braucht drei variierte Parameter. Bei zwei Parametern zeigt die Heatmap unten den vollständigen Verlauf.
+        </div>
+        <div id="volume-chart" style="width:100%; height:600px;"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 
@@ -139,6 +165,10 @@
       <select id="heatmap-x" class="form-select form-select-sm" style="width:auto"></select>
       <span class="text-muted small">vs</span>
       <select id="heatmap-y" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="heatmap-agg" class="form-select form-select-sm" style="width:auto" title="Aggregation über die übrigen Parameter">
+        <option value="max">Max</option>
+        <option value="avg">Average</option>
+      </select>
       <span class="text-muted small ms-2">Slider:</span>
       <select id="heatmap-z" class="form-select form-select-sm" style="width:auto">
         <option value="">— keiner —</option>
@@ -165,6 +195,10 @@
       <select id="heatmap2-x" class="form-select form-select-sm" style="width:auto"></select>
       <span class="text-muted small">vs</span>
       <select id="heatmap2-y" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="heatmap2-agg" class="form-select form-select-sm" style="width:auto" title="Aggregation über die übrigen Parameter">
+        <option value="max">Max</option>
+        <option value="avg">Average</option>
+      </select>
       <span class="text-muted small ms-2">Slider:</span>
       <select id="heatmap2-z" class="form-select form-select-sm" style="width:auto">
         <option value="">— keiner —</option>
@@ -207,6 +241,7 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   var runId = {{ run.id }};
@@ -260,6 +295,26 @@ document.addEventListener("DOMContentLoaded", function() {
         sel2X.value = paramNames[0];
         sel2Y.value = paramNames[1];
       }
+
+      // 3D-Volumen-Achsen befüllen (braucht drei variierte Parameter)
+      var volX = document.getElementById('volume-x');
+      var volY = document.getElementById('volume-y');
+      var volZ = document.getElementById('volume-z');
+      paramNames.forEach(function(p) {
+        volX.add(new Option(p, p));
+        volY.add(new Option(p, p));
+        volZ.add(new Option(p, p));
+      });
+      if (paramNames.length >= 3) {
+        volX.value = paramNames[0];
+        volY.value = paramNames[1];
+        volZ.value = paramNames[2];
+      } else {
+        // Zu wenige Parameter: Auswahl und Plot ausblenden, Hinweis auf Heatmap zeigen
+        document.getElementById('volume-axis-controls').style.display = 'none';
+        document.getElementById('volume-chart').style.display = 'none';
+        document.getElementById('volume-hint').style.display = 'flex';
+      }
     });
 
   // Metrik-Buttons
@@ -277,6 +332,12 @@ document.addEventListener("DOMContentLoaded", function() {
       loadTopResults();
       loadHeatmap();
       loadHeatmap2();
+      // Volumen: nur neu laden wenn Tab aktiv, sonst beim nächsten Tab-Wechsel
+      if (document.getElementById('pane-volume').classList.contains('show')) {
+        loadVolume();
+      } else {
+        volumeLoaded = false;
+      }
     });
   });
 
@@ -284,9 +345,11 @@ document.addEventListener("DOMContentLoaded", function() {
   document.getElementById('heatmap-x').addEventListener('change', loadHeatmap);
   document.getElementById('heatmap-y').addEventListener('change', loadHeatmap);
   document.getElementById('heatmap-z').addEventListener('change', loadHeatmap);
+  document.getElementById('heatmap-agg').addEventListener('change', loadHeatmap);
   document.getElementById('heatmap2-x').addEventListener('change', loadHeatmap2);
   document.getElementById('heatmap2-y').addEventListener('change', loadHeatmap2);
   document.getElementById('heatmap2-z').addEventListener('change', loadHeatmap2);
+  document.getElementById('heatmap2-agg').addEventListener('change', loadHeatmap2);
 
   function fmtVal(v) {
     if (v === null || v === undefined) return '—';
@@ -577,7 +640,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function buildHeatmapData(cells, xVals, yVals) {
     var data = [];
     var cellMap = {};
-    cells.forEach(function(c) { cellMap[c.x + '|' + c.y] = c.avg; });
+    cells.forEach(function(c) { cellMap[c.x + '|' + c.y] = c.value; });
     for (var yi = 0; yi < yVals.length; yi++) {
       for (var xi = 0; xi < xVals.length; xi++) {
         var val = cellMap[xVals[xi] + '|' + yVals[yi]];
@@ -590,7 +653,6 @@ document.addEventListener("DOMContentLoaded", function() {
   function renderHeatmapChart(prefix, data, xVals, yVals, paramX, paramY) {
     var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     var textColor = isDark ? '#e5e7eb' : '#333';
-    var lowerIsBetter = (currentMetric === 'max_drawdown_pct');
 
     var allVals = data.map(function(d) { return d[2]; }).filter(function(v) { return v !== '-'; });
     var minV = allVals.length > 0 ? Math.min.apply(null, allVals) : 0;
@@ -618,7 +680,7 @@ document.addEventListener("DOMContentLoaded", function() {
             '<br/>' + document.querySelector('.metric-btn.active').textContent + ': ' + params.value[2];
         }
       },
-      grid: { left: 80, right: 60, top: 10, bottom: 60 },
+      grid: { left: 95, right: 60, top: 10, bottom: 60 },
       xAxis: {
         type: 'category',
         data: xLabels,
@@ -635,6 +697,9 @@ document.addEventListener("DOMContentLoaded", function() {
         splitArea: { show: true },
         axisLabel: { color: textColor, fontSize: 10 },
         name: paramY,
+        nameLocation: 'center',
+        nameGap: 50,
+        nameRotate: 90,
         nameTextStyle: { color: textColor, fontSize: 11 }
       },
       visualMap: {
@@ -647,9 +712,9 @@ document.addEventListener("DOMContentLoaded", function() {
         itemHeight: 200,
         textStyle: { color: textColor, fontSize: 10 },
         inRange: {
-          color: lowerIsBetter
-            ? ['#2fb344', '#f0c020', '#d63939']
-            : ['#d63939', '#f0c020', '#2fb344']
+          // Normale Skala für alle Metriken: niedriger Wert = rot, hoher = grün.
+          // Max-DD ist negativ gespeichert (näher 0 = besser), passt damit ebenfalls.
+          color: ['#d63939', '#f0c020', '#2fb344']
         }
       },
       series: [{
@@ -690,7 +755,8 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById(prefix + '-metric-label').textContent =
       document.querySelector('.metric-btn.active').textContent;
 
-    var url = '/api/backtest/runs/' + runId + '/analyse/heatmap?metric=' + currentMetric + '&param_x=' + paramX + '&param_y=' + paramY;
+    var agg = document.getElementById(prefix + '-agg').value;
+    var url = '/api/backtest/runs/' + runId + '/analyse/heatmap?metric=' + currentMetric + '&param_x=' + paramX + '&param_y=' + paramY + '&agg=' + agg;
     if (paramZ) url += '&param_z=' + paramZ;
 
     fetch(url)
@@ -710,7 +776,7 @@ document.addEventListener("DOMContentLoaded", function() {
           document.getElementById(prefix + '-slider-label').textContent = d.param_z + ':';
           document.getElementById(prefix + '-slider-value').textContent = parseFloat(zVals[0].toFixed(4));
 
-          var firstCells = d.slices[zVals[0]] || [];
+          var firstCells = d.slices[0] || [];
           var data = buildHeatmapData(firstCells, d.x_values, d.y_values);
           renderHeatmapChart(prefix, data, d.x_values, d.y_values, paramX, paramY);
 
@@ -719,7 +785,7 @@ document.addEventListener("DOMContentLoaded", function() {
             var zIdx = parseInt(this.value);
             var zVal = sd.z_values[zIdx];
             document.getElementById(prefix + '-slider-value').textContent = parseFloat(zVal.toFixed(4));
-            var cells = sd.slices[zVal] || [];
+            var cells = sd.slices[zIdx] || [];
             var data = buildHeatmapData(cells, sd.x_values, sd.y_values);
             renderHeatmapChart(prefix, data, sd.x_values, sd.y_values, paramX, paramY);
           };
@@ -741,10 +807,68 @@ document.addEventListener("DOMContentLoaded", function() {
   function loadHeatmap2() { loadHeatmapInstance('heatmap2'); }
 
   // ========================================================================
+  // 3D-Volumen (VBT volume() via Plotly)
+  // ========================================================================
+  var volumeLoaded = false;
+
+  function loadVolume() {
+    if (paramNames.length < 3) return;
+    var px = document.getElementById('volume-x').value;
+    var py = document.getElementById('volume-y').value;
+    var pz = document.getElementById('volume-z').value;
+    var el = document.getElementById('volume-chart');
+    if (!px || !py || !pz || px === py || px === pz || py === pz) {
+      el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Drei verschiedene Parameter auswählen</div>';
+      return;
+    }
+    document.getElementById('volume-metric-label').textContent =
+      document.querySelector('.metric-btn.active').textContent;
+
+    var url = '/api/backtest/runs/' + runId + '/analyse/volume?metric=' + currentMetric +
+      '&param_x=' + encodeURIComponent(px) + '&param_y=' + encodeURIComponent(py) +
+      '&param_z=' + encodeURIComponent(pz);
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(fig) {
+        if (!fig || !fig.data || fig.figure === null) {
+          el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Keine Daten</div>';
+          return;
+        }
+        // Plotly-Layout ans App-Theme (dark/light) angleichen
+        var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        fig.layout = fig.layout || {};
+        fig.layout.paper_bgcolor = 'rgba(0,0,0,0)';
+        fig.layout.font = { color: isDark ? '#e5e7eb' : '#333' };
+        Plotly.react(el, fig.data, fig.layout, {responsive: true, displaylogo: false});
+      })
+      .catch(function(e) {
+        console.error('[ANALYSE] Volumen-Plot fehlgeschlagen:', e);
+        el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Fehler beim Laden</div>';
+      });
+  }
+
+  document.getElementById('volume-x').addEventListener('change', loadVolume);
+  document.getElementById('volume-y').addEventListener('change', loadVolume);
+  document.getElementById('volume-z').addEventListener('change', loadVolume);
+
+  // Lazy laden, wenn der Volumen-Tab zum ersten Mal sichtbar wird
+  document.getElementById('tab-volume').addEventListener('shown.bs.tab', function() {
+    if (!volumeLoaded) {
+      loadVolume();
+      volumeLoaded = true;
+    } else {
+      Plotly.Plots.resize(document.getElementById('volume-chart'));
+    }
+  });
+
+  // ========================================================================
   // Top Results
   // ========================================================================
   function loadTopResults() {
-    var direction = (currentMetric === 'max_drawdown_pct') ? 'asc' : 'desc';
+    // Alle Metriken: höher = besser (Max-DD ist negativ gespeichert, näher 0 = besser),
+    // daher immer absteigend sortieren → die besten Results zuerst.
+    var direction = 'desc';
     fetch('/api/backtest/runs/' + runId + '/analyse/top-results?metric=' + currentMetric + '&direction=' + direction + '&limit=10')
       .then(function(r) { return r.json(); })
       .then(function(d) {
