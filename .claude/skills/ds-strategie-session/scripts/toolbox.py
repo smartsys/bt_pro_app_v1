@@ -57,6 +57,8 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py run-best 1812 profit_factor 30 1         # run_id metrik [min_trades=30] [limit=1] — bester Metrik-Wert mit >= min_trades Trades
   python3 toolbox.py run-bestwerte --run 1812                 # vier feste Bestwerte je Run ziehen + als Doku-Favorit (roter Stern) markieren (idempotent)
                                                               #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
+  python3 toolbox.py run-favorites-reset --testset-run 6      # Favoriten einer Run-Menge zuruecksetzen; ohne Flag beide Sterne, sonst --doc (rot) und/oder --user (gelb)
+                                                              #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
 
 Anlegen (create — Schreib-Aktion). Komplexe Payloads per --file als JSON-Datei.
 KEIN stiller Konverter, kein Fallback: spec_json/config_json wird unverändert
@@ -800,9 +802,13 @@ def run_best(args: list) -> int:
 # ---------------------------------------------------------------------------
 
 # Feste Definitionswerte der vier Bestwerte (multiparameter-lauf.md Schritt 5).
-# _BAND_FRACTION: oberes Band für Krit 2 (Win-Rate) UND Krit 3 (Sharpe) — 20 Prozent
-# vom jeweiligen Höchstwert. Innerhalb des Bands wird nach Total Return gekürt.
-_BAND_FRACTION = 0.20
+# Oberes Band für Krit 2 (Win-Rate) und Krit 3 (Sharpe) — Anteil vom jeweiligen
+# Höchstwert, innerhalb des Bands wird nach Total Return gekürt. Die beiden Bänder
+# sind BEWUSST unterschiedlich breit: das Sharpe-Band ist mit 10 Prozent enger als
+# das Win-Rate-Band (20 Prozent), damit der Sharpe-Band-Sieger seltener mit dem
+# Max-Total-Return-Bestwert zusammenfällt (mehr distinkte Doku-Favoriten je Run).
+_WINRATE_BAND_FRACTION = 0.20
+_SHARPE_BAND_FRACTION = 0.10
 _PF_MIN_TRADES = 30
 
 
@@ -829,12 +835,12 @@ def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
     return dd.get("data") or [], dd.get("recordsFiltered")
 
 
-def _band_best_return(run_id: int, metric_key: str, filter_param: str) -> tuple:
+def _band_best_return(run_id: int, metric_key: str, filter_param: str, fraction: float) -> tuple:
     """Bestes Total Return im oberen <metric>-Band eines Runs als (result|None, info).
 
     Gemeinsame Mechanik für Krit 2 (Win-Rate-Band) und Krit 3 (Sharpe-Band): nimmt
-    den Höchstwert der Metrik im Run, zieht 20% vom Höchstwert ab (_BAND_FRACTION)
-    und wählt aus allen Results im Band [max - 20%, max] das mit dem
+    den Höchstwert der Metrik im Run, zieht den Bandanteil <fraction> vom Höchstwert
+    ab und wählt aus allen Results im Band [max - fraction, max] das mit dem
     höchsten Total Return. So kann ein Low-Trade-Fluke (hoher Sharpe/100% Win-Rate
     bei 2 Trades) den Bestwert nicht mehr direkt kapern — im Band gewinnt der echte
     Return. Der Abzug nutzt abs(), damit das Band auch bei durchweg negativem
@@ -844,7 +850,7 @@ def _band_best_return(run_id: int, metric_key: str, filter_param: str) -> tuple:
     if not top_rows or top_rows[0].get(metric_key) is None:
         return None, f"keine {_METRIC_LABEL[metric_key]}-Results"
     max_val = top_rows[0][metric_key]
-    threshold = max_val - abs(max_val) * _BAND_FRACTION
+    threshold = max_val - abs(max_val) * fraction
     band_rows, n_band = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"],
                                   **{filter_param: threshold})
     info = f"Band {num(threshold)}..{num(max_val)} ({n_band} im Band)"
@@ -856,18 +862,18 @@ def _bestwerte_for_run(run_id: int) -> list:
 
     1) Max Total Return (kein Trade-Floor)
     2) Bestes Total Return im oberen Win-Rate-Band (höchste Win-Rate minus 20% vom Höchstwert)
-    3) Bestes Total Return im oberen Sharpe-Band (höchster Sharpe minus 20% vom Höchstwert)
+    3) Bestes Total Return im oberen Sharpe-Band (höchster Sharpe minus 10% vom Höchstwert)
     4) Max Profitfaktor mit mindestens 30 Trades
     """
     out = []
     # 1) Max Total Return
     rows, _ = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"])
     out.append(("Max Total Return", rows[0] if rows else None, ""))
-    # 2) Win-Rate-Band -> bestes Total Return
-    res2, info2 = _band_best_return(run_id, "win_rate_pct", "win_rate_pct_min")
+    # 2) Win-Rate-Band -> bestes Total Return (Band 20%)
+    res2, info2 = _band_best_return(run_id, "win_rate_pct", "win_rate_pct_min", _WINRATE_BAND_FRACTION)
     out.append(("Bestes Return im Win-Rate-Band", res2, info2))
-    # 3) Sharpe-Band -> bestes Total Return
-    res3, info3 = _band_best_return(run_id, "sharpe_ratio", "sharpe_ratio_min")
+    # 3) Sharpe-Band -> bestes Total Return (Band 10% — enger als Win-Rate)
+    res3, info3 = _band_best_return(run_id, "sharpe_ratio", "sharpe_ratio_min", _SHARPE_BAND_FRACTION)
     out.append(("Bestes Return im Sharpe-Band", res3, info3))
     # 4) Max Profitfaktor mit >= 30 Trades
     rows, n = _dt_query(run_id, _DT_SORT_IDX["profit_factor"], total_trades_min=_PF_MIN_TRADES)
@@ -886,13 +892,44 @@ def _fmt_result_line(r: dict) -> str:
     return line + (f"  ·  {pstr}" if pstr else "")
 
 
+def _resolve_runs(f: dict, verb: str) -> tuple:
+    """Loest die Run-Auswahl aus den Selektor-Flags auf -> (runs, scope).
+
+    Geteilt von run-bestwerte und run-favorites-reset. Genau ein Selektor:
+    --run <id> | --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id>.
+    Liefert die Run-Dicts (wie /api/backtest/runs) und einen lesbaren Scope-String.
+    """
+    if f.get("run"):
+        return [{"id": int(f["run"])}], f"run:{f['run']}"
+    params: dict = {"limit": f.get("limit", 10000)}
+    if f.get("strategy"):
+        params["strategy"] = f["strategy"]
+    if f.get("version"):
+        params["version"] = f["version"]
+    if f.get("iteration"):
+        params["iteration_id"] = f["iteration"]
+    if f.get("testset-run"):
+        params["testset_run_id"] = f["testset-run"]
+    if len(params) == 1:
+        raise ValueError(f"{verb} braucht einen Selektor: --run | --strategy [--version] | --iteration | --testset-run")
+    runs = fetch(f"/api/backtest/runs?{urllib.parse.urlencode(params)}")["data"]["items"]
+    sc = []
+    if f.get("strategy"):
+        sc.append(str(f["strategy"]).upper() + (f" v{f['version']}" if f.get("version") else ""))
+    if f.get("iteration"):
+        sc.append(f"iteration:{f['iteration']}")
+    if f.get("testset-run"):
+        sc.append(f"testset-run:{f['testset-run']}")
+    return runs, (" · ".join(sc) if sc else "alle")
+
+
 def run_bestwerte(args: list) -> int:
     """Vier feste Bestwerte je Run ziehen UND als Doku-Favorit (roter Stern) markieren.
 
     Flags: --run <id> | --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id> [--limit <n>]
     Kapselt die kanonische 4er-Definition aus multiparameter-lauf.md (max Total
     Return · bestes Return im oberen Win-Rate-Band [Max-WinR - 20% vom Höchstwert] · bestes
-    Return im oberen Sharpe-Band [Max-Sharpe - 20% vom Höchstwert] · max Profitfaktor mit
+    Return im oberen Sharpe-Band [Max-Sharpe - 10% vom Höchstwert] · max Profitfaktor mit
     >= 30 Trades), damit sie nicht von Hand falsch
     zusammengesetzt werden kann. Mehrere Runs über die gleiche Auflösung wie
     run-list (Strategie+Version / Iteration / TestSet-Lauf).
@@ -902,30 +939,7 @@ def run_bestwerte(args: list) -> int:
     erneut getoggelt — der doc_favorite-Endpunkt ist ein Toggle.
     """
     f = _parse_flags(args)
-    if f.get("run"):
-        runs = [{"id": int(f["run"])}]
-        scope = f"run:{f['run']}"
-    else:
-        params: dict = {"limit": f.get("limit", 10000)}
-        if f.get("strategy"):
-            params["strategy"] = f["strategy"]
-        if f.get("version"):
-            params["version"] = f["version"]
-        if f.get("iteration"):
-            params["iteration_id"] = f["iteration"]
-        if f.get("testset-run"):
-            params["testset_run_id"] = f["testset-run"]
-        if len(params) == 1:
-            raise ValueError("run-bestwerte braucht einen Selektor: --run | --strategy [--version] | --iteration | --testset-run")
-        runs = fetch(f"/api/backtest/runs?{urllib.parse.urlencode(params)}")["data"]["items"]
-        sc = []
-        if f.get("strategy"):
-            sc.append(str(f["strategy"]).upper() + (f" v{f['version']}" if f.get("version") else ""))
-        if f.get("iteration"):
-            sc.append(f"iteration:{f['iteration']}")
-        if f.get("testset-run"):
-            sc.append(f"testset-run:{f['testset-run']}")
-        scope = " · ".join(sc) if sc else "alle"
+    runs, scope = _resolve_runs(f, "run-bestwerte")
 
     print(f"## Bestwerte — {scope} ({len(runs)} Run(s)) — vier feste Kriterien, rote Doku-Favoriten")
     if not runs:
@@ -967,6 +981,57 @@ def run_bestwerte(args: list) -> int:
     if newly:
         print(f"Neu: {', '.join(f'result:{i}' for i in sorted(newly))}")
     print()
+    return 0
+
+
+# Favoriten-Reset. Raeumt die Favoriten einer ganzen Run-Menge ab: roter Doku-Stern
+# (is_doc_favorite) UND/ODER gelber User-Stern (is_favorite). Beide Endpunkte sind
+# Toggles -> erst markierte Results auslesen, dann gezielt zuruecktoggeln (kein
+# Blind-Toggle, der ungesetzte Sterne anschalten wuerde).
+_FAV_KINDS = {
+    # flag -> (dt-Spaltenindex [Favoriten sortieren zuerst], Result-Feld, Endpunkt-Suffix, Label)
+    "doc": (2, "is_doc_favorite", "doc_favorite", "roter Stern (Doku)"),
+    "user": (1, "is_favorite", "favorite", "gelber Stern (User)"),
+}
+
+
+def run_favorites_reset(args: list) -> int:
+    """Favoriten einer Run-Menge zuruecksetzen (roter Doku-Stern und/oder gelber User-Stern).
+
+    Flags: --run <id> | --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id>
+           [--doc] [--user]
+    Ohne --doc/--user werden BEIDE Favoriten-Arten abgeraeumt ("ganzer Run reset").
+    Mit genau einem der beiden Flags nur diese Art. Run-Aufloesung identisch zu run-bestwerte.
+
+    Liest je Run die aktuell markierten Results aus (dt-Endpunkt, Favoriten zuerst
+    sortiert) und toggelt jeden gesetzten Stern einzeln aus. Idempotent: ein bereits
+    sternloses Result wird nicht angefasst.
+    """
+    f = _parse_flags(args)
+    kinds = [k for k in ("doc", "user") if f.get(k)] or ["doc", "user"]
+    runs, scope = _resolve_runs(f, "run-favorites-reset")
+
+    kind_labels = ", ".join(_FAV_KINDS[k][3] for k in kinds)
+    print(f"## Favoriten-Reset — {scope} ({len(runs)} Run(s)) — {kind_labels}")
+    if not runs:
+        print("- (keine Runs)\n")
+        return 0
+
+    removed_total = 0
+    for run in sorted(runs, key=lambda x: x["id"]):
+        rid = run["id"]
+        for kind in kinds:
+            col_idx, field, suffix, label = _FAV_KINDS[kind]
+            # Favoriten sortieren zuerst -> length deckt jede realistische Favoriten-Zahl je Run ab
+            rows, _ = _dt_query(rid, col_idx, length=200)
+            marked = [r["id"] for r in rows if r.get(field)]
+            for res_id in marked:
+                post(f"/api/backtest/results/{res_id}/{suffix}")   # Toggle aus
+            removed_total += len(marked)
+            ids = ", ".join(f"result:{i}" for i in marked) if marked else "—"
+            print(f"- run:{rid} · {label}: {len(marked)} entfernt ({ids})")
+
+    print(f"\n**{removed_total} Favoriten-Markierungen entfernt.**\n")
     return 0
 
 
@@ -1306,6 +1371,7 @@ SINGLE_VERBS = {
     "run-top-results": run_top_results,
     "run-best": run_best,
     "run-bestwerte": run_bestwerte,
+    "run-favorites-reset": run_favorites_reset,
     "concept-create": concept_create,
     "iteration-create": iteration_create,
     "indicator-config-create": indicator_config_create,

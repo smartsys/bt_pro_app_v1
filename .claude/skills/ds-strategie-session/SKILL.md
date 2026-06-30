@@ -119,7 +119,7 @@ Output-Format:
 
 ## Verfügbar (Werkzeuge & Workflows)
 - **Workflows**: Iteration · Multiparameter-Lauf · neue Strategie · Pine-2-Spec-Runner · Custom-Indikator (Methodik-Docs unter `documentation/knowledge/strategy-development/workflows/`)
-- **Toolbox** (`toolbox.py`, siehe Pfad B): liest/kopiert/legt an/startet/ändert/löscht jedes bt_pro_app-Objekt + Wissens-Recherche. Verben → `toolbox.py --help`
+- **Toolbox** (`toolbox.py`, siehe Pfad B): liest/kopiert/legt an/startet/ändert/löscht jedes bt_pro_app-Objekt + Wissens-Recherche. Aktionen → `toolbox.py --help`
 - **Verfügbare Indikatoren** (`toolbox.py playground-indicators`): listet alle nutzbaren Indikatoren inkl. Inputs/Params/Outputs — Grundlage zum Bauen des `spec_json.indicators`-Dicts
 ```
 
@@ -137,13 +137,13 @@ Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** 
 
 **Zwei Naturen — danach sind die Abschnitte sortiert:**
 1. **Lesen** (Abschnitt „Lesen") — harmlos, fasst nichts an, jederzeit nutzbar: URL/ID reinwerfen, kompaktes Briefing zurück.
-2. **Schreiben** (Abschnitte „Schreib-Verben" + „Auswertung") — das eigentliche Arbeiten: anlegen, kopieren, Lauf starten, auswerten, ändern, löschen, markieren. Jede Maßnahme einzeln. Schreibt über die API.
+2. **Schreiben** (Abschnitte „Schreib-Aktionen" + „Auswertung") — das eigentliche Arbeiten: anlegen, kopieren, Lauf starten, auswerten, ändern, löschen, markieren. Jede Maßnahme einzeln. Schreibt über die API.
 
 Darunter folgen Referenz (`--help`) und Fehlerbilder.
 
-**Doku-Index (vor strukturschaffender Arbeit lesen):** Der Einstieg in die Strategie-Methodik ist `documentation/knowledge/strategy-development/AGENT_ENTRY.md` — dort die „Workflow-Index"-Tabelle (Aufgabe → erst lesen → dann tun). Basis-Referenzen daneben: `begriffe-und-modi.md` (Terminologie) und `code-referenz.md` (Mechanik). Reines Lesen/Kopieren/Löschen (CRUD) braucht das nicht; sobald aber eine **Strategie entsteht oder strukturell verändert** wird (neues Konzept, erste/strukturell neue Iteration), erst die passende AGENT_ENTRY-Zeile lesen, dann das Verb ausführen.
+**Doku-Index (vor strukturschaffender Arbeit lesen):** Der Einstieg in die Strategie-Methodik ist `documentation/knowledge/strategy-development/AGENT_ENTRY.md` — dort die „Workflow-Index"-Tabelle (Aufgabe → erst lesen → dann tun). Basis-Referenzen daneben: `begriffe-und-modi.md` (Terminologie) und `code-referenz.md` (Mechanik). Reines Lesen/Kopieren/Löschen (CRUD) braucht das nicht; sobald aber eine **Strategie entsteht oder strukturell verändert** wird (neues Konzept, erste/strukturell neue Iteration), erst die passende AGENT_ENTRY-Zeile lesen, dann die Aktion ausführen.
 
-### Lesen (Default, kein Verb)
+### Lesen (Default, keine Aktion)
 
 ```bash
 python3 .claude/skills/ds-strategie-session/scripts/toolbox.py <arg1> <arg2> ...
@@ -158,7 +158,7 @@ Akzeptierte Lese-Argumente, beliebig mischbar:
 
 Die Lese-Ausgabe **wortwörtlich** zurückgeben — keine eigene Reformulierung, keine Zusammenfassung dahinter. Der User will die Roh-Bausteine sehen, nicht meine Deutung. Hat der User zusätzlich eine Aufgabe formuliert, danach **eine** Frage stellen oder direkt vorschlagen, was als nächstes passieren soll.
 
-### Schreib-Verben (je Aufruf nur ein Verb-Typ — lesen/kopieren/anlegen/... nicht mischen)
+### Schreib-Aktionen (je Aufruf nur ein Aktions-Typ — lesen/kopieren/anlegen/... nicht mischen)
 
 ```bash
 toolbox.py copy iteration:2                              # kopieren: iteration, backtest-config, indicator-config
@@ -167,7 +167,7 @@ toolbox.py concept-create --slug teststrategie --name "Teststrategie"  # anlegen
 toolbox.py iteration-create --concept 1 --file spec.json #   komplexe Payloads (spec_json/config_json/Backtest-Body) per --file
 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41  # Lauf starten
 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973  # 1 Run pro Config; Leaderboard nur bei leaderboard_enabled
-toolbox.py run-list --strategy vwma --version 1           # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
+toolbox.py run-list --strategy teststrategie --version 1  # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
 toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body)
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
@@ -186,19 +186,21 @@ toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nac
 
 ### Auswertung eines Multiparameter-Laufs — die vier Bestwerte
 
-Aus jedem fertigen Sweep-Run werden genau **vier** Bestwerte gezogen und als **roter Doku-Favorit** markiert (schützt vor „Alle löschen"). Das übernimmt **ein** Verb — die Definition ist serverseitig gekapselt und idempotent, kann also nicht von Hand falsch zusammengesetzt oder doppelt gesetzt werden:
+**Auslösen.** Der Lauf wird meist locker benannt — „bewerte die Ergebnisse aus dem neuen Testset-Lauf", „markiere die Bestwerte der Teststrategie", „zieh die Bestwerte aus Run X". Die Bezeichnungen **Run**, **Testset-Lauf** und **„alle neuen"** sind gleichwertig: sie meinen dieselben Results, die markiert werden — **gruppiert nach Run**. Der gemeinte Lauf wird per Recherche aufgelöst (`run-list`, siehe „Lesen"), nicht per Rückfrage. **Standard-Weg ist `run-bestwerte --testset-run <id>` — ein Aufruf je Testset-Lauf.** Umfasst der Auftrag mehrere Läufe („alle neuen", „beide Testsets"), folgt je ein `--testset-run`-Aufruf pro Lauf; entscheidend ist **Vollständigkeit** — kein zum Auftrag gehörender Lauf wird ausgelassen (`--iteration`/`--run` sind Sonderfälle und gleichwertig, solange sie wirklich alle gemeinten Läufe abdecken). Nur wenn unklar bleibt, welcher von mehreren gleichwertigen Läufen gemeint ist, folgt eine gezielte Rückfrage.
+
+Aus jedem fertigen Sweep-Run werden genau **vier** Bestwerte gezogen und als **roter Doku-Favorit** markiert (schützt vor „Alle löschen"). Das übernimmt **eine** Aktion — die Definition ist serverseitig gekapselt und idempotent, kann also nicht von Hand falsch zusammengesetzt oder doppelt gesetzt werden:
 
 ```bash
-toolbox.py run-bestwerte --run 1812          # ein Run: vier Bestwerte ziehen + roten Stern setzen
-toolbox.py run-bestwerte --iteration 2       # alle Runs einer Iteration (Strategie+Version)
-toolbox.py run-bestwerte --testset-run 3     # alle Runs eines Testset-Laufs (Auftrags-ID)
+toolbox.py run-bestwerte --testset-run 3     # STANDARD: alle Runs eines Testset-Laufs (Auftrags-ID)
+toolbox.py run-bestwerte --iteration 2       # Sonderfall: alle Runs einer Iteration (Strategie+Version)
+toolbox.py run-bestwerte --run 1812          # Sonderfall: nur ein einzelner Run
 ```
 
 Die vier Kriterien (Detail + Raster-Format: `documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md`) — jede Metrik hat eine eigene Regel, nicht vereinheitlichen:
 
 1. **Max Total Return** — reines Maximum, kein Trade-Floor
 2. **Win-Rate-Band → bestes Return** — Band = Top 20 % vom Höchstwert (höchste WinR − 20 % vom Höchstwert); daraus das höchste Total Return
-3. **Sharpe-Band → bestes Return** — dieselbe Band-Mechanik mit Sharpe (höchster Sharpe − 20 % vom Höchstwert); daraus das höchste Total Return
+3. **Sharpe-Band → bestes Return** — dieselbe Band-Mechanik mit Sharpe, aber engeres Band: Top 10 % (höchster Sharpe − 10 % vom Höchstwert); daraus das höchste Total Return. Bewusst enger als das Win-Rate-Band, damit der Sieger seltener mit Krit 1 (Max Total Return) zusammenfällt
 4. **Max Profitfaktor mit ≥30 Trades** — Trade-Floor gegen Low-Trade-Flukes; gilt NUR für PF
 
 **Bei Wertgleichstand** (z. B. Raster-Dubletten mit identischem Ergebnis) wählt die Auswahl deterministisch: zuerst das risikoärmere Result (**geringster Drawdown**), dann die **ID** als finaler Anker — so ist die Markierung reproduzierbar. Der Run liegt mit allen Kombinationen ohnehin in der DB, extra speichern ist nicht nötig. **Kein** Promotions-/Akzeptanz-/Folgeschritt; der wird bei Bedarf neu definiert.
@@ -207,7 +209,7 @@ Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-res
 
 ### Vollständige Referenz (Detail-Flags, alle Routen)
 
-- **Syntax/Flags je Verb** (inkl. aller Create-/List-/Delete-/Aktions-Verben und Defaults): `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py --help`
+- **Syntax/Flags je Aktion** (inkl. aller Anlege-, Listen-, Lösch- und sonstigen Aktionen und Defaults): `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py --help`
 Keine eigenen Curl-Calls "zur Sicherheit". Zeigt das Skript ein Feld nicht, fehlt es im Briefing — dann das Skript erweitern statt Workaround.
 
 ### Pfad-B-spezifische Fehlerbilder
@@ -248,7 +250,7 @@ Gilt unabhängig vom Einstieg: sobald ein Lauf startet, wird Journal geführt �
 
 ## Was du nicht tust
 
-- Keine Änderungen an Projekt-Code. Schreib-Aktionen gehen ausschließlich über die Toolbox-Verben (Pfad B, legen/ändern bt_pro_app-Objekte über die API an) und Pfad C (aktualisiert Vault-Doku `status.md`, Iter-Notes). Pfad A und das Lese-Briefing aus Pfad B fassen nichts an.
+- Keine Änderungen an Projekt-Code. Schreib-Aktionen gehen ausschließlich über die Toolbox-Aktionen (Pfad B, legen/ändern bt_pro_app-Objekte über die API an) und Pfad C (aktualisiert Vault-Doku `status.md`, Iter-Notes). Pfad A und das Lese-Briefing aus Pfad B fassen nichts an.
 - **In Pfad A (Konzept-Auswahl) neutral listen** — keine eigene Wertung, welche Strategie inhaltlich sinnvoller ist; der User wählt, welches Konzept drankommt.
 - **In der Entwicklungs-Arbeit (Pfad B) dagegen sehr wohl bewerten und eine Richtung empfehlen** — das ist die Ingenieur-Rolle. Die finale Entscheidung (welche Iteration, welcher nächste Schritt) trifft aber der User.
 - Keine Phase 3 ohne explizite User-Entscheidung in Phase 2.

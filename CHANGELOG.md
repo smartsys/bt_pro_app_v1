@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.13] - 30.06.2026
+
+### Added
+- Toolbox-Verb run-favorites-reset zum Zurücksetzen der Favoriten einer ganzen Run-Menge; Sharpe-Band der Bestwerte auf 10 Prozent verengt
+  - Neues Verb run-favorites-reset (Skill ds-strategie-session, toolbox.py): räumt die Favoriten einer Run-Menge ab - roter Doku-Stern (is_doc_favorite) und/oder gelber User-Stern (is_favorite). Ohne Flag werden beide Arten entfernt, mit --doc bzw. --user gezielt nur eine. Selektoren identisch zu run-bestwerte (--run | --strategy [--version] | --iteration | --testset-run). Liest die markierten Results aus und toggelt nur gesetzte Sterne zurück (idempotent).
+  - Gemeinsamer Run-Auflöser _resolve_runs aus run-bestwerte extrahiert und von beiden Verben geteilt (DRY).
+  - Sharpe-Band der vier Standard-Bestwerte von 20 auf 10 Prozent verengt (eigene Konstante _SHARPE_BAND_FRACTION); Win-Rate-Band bleibt bei 20 Prozent. Ziel: der Sharpe-Band-Sieger fällt seltener mit dem Maximalen-Total-Return-Bestwert zusammen, mehr distinkte Doku-Favoriten je Run.
+  - Doku nachgezogen: multiparameter-lauf.md, SKILL.md, toolbox-werkzeuge.md.
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md
+- documentation/project/toolbox-werkzeuge.md
+
+
+
 ## [1.30.12] - 30.06.2026
 
 ### Fixed

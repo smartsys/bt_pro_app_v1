@@ -51,6 +51,7 @@
 | `run-top-results <run_id> [metrik] [limit] [richtung]` | Die besten N Results eines Runs nach einer Metrik. |
 | `run-best <run_id> <metrik> [min_trades] [limit]` | Bester Metrik-Wert eines Runs mit Mindest-Trade-Zahl. |
 | `run-bestwerte --run <id>` | Zieht die vier festen Bestwerte eines Runs und markiert sie als roten Doku-Favorit (idempotent). |
+| `run-favorites-reset --run <id> [--doc] [--user]` | Setzt die Favoriten einer Run-Menge zurück (ohne Flag beide Sterne; `--doc` rot/Doku, `--user` gelb/persönlich). Selektoren wie `run-bestwerte`. |
 | `run-results <id>` | Rohe Result-Liste eines Runs. |
 | `run-summary <id>` | Zusammenfassung der Analyse eines Runs. |
 | `run-distribution <id>` | Verteilung der Kennzahlen über die Kombinationen eines Runs. |
