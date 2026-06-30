@@ -197,13 +197,13 @@ toolbox.py run-bestwerte --testset-run 3     # alle Runs eines Testset-Laufs (Au
 Die vier Kriterien (Detail + Raster-Format: `documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md`) — jede Metrik hat eine eigene Regel, nicht vereinheitlichen:
 
 1. **Max Total Return** — reines Maximum, kein Trade-Floor
-2. **Win-Rate-Band → bestes Return** — Band = höchste WinR − 20 pp; daraus das höchste Total Return
-3. **Max Sharpe** — reines Maximum, kein Trade-Floor
+2. **Win-Rate-Band → bestes Return** — Band = Top 20 % vom Höchstwert (höchste WinR − 20 % vom Höchstwert); daraus das höchste Total Return
+3. **Sharpe-Band → bestes Return** — dieselbe Band-Mechanik mit Sharpe (höchster Sharpe − 20 % vom Höchstwert); daraus das höchste Total Return
 4. **Max Profitfaktor mit ≥30 Trades** — Trade-Floor gegen Low-Trade-Flukes; gilt NUR für PF
 
 **Bei Wertgleichstand** (z. B. Raster-Dubletten mit identischem Ergebnis) wählt die Auswahl deterministisch: zuerst das risikoärmere Result (**geringster Drawdown**), dann die **ID** als finaler Anker — so ist die Markierung reproduzierbar. Der Run liegt mit allen Kombinationen ohnehin in der DB, extra speichern ist nicht nötig. **Kein** Promotions-/Akzeptanz-/Folgeschritt; der wird bei Bedarf neu definiert.
 
-Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-results <run_id> <metrik> 1 desc`, `run-winrate-band-best <run_id>`, `run-best <run_id> profit_factor 30`, Markierung einzeln via `result-doc-favorite <result_id>`.
+Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-results <run_id> <metrik> 1 desc` (Krit 1 + Bandgrenzen von 2/3), `run-best <run_id> profit_factor 30` (Krit 4), Markierung einzeln via `result-doc-favorite <result_id>`. Die Band-Sieger (Krit 2/3) zieht nur `run-bestwerte`.
 
 ### Vollständige Referenz (Detail-Flags, alle Routen)
 

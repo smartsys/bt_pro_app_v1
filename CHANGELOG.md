@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.10] - 30.06.2026
+
+### Changed
+- Strategie-Bewertung: Kriterien 2 und 3 der vier Bestwerte auf einheitliche Band-Mechanik umgestellt
+  - Krit 2 (Win-Rate-Band): Bandgrenze jetzt 20 Prozent vom Hoechstwert statt 20 Prozentpunkte
+  - Krit 3 von 'Max Sharpe' (reines Maximum) auf das Sharpe-Band umgestellt - gleiche Mechanik wie Krit 2; ein hoher Sharpe bei wenigen Trades kapert den Bestwert nicht mehr
+  - Gemeinsamer Helper _band_best_return fuer Krit 2 und 3 (DRY); threshold = max - abs(max) * 0.20, das abs() haelt das Band auch bei durchweg negativem Hoechstwert unterhalb des Maximums
+  - Win-Rate-Band bleibt bewusst ohne Trade-Floor: niedrige Trade-Zahl ist ein Flag, kein Filter; Kontext liefert das Testset (mehrere Symbole)
+  - Veraltetes Verb run-winrate-band-best (rechnete in Prozentpunkten) entfernt; die Band-Sieger zieht nur noch run-bestwerte
+  - Doku angeglichen: multiparameter-lauf.md Schritt 5 und SKILL.md Auswertungs-Sektion
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md
+- .claude/skills/ds-strategie-session/SKILL.md
+
+
+
 ## [1.30.9] - 29.06.2026
 
 ### Added

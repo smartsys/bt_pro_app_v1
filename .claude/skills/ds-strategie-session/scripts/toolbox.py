@@ -54,7 +54,6 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py symbol-list binance 4h      # exchange timeframe (Pflicht)
   python3 toolbox.py run-parameter-ranking 1812 sharpe_ratio   # run_id [metric]
   python3 toolbox.py run-top-results 1812 sharpe_ratio 20 desc # run_id [metric] [limit] [direction]
-  python3 toolbox.py run-winrate-band-best 1812 20 1          # run_id [band_pp=20] [limit=1] — bestes Return im Winrate-Band [max-band, max]
   python3 toolbox.py run-best 1812 profit_factor 30 1         # run_id metrik [min_trades=30] [limit=1] — bester Metrik-Wert mit >= min_trades Trades
   python3 toolbox.py run-bestwerte --run 1812                 # vier feste Bestwerte je Run ziehen + als Doku-Favorit (roter Stern) markieren (idempotent)
                                                               #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
@@ -742,51 +741,6 @@ def run_top_results(args: list) -> int:
     return 0
 
 
-def run_winrate_band_best(args: list) -> int:
-    """Bestes Total Return im oberen Win-Rate-Band eines Runs.
-
-    Nimmt die höchste Win-Rate des Runs, zieht <band_pp> Prozentpunkte ab und
-    wählt aus allen Results im Band [max-band_pp, max] die mit dem höchsten
-    Total Return (Top <limit>). Löst das Zwei-Metrik-Selektionskriterium
-    serverseitig (kein Client-Loop): max-Winrate via analyse/top-results,
-    Band-Filter + Return-Sortierung via results/dt (win_rate_pct_min).
-    """
-    if not args:
-        raise ValueError("run-winrate-band-best braucht <run_id> [band_pp=20] [limit=1]")
-    run_id = int(args[0])
-    band = float(args[1]) if len(args) > 1 else 20.0
-    limit = int(args[2]) if len(args) > 2 else 1
-    # 1. Höchste Win-Rate des Runs
-    d = fetch(f"/api/backtest/runs/{run_id}/analyse/top-results?metric=win_rate_pct&limit=1&direction=desc")
-    top = d.get("results") or []
-    if not top or top[0].get("win_rate_pct") is None:
-        print(f"## run-winrate-band-best Run {run_id}: keine Win-Rate-Results\n")
-        return 0
-    max_wr = top[0]["win_rate_pct"]
-    threshold = max_wr - band
-    # 2. Im Band, sortiert nach Total Return (Spalten-Index 19 = total_return_pct)
-    qs = urllib.parse.urlencode({
-        "run_id": run_id, "win_rate_pct_min": threshold,
-        "order[0][column]": 19, "order[0][dir]": "desc",
-        "start": 0, "length": limit, "draw": 1,
-    })
-    dd = fetch(f"/api/backtest/results/dt?{qs}")
-    rows = dd.get("data") or []
-    n_band = dd.get("recordsFiltered")
-    print(f"## Winrate-Band-Best Run {run_id} — Band WinR {num(threshold)}%..{num(max_wr)}% "
-          f"(max - {num(band)} pp, {n_band} Results im Band), Top {limit} nach Total Return")
-    for r in rows:
-        params = r.get("actual_params") or {}
-        pstr = ", ".join(f"{k}={v}" for k, v in params.items()) if isinstance(params, dict) else ""
-        print(f"- result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
-              f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
-              f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
-        if pstr:
-            print(f"  - {pstr}")
-    print()
-    return 0
-
-
 # Spalten-Index im /results/dt-Endpoint (Sortier-Parameter order[0][column])
 _DT_SORT_IDX = {
     "sharpe_ratio": 13, "max_drawdown_pct": 15, "total_trades": 16,
@@ -841,22 +795,24 @@ def run_best(args: list) -> int:
 # Bestwerte (bestwerte). EIN Verb, das die kanonische 4er-Definition aus
 # multiparameter-lauf.md ausführbar kapselt — damit sie nicht je Aufruf von Hand
 # falsch zusammengesetzt wird — und die Gewinner als Doku-Favorit (roter Stern)
-# markiert. Die Definitionswerte (Band 20 pp, PF-Floor 30 Trades) sind bewusst
-# fest verdrahtet, NICHT parametrisierbar: das Verb IST die Definition.
+# markiert. Die Definitionswerte (Band 20% vom Höchstwert, PF-Floor 30 Trades) sind
+# bewusst fest verdrahtet, NICHT parametrisierbar: das Verb IST die Definition.
 # ---------------------------------------------------------------------------
 
-# Feste Definitionswerte der vier Bestwerte (multiparameter-lauf.md Schritt 5)
-_WINRATE_BAND_PP = 20.0
+# Feste Definitionswerte der vier Bestwerte (multiparameter-lauf.md Schritt 5).
+# _BAND_FRACTION: oberes Band für Krit 2 (Win-Rate) UND Krit 3 (Sharpe) — 20 Prozent
+# vom jeweiligen Höchstwert. Innerhalb des Bands wird nach Total Return gekürt.
+_BAND_FRACTION = 0.20
 _PF_MIN_TRADES = 30
 
 
 def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
-              total_trades_min=None, length: int = 1) -> tuple:
+              sharpe_ratio_min=None, total_trades_min=None, length: int = 1) -> tuple:
     """Top-<length> Results eines Runs nach Spalte <order_idx> absteigend.
 
     Geteilte Low-Level-Abfrage über /api/backtest/results/dt für die vier
     Bestwerte (Spalten-Indizes in _DT_SORT_IDX). Optionale serverseitige Filter
-    win_rate_pct_min / total_trades_min. Gibt (rows, recordsFiltered) zurück.
+    win_rate_pct_min / sharpe_ratio_min / total_trades_min. Gibt (rows, recordsFiltered) zurück.
     """
     params = {
         "run_id": run_id,
@@ -865,18 +821,42 @@ def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
     }
     if win_rate_pct_min is not None:
         params["win_rate_pct_min"] = win_rate_pct_min
+    if sharpe_ratio_min is not None:
+        params["sharpe_ratio_min"] = sharpe_ratio_min
     if total_trades_min is not None:
         params["total_trades_min"] = total_trades_min
     dd = fetch(f"/api/backtest/results/dt?{urllib.parse.urlencode(params)}")
     return dd.get("data") or [], dd.get("recordsFiltered")
 
 
+def _band_best_return(run_id: int, metric_key: str, filter_param: str) -> tuple:
+    """Bestes Total Return im oberen <metric>-Band eines Runs als (result|None, info).
+
+    Gemeinsame Mechanik für Krit 2 (Win-Rate-Band) und Krit 3 (Sharpe-Band): nimmt
+    den Höchstwert der Metrik im Run, zieht 20% vom Höchstwert ab (_BAND_FRACTION)
+    und wählt aus allen Results im Band [max - 20%, max] das mit dem
+    höchsten Total Return. So kann ein Low-Trade-Fluke (hoher Sharpe/100% Win-Rate
+    bei 2 Trades) den Bestwert nicht mehr direkt kapern — im Band gewinnt der echte
+    Return. Der Abzug nutzt abs(), damit das Band auch bei durchweg negativem
+    Höchstwert (z.B. negativer Sharpe) korrekt unterhalb des Maximums liegt.
+    """
+    top_rows, _ = _dt_query(run_id, _DT_SORT_IDX[metric_key])
+    if not top_rows or top_rows[0].get(metric_key) is None:
+        return None, f"keine {_METRIC_LABEL[metric_key]}-Results"
+    max_val = top_rows[0][metric_key]
+    threshold = max_val - abs(max_val) * _BAND_FRACTION
+    band_rows, n_band = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"],
+                                  **{filter_param: threshold})
+    info = f"Band {num(threshold)}..{num(max_val)} ({n_band} im Band)"
+    return (band_rows[0] if band_rows else None), info
+
+
 def _bestwerte_for_run(run_id: int) -> list:
     """Die vier kanonischen Bestwerte eines Runs als Liste (label, result|None, info).
 
     1) Max Total Return (kein Trade-Floor)
-    2) Bestes Total Return im oberen Win-Rate-Band (höchste Win-Rate des Runs minus 20 pp)
-    3) Max Sharpe (kein Trade-Floor)
+    2) Bestes Total Return im oberen Win-Rate-Band (höchste Win-Rate minus 20% vom Höchstwert)
+    3) Bestes Total Return im oberen Sharpe-Band (höchster Sharpe minus 20% vom Höchstwert)
     4) Max Profitfaktor mit mindestens 30 Trades
     """
     out = []
@@ -884,19 +864,11 @@ def _bestwerte_for_run(run_id: int) -> list:
     rows, _ = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"])
     out.append(("Max Total Return", rows[0] if rows else None, ""))
     # 2) Win-Rate-Band -> bestes Total Return
-    wr_rows, _ = _dt_query(run_id, _DT_SORT_IDX["win_rate_pct"])
-    if wr_rows and wr_rows[0].get("win_rate_pct") is not None:
-        max_wr = wr_rows[0]["win_rate_pct"]
-        threshold = max_wr - _WINRATE_BAND_PP
-        band_rows, n_band = _dt_query(run_id, _DT_SORT_IDX["total_return_pct"],
-                                      win_rate_pct_min=threshold)
-        info = f"Band {num(threshold)}%..{num(max_wr)}% ({n_band} im Band)"
-        out.append(("Bestes Return im Win-Rate-Band", band_rows[0] if band_rows else None, info))
-    else:
-        out.append(("Bestes Return im Win-Rate-Band", None, "keine Win-Rate-Results"))
-    # 3) Max Sharpe
-    rows, _ = _dt_query(run_id, _DT_SORT_IDX["sharpe_ratio"])
-    out.append(("Max Sharpe", rows[0] if rows else None, ""))
+    res2, info2 = _band_best_return(run_id, "win_rate_pct", "win_rate_pct_min")
+    out.append(("Bestes Return im Win-Rate-Band", res2, info2))
+    # 3) Sharpe-Band -> bestes Total Return
+    res3, info3 = _band_best_return(run_id, "sharpe_ratio", "sharpe_ratio_min")
+    out.append(("Bestes Return im Sharpe-Band", res3, info3))
     # 4) Max Profitfaktor mit >= 30 Trades
     rows, n = _dt_query(run_id, _DT_SORT_IDX["profit_factor"], total_trades_min=_PF_MIN_TRADES)
     out.append((f"Max Profitfaktor (>= {_PF_MIN_TRADES} Trades)",
@@ -919,8 +891,9 @@ def run_bestwerte(args: list) -> int:
 
     Flags: --run <id> | --strategy <slug> [--version <n>] | --iteration <id> | --testset-run <id> [--limit <n>]
     Kapselt die kanonische 4er-Definition aus multiparameter-lauf.md (max Total
-    Return · bestes Return im oberen Win-Rate-Band [Max-WinR - 20 pp] · max Sharpe ·
-    max Profitfaktor mit >= 30 Trades), damit sie nicht von Hand falsch
+    Return · bestes Return im oberen Win-Rate-Band [Max-WinR - 20% vom Höchstwert] · bestes
+    Return im oberen Sharpe-Band [Max-Sharpe - 20% vom Höchstwert] · max Profitfaktor mit
+    >= 30 Trades), damit sie nicht von Hand falsch
     zusammengesetzt werden kann. Mehrere Runs über die gleiche Auflösung wie
     run-list (Strategie+Version / Iteration / TestSet-Lauf).
 
@@ -1331,7 +1304,6 @@ SINGLE_VERBS = {
     "symbol-list": symbol_list,
     "run-parameter-ranking": run_parameter_ranking,
     "run-top-results": run_top_results,
-    "run-winrate-band-best": run_winrate_band_best,
     "run-best": run_best,
     "run-bestwerte": run_bestwerte,
     "concept-create": concept_create,
