@@ -721,9 +721,17 @@ def get_result_config(result_id: int) -> dict:
     damit applySetupConfig() ohne Umbau wiederverwendbar ist.
 
     Indikatoren kommen als Dict (Name -> Flat-Spec), nicht als Liste.
-    ui_state_json.selected_configs bleibt leer (Configs existieren nach Cleanup ggf. nicht mehr).
+    ui_state_json.selected_configs wird, soweit moeglich, aus dem zugehoerigen
+    BacktestRun zurückgeführt (Konzept, Iteration, Indicator-/Backtest-Config),
+    damit die oberen Dropdowns im Playground vorausgewählt sind. Lose Referenzen
+    (Configs nach Cleanup geloescht, ad-hoc-Runs) bleiben None.
     """
-    from user_data.utils.database.models import BacktestResult
+    from user_data.utils.database.models import (
+        BacktestResult,
+        BacktestRun,
+        StrategyIteration,
+        StrategyConcept,
+    )
 
     session = get_session()
     try:
@@ -780,20 +788,39 @@ def get_result_config(result_id: int) -> dict:
             },
         }
 
+        # GEÄNDERT: Rückführung der Dropdown-Auswahl aus dem zugehoerigen BacktestRun.
+        # iteration_id liegt direkt am Result (FK), Config-Herkunft am Run (lose Refs).
+        run = session.query(BacktestRun).filter(BacktestRun.id == result.run_id).first()
+        iteration_id = result.iteration_id or (run.iteration_id if run else None)
+        backtest_config_id = run.backtest_config_id if run else None
+        indicator_config_id = run.indicator_config_id if run else None
+
+        # Konzept-Slug ueber die Iteration aufloesen (cpConceptSlug nutzt den Slug als value)
+        concept_slug = None
+        if iteration_id:
+            iteration = session.query(StrategyIteration).filter(
+                StrategyIteration.id == iteration_id
+            ).first()
+            if iteration:
+                concept = session.query(StrategyConcept).filter(
+                    StrategyConcept.id == iteration.concept_id
+                ).first()
+                concept_slug = concept.slug if concept else None
+
         strategy_config_json = {
             'entry': rules.get('entry') if isinstance(rules, dict) else None,
             'exit': rules.get('exit') if isinstance(rules, dict) else None,
-            'concept_slug': None,
+            'concept_slug': concept_slug,
         }
 
-        # ui_state_json: selected_configs bleibt leer (flüchtiger Modus)
+        # ui_state_json: selected_configs aus der Rückführung (None bei fehlenden/ad-hoc-Refs)
         ui_state_json = {
             'show_candles': True,
             'indicators': {},
             'selected_configs': {
-                'iteration_id': None,
-                'backtest_config_id': None,
-                'indicator_config_id': None,
+                'iteration_id': iteration_id,
+                'backtest_config_id': backtest_config_id,
+                'indicator_config_id': indicator_config_id,
             },
         }
 

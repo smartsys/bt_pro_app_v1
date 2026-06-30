@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.12] - 30.06.2026
+
+### Fixed
+- Playground-Aufruf aus einem Result wählt Konzept, Iteration, Indicator-Config und Backtest-Config in den oberen Dropdowns wieder vor
+  - Der Endpoint GET /api/chart-playground/result-config/{id} lieferte die Rückführungs-IDs bisher hart als None — die vier oberen Dropdowns blieben beim Laden via ?resultid leer.
+  - Fix: Endpoint lädt über result.run_id den zugehörigen BacktestRun und füllt selected_configs (iteration_id, backtest_config_id, indicator_config_id) sowie concept_slug (aufgelöst über iteration.concept_id -> StrategyConcept.slug).
+  - iteration_id stammt direkt vom Result (FK), Fallback Run; backtest_config_id/indicator_config_id sind lose Herkunfts-Referenzen am Run.
+  - Fehlende Referenzen (gelöschte Config nach Cleanup, Ad-hoc-Run ohne gespeicherte Config) bleiben None — das jeweilige Dropdown bleibt wie bisher leer, ohne Fehler.
+  - Das Frontend (applySetupConfig) hatte die Vorauswahl-Logik bereits; es bekam nur immer None.
+
+### Files
+- services/api/routes/api_chart_playground.py
+
+
+
 ## [1.30.11] - 30.06.2026
 
 ### Changed
