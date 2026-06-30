@@ -9,9 +9,9 @@ Drei Trigger-Pfade für Trading-Strategie-Arbeit in bt_pro_app_v1.
 
 ## Rolle
 
-In diesem Skill agierst du als **Strategie-Ingenieur, der den User begleitet** — nicht primär als Programmierer. Du treibst den Entwicklungs-Loop einer Strategie: Basisvarianten → auswerten → entscheiden → optimieren → validieren. Dabei **schlägst du vor, bewertest und gibst eine Richtung** — an den Weggabelungen (welches Konzept, welcher nächste Schritt) entscheidet aber der User; er hält die Zügel. Code entsteht dabei (Indikatoren, Setups, Configs), ist aber Mittel zum Zweck, nicht der Fokus. Die konkreten Workflows (Multiparameter-Lauf, Iteration, neue Strategie) sind Werkzeuge dieser Rolle, kein Selbstzweck. Falls du eine eigene Methodik-Sammlung pflegst (Workflow-Beschreibungen, Iterations-Logs, Status-Doku) — üblicherweise unter `documentation/knowledge/strategy-development/` plus einem Obsidian-Vault — dort vertiefen. Der Skill funktioniert auch ohne sie; er liefert die Bedienung, nicht das Strategie-Vorgehen.
+In diesem Skill agierst du als **Strategie-Ingenieur, der den User begleitet** — nicht primär als Programmierer. Du **schlägst vor, bewertest und gibst eine Richtung** — an den Weggabelungen (welches Konzept, welcher nächste Schritt) entscheidet aber der User; er hält die Zügel. Code entsteht dabei (Indikatoren, Setups, Configs), ist aber Mittel zum Zweck, nicht der Fokus. Falls du eine eigene Methodik-Sammlung pflegst (Workflow-Beschreibungen, Iterations-Logs, Status-Doku) — üblicherweise unter `documentation/knowledge/strategy-development/` plus einem Obsidian-Vault — dort vertiefen. Der Skill funktioniert auch ohne sie; er liefert die Bedienung, nicht das Strategie-Vorgehen.
 
-> **Manueller, vom User geführter Modus.** Dieser Skill bedient ausschließlich den **vom User geführten** Loop — du arbeitest mit, urteilst und treibst, aber der User entscheidet an jeder Weggabelung. Ein **vollautonomer Modus** (die KI entwickelt und testet eine Strategie eigenständig nach Mandat, gegen dieselben Bewertungskriterien) ist als Ziel vorgesehen, aber **noch nicht gebaut** — er entsteht erst, wenn der manuelle Prozess steht und die Entscheidungs-Leitplanken daraus extrahiert sind.
+> **Vom User geführt.** Der User entscheidet an jeder Weggabelung; du arbeitest mit, urteilst und schlägst vor. Es gibt **keine vorgegebene Schrittfolge** — jede Maßnahme (Pfad B) ist ein einzelnes Werkzeug, das du einzeln aufrufst. Eine feste Arbeitsmethodik wird noch gesucht.
 
 ## Wann anwenden
 
@@ -131,13 +131,13 @@ Danach **eine** Anschluss-Frage außerhalb des Briefings, z.B.:
 
 ## Pfad B — Ad-hoc Objekt-Toolbox
 
-Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten** — und so den vollen Entwicklungs-Loop zu fahren (anlegen → Backtest starten → auswerten → IndicatorConfig aus Gewinner → Testset-Lauf → Leaderboard **nur bei aktiviertem Testset**, siehe unten). Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
+Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten**. Jede Maßnahme ist ein **einzelnes Werkzeug**, einzeln aufgerufen — keine vorgegebene Reihenfolge. Vollständige Werkzeug-Liste mit je einem Satz: `documentation/project/toolbox-werkzeuge.md`. Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
 
 **Wichtig:** Pfad B startet NIE die Pfad-A-Routine. Wenn der User mitten in anderer Arbeit nur schnell `iteration:2` lesen oder kopieren will, blockiert das sein laufendes Vorhaben nicht — kein Konzept-Listing, keine Strategie-Rückfrage.
 
 **Zwei Naturen — danach sind die Abschnitte sortiert:**
 1. **Lesen** (Abschnitt „Lesen") — harmlos, fasst nichts an, jederzeit nutzbar: URL/ID reinwerfen, kompaktes Briefing zurück.
-2. **Entwicklungs-Loop** (Abschnitte „Schreib-Verben" + „Auswertung") — das eigentliche Arbeiten: anlegen → Backtest starten → auswerten → IndicatorConfig aus Gewinner → Testset-Lauf → Bestwerte markieren. Schreibt über die API.
+2. **Schreiben** (Abschnitte „Schreib-Verben" + „Auswertung") — das eigentliche Arbeiten: anlegen, kopieren, Lauf starten, auswerten, ändern, löschen, markieren. Jede Maßnahme einzeln. Schreibt über die API.
 
 Darunter folgen Referenz (`--help`) und Fehlerbilder.
 

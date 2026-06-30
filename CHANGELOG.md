@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.11] - 30.06.2026
+
+### Changed
+- ds-strategie-session: Loop-Denken aus dem Skill entfernt, jede Maßnahme ist ein einzelnes Werkzeug
+  - Vorgegebene Schrittfolge (anlegen -> Backtest -> auswerten -> ... -> markieren) aus SKILL.md (Rolle, Pfad-B-Intro, Zwei Naturen) und toolbox.py-Docstring entfernt
+  - Werkzeuge werden einzeln aufgerufen, keine feste Arbeitsmethodik mehr vorgegeben
+  - Neue Referenz documentation/project/toolbox-werkzeuge.md: vollstaendige Werkzeug-Liste mit je einem Satz pro Werkzeug
+
+### Files
+- .claude/skills/ds-strategie-session/SKILL.md
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- documentation/project/toolbox-werkzeuge.md
+
+
+
 ## [1.30.10] - 30.06.2026
 
 ### Changed

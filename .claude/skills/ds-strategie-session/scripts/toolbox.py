@@ -8,9 +8,9 @@ mehrere Einzel-Curls und deckt jede briefbare API-Route ab.
 Namens-Konvention: Funktionen heißen `<bereich>_<aktion>` (z.B. `iteration_read`,
 `backtest_config_copy`). Aktionen: read, list, create, copy, start. Keine Jargon-Begriffe.
 
-Damit ist der volle Loop über die Toolbox bedienbar: Konzept/Iteration anlegen ->
-Indicator-/Backtest-Config anlegen -> Backtest starten -> Ranking/Top-Results lesen ->
-IndicatorConfig aus Gewinner-Result erstellen -> Testset-Lauf starten -> Leaderboard lesen.
+Jede Maßnahme ist ein einzelnes Werkzeug, einzeln aufrufbar. Es gibt keine
+vorgegebene Reihenfolge. Vollständige Werkzeug-Liste mit je einem Satz:
+documentation/project/toolbox-werkzeuge.md.
 
 Wichtig zum Leaderboard: Ein Testset-Lauf erzeugt NICHT automatisch einen Leaderboard-
 Eintrag. Das passiert nur, wenn das Testset 'leaderboard_enabled=True' gesetzt hat
