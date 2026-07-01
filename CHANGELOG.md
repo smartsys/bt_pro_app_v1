@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.21] - 01.07.2026
+
+### Fixed
+- Kombinationen-Anzahl beim Rerun eines Runs korrekt statt 0 anzeigen
+  - restart_run() setzte n_combinations hart auf 0 und rechnete die Vorabschaetzung nicht neu; die Runs-Tabelle zeigte deshalb ab dem Rerun bis zum erfolgreichen Abschluss 0 (bei Fehlschlag dauerhaft).
+  - Jetzt wird n_combinations analog zum Create-Pfad ueber _count_combinations aus der bestehenden indicators_config_json des Runs neu berechnet - gleiche Zaehl-Wahrheit (count_total_combos) wie create_backtest_run.
+  - Verifiziert an Run 28: Neuberechnung ergibt 33813 statt 0.
+
+### Files
+- services/api/routes/api_backtest.py
+
+
+
 ## [1.30.20] - 01.07.2026
 
 ### Added

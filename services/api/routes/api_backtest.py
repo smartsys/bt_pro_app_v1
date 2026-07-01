@@ -35,7 +35,7 @@ from user_data.utils.database.models import (
     StrategyConcept, StrategyIteration,
     TestSet, TestSetRun,
 )
-from user_data.utils.database.repository import create_backtest_run
+from user_data.utils.database.repository import create_backtest_run, _count_combinations
 # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version, SPEC_RUNNER_IMPORT_PATH
 
@@ -1130,7 +1130,11 @@ def restart_run(run_id: int) -> JSONResponse:
         # Run zurücksetzen (queued — Worker setzt auf running)
         run.status = 'queued'
         run.error_message = None
-        run.n_combinations = 0
+        # GEÄNDERT: Kombinationen-Vorabschätzung analog zum Create-Pfad neu berechnen,
+        # statt hart auf 0 zu setzen. Sonst zeigt die Runs-Tabelle beim Rerun 0, bis der
+        # Lauf erfolgreich durch ist (und bei Fehlschlag dauerhaft). Gleiche Zähl-Wahrheit
+        # wie create_backtest_run (_count_combinations -> count_total_combos).
+        run.n_combinations = _count_combinations(run.indicators_config_json)
         run.completed_at = None
         run.created_at = datetime.now()
         session.commit()
