@@ -23,19 +23,34 @@ sys.path.insert(0, str(_ROOT))
 
 
 # sys.modules-Stubs für Lazy-Imports in reindex() (yaml fehlt im Windows-venv)
-def _register_stubs():
-    """Registriert minimale chunker-/embedding-Stubs in sys.modules (idempotent)."""
-    if "services.vbt.knowledge.chunker" not in sys.modules:
-        chunker_mod = types.ModuleType("services.vbt.knowledge.chunker")
-        chunker_mod.chunk_markdown = MagicMock(return_value=[])
-        sys.modules["services.vbt.knowledge.chunker"] = chunker_mod
-    if "services.vbt.knowledge.embedding" not in sys.modules:
-        embed_mod = types.ModuleType("services.vbt.knowledge.embedding")
-        embed_mod.embed = MagicMock(return_value=[0.0] * 1024)
-        sys.modules["services.vbt.knowledge.embedding"] = embed_mod
+@pytest.fixture(autouse=True)
+def _stub_lazy_imports():
+    """Installiert chunker-/embedding-Stubs nur während dieser Tests.
 
+    reindex() importiert chunker und embedding lazy; hier durch MagicMock-Module
+    ersetzt. Die Stubs werden nach jedem Test wieder aus sys.modules entfernt bzw.
+    ein zuvor vorhandenes echtes Modul wiederhergestellt — sonst würde ein echter
+    Import von services.vbt.knowledge.chunker (z.B. in tests/test_chunker.py) den
+    Stub sehen und scheitern. Registrierung zur Test-Laufzeit statt beim Import,
+    damit die Collection anderer Testmodule nicht vergiftet wird.
+    """
+    names = ("services.vbt.knowledge.chunker", "services.vbt.knowledge.embedding")
+    saved = {name: sys.modules.get(name) for name in names}
 
-_register_stubs()
+    chunker_mod = types.ModuleType("services.vbt.knowledge.chunker")
+    chunker_mod.chunk_markdown = MagicMock(return_value=[])
+    sys.modules["services.vbt.knowledge.chunker"] = chunker_mod
+    embed_mod = types.ModuleType("services.vbt.knowledge.embedding")
+    embed_mod.embed = MagicMock(return_value=[0.0] * 1024)
+    sys.modules["services.vbt.knowledge.embedding"] = embed_mod
+
+    yield
+
+    for name, prev in saved.items():
+        if prev is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = prev
 
 
 def _make_mock_engine() -> MagicMock:

@@ -32,5 +32,6 @@ if _test_url:
     if _parsed.hostname:
         os.environ['POSTGRES_SERVER'] = _parsed.hostname
 
-# Root-conftest einbinden damit db_engine/session-Fixtures verfügbar sind
-pytest_plugins = ['tests.conftest']
+# Hinweis: Die db_engine/session-Fixtures aus tests/conftest.py werden über die
+# Top-Level-conftest.py (Projekt-Root) als Plugin geladen — pytest_plugins darf
+# nur dort stehen, nicht in dieser Unterverzeichnis-conftest.

@@ -25,31 +25,38 @@ sys.path.insert(0, str(_ROOT))
 # sys.modules-Stubs für Lazy-Imports in reindex() (yaml fehlt in Windows-venv)
 # ============================================================================
 
-def _register_chunker_stub(fake_chunk_markdown=None):
-    """Registriert einen minimalen chunker-Stub in sys.modules."""
+@pytest.fixture(autouse=True)
+def stub_lazy_imports():
+    """Installiert chunker-/embedding-Stubs nur während dieser Tests.
+
+    reindex() importiert chunker und embedding lazy; hier durch MagicMock-Module
+    ersetzt (yaml/Embedding-Server nicht nötig). Die Stubs werden nach jedem Test
+    wieder aus sys.modules entfernt bzw. ein zuvor vorhandenes echtes Modul
+    wiederhergestellt — sonst würde ein echter Import von
+    services.vbt.knowledge.chunker (z.B. in tests/test_chunker.py) den Stub sehen
+    und scheitern. Registrierung zur Test-Laufzeit statt beim Import, damit die
+    Collection anderer Testmodule nicht vergiftet wird.
+
+    Gibt die beiden Stub-Module zurück, damit einzelne Tests chunk_markdown/embed
+    temporär mit eigenem Verhalten überschreiben können.
+    """
+    names = ("services.vbt.knowledge.chunker", "services.vbt.knowledge.embedding")
+    saved = {name: sys.modules.get(name) for name in names}
+
     chunker_mod = types.ModuleType("services.vbt.knowledge.chunker")
-    if fake_chunk_markdown is None:
-        fake_chunk_markdown = MagicMock(return_value=[])
-    chunker_mod.chunk_markdown = fake_chunk_markdown
-    sys.modules.setdefault("services.vbt.knowledge.chunker", chunker_mod)
-    return chunker_mod
-
-
-def _register_embedding_stub(fake_embed=None):
-    """Registriert einen minimalen embedding-Stub in sys.modules."""
+    chunker_mod.chunk_markdown = MagicMock(return_value=[])
+    sys.modules["services.vbt.knowledge.chunker"] = chunker_mod
     embed_mod = types.ModuleType("services.vbt.knowledge.embedding")
-    if fake_embed is None:
-        fake_embed = MagicMock(return_value=[0.0] * 1024)
-    embed_mod.embed = fake_embed
-    sys.modules.setdefault("services.vbt.knowledge.embedding", embed_mod)
-    return embed_mod
+    embed_mod.embed = MagicMock(return_value=[0.0] * 1024)
+    sys.modules["services.vbt.knowledge.embedding"] = embed_mod
 
+    yield types.SimpleNamespace(chunker=chunker_mod, embedding=embed_mod)
 
-# Stubs einmalig registrieren — bevor indexer importiert wird.
-# setdefault() ist idempotent; spezifische Tests können die Stubs mit
-# patch() temporär überschreiben.
-_chunker_stub = _register_chunker_stub()
-_embedding_stub = _register_embedding_stub()
+    for name, prev in saved.items():
+        if prev is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = prev
 
 
 # ============================================================================
@@ -160,7 +167,7 @@ class TestSingleFileCleanup:
 class TestNormalfall:
     """Regression-Check: vault_root mit .md-Dateien → reindex läuft normal."""
 
-    def test_normal_reindex_does_not_raise(self, tmp_path):
+    def test_normal_reindex_does_not_raise(self, tmp_path, stub_lazy_imports):
         """vault_root existiert + enthält .md → kein Raise, Embedding wird aufgerufen."""
         md_file = tmp_path / "strategies" / "teststrategie" / "STATUS.md"
         md_file.parent.mkdir(parents=True)
@@ -169,16 +176,16 @@ class TestNormalfall:
         fake_embedding = [0.1] * 1024
         mock_engine = _make_mock_engine()
 
-        # Fake-Chunk — der chunker_stub und embedding_stub sind bereits in sys.modules
-        # registriert; chunk_markdown-Attribut wird hier temporär überschrieben
+        # Fake-Chunk — der chunker- und embedding-Stub aus der Fixture sind bereits
+        # in sys.modules registriert; chunk_markdown/embed werden hier überschrieben
         fake_chunk = MagicMock()
         fake_chunk.chunk_index = 0
         fake_chunk.heading_path = "Teststrategie Status"
         fake_chunk.content = "Testinhalt für Embedding-Mock."
         fake_chunk.frontmatter = {}
 
-        _chunker_stub.chunk_markdown = MagicMock(return_value=[fake_chunk])
-        _embedding_stub.embed = MagicMock(return_value=fake_embedding)
+        stub_lazy_imports.chunker.chunk_markdown = MagicMock(return_value=[fake_chunk])
+        stub_lazy_imports.embedding.embed = MagicMock(return_value=fake_embedding)
 
         with patch("services.vbt.knowledge.indexer._get_engine", return_value=mock_engine), \
              patch("services.vbt.knowledge.indexer._get_db_file_state_map", return_value={}) as mock_state, \

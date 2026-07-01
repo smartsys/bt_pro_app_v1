@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.17] - 01.07.2026
+
+### Fixed
+- Test-Suite collectet und läuft wieder vollständig durch (493 passed, 1 skipped)
+  - pytest_plugins aus services/api/tests/conftest.py in eine neue Top-Level-conftest.py (Projekt-Root) verschoben - seit pytest 7 ist pytest_plugins in Unterverzeichnis-conftest ein harter Collection-Fehler (hier pytest 9)
+  - sys.modules-Leak behoben: test_indexer_exclude.py und test_indexer_mount_guard.py registrierten chunker-/embedding-Stubs bereits beim Modul-Import und verdeckten damit den echten Chunk-Import in tests/test_chunker.py waehrend der Collection
+  - Alle vier Indexer-Testmodule (exclude, mount_guard, content_hash, sentinel) auf autouse-Fixtures mit sys.modules-Teardown umgestellt, sodass Stubs nach jedem Test wieder entfernt werden
+
+### Files
+- conftest.py
+- services/api/tests/conftest.py
+- services/api/tests/test_indexer_exclude.py
+- services/api/tests/test_indexer_mount_guard.py
+- services/api/tests/test_indexer_content_hash.py
+- services/api/tests/test_indexer_sentinel.py
+
+
+
 ## [1.30.16] - 01.07.2026
 
 ### Fixed

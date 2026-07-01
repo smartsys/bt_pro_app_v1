@@ -62,6 +62,24 @@ def _register_embed_stub(counter: EmbedCallCounter) -> None:
     sys.modules["services.vbt.knowledge.embedding"] = embed_mod
 
 
+@pytest.fixture(autouse=True)
+def _restore_lazy_import_stubs():
+    """Stellt sys.modules nach jedem Test wieder her.
+
+    Die Tests registrieren chunker-/embedding-Stubs zur Laufzeit in sys.modules;
+    ohne Aufräumen würde ein echter Import von services.vbt.knowledge.chunker
+    (z.B. in tests/test_chunker.py) den Stub sehen und scheitern.
+    """
+    names = ("services.vbt.knowledge.chunker", "services.vbt.knowledge.embedding")
+    saved = {name: sys.modules.get(name) for name in names}
+    yield
+    for name, prev in saved.items():
+        if prev is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = prev
+
+
 def _run_reindex(vault_root: Path, embed_counter: EmbedCallCounter, target_path: Path | None = None) -> dict:
     """Führt reindex() mit frischen Stubs aus."""
     _register_embed_stub(embed_counter)
