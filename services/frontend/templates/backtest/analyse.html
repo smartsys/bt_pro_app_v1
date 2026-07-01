@@ -219,8 +219,10 @@
 </div>
 </div>
 
-<!-- Hintergrund-Berechnung -->
-<div class="card mt-3" id="recompute-card">
+<!-- Hintergrund-Berechnung (halbe Breite, buendig mit der linken Heatmap darueber) -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card mt-3" id="recompute-card">
   <div class="card-body py-2">
     <div class="d-flex align-items-center gap-3">
       <span class="text-muted small">Berechnung:</span>
@@ -235,6 +237,23 @@
       </div>
       <span class="text-muted small text-nowrap" id="recompute-status">—</span>
     </div>
+    <!-- Infobox: erklaert die drei Buttons und den Umfang der Berechnung.
+         d-block hebt das Tabler-Standard-Flex des .alert auf, damit der Text als
+         echter Fliesstext laeuft (sonst werden die Textstuecke zwischen den
+         hervorgehobenen Befehlen zu nebeneinander liegenden Flex-Spalten). -->
+    <div class="alert alert-info mt-2 mb-0 py-2 px-3 small d-block" role="alert">
+      Die Berechnung führt für jede Kombination des Runs den Backtest erneut aus und speichert die
+      Detail-Daten (Equity-Kurve, Trades, Orders, Positionen, Indikatoren) für die Analyse-Ansichten.
+      <strong class="text-primary">Start</strong> beginnt die Berechnung bzw. setzt sie fort (es werden
+      nur noch fehlende Kombinationen gerechnet), <strong class="text-warning">Stop</strong> pausiert die
+      wartenden Jobs, <strong class="text-danger">Reset</strong> verwirft den Berechnungs-Fortschritt (die
+      Backtest-Ergebnisse selbst bleiben erhalten). Bei vielen Kombinationen ist das ein längerer Job, der
+      im Hintergrund weiterläuft.
+    </div>
+  </div>
+    </div>
+    <!-- Toast-Rueckmeldungen direkt unter der Card (unmittelbare Naehe der Buttons) -->
+    <div id="toast-container" class="mt-2"></div>
   </div>
 </div>
 {% endblock %}
@@ -966,13 +985,33 @@ document.addEventListener("DOMContentLoaded", function() {
   // ========================================================================
   var recomputePolling = null;
 
+  // Kurze Rueckmeldung (Toast), da Start/Stop/Reset spuerbar Zeit brauchen und die
+  // Wirkung nicht sofort sichtbar ist.
+  function showToast(msg, type) {
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+    var div = document.createElement('div');
+    var bgClass = type === 'error' ? 'bg-danger' : (type === 'info' ? 'bg-primary' : 'bg-success');
+    div.className = 'alert ' + bgClass + ' text-white mb-2 shadow';
+    div.style.opacity = '1';
+    div.style.transition = 'opacity 0.5s';
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(function() {
+      div.style.opacity = '0';
+      setTimeout(function() { if (div.parentNode) container.removeChild(div); }, 500);
+    }, 4000);
+  }
+
   document.getElementById('btn-recompute-start').addEventListener('click', function() {
     var btn = this;
     btn.disabled = true;
+    showToast('Berechnung wird gestartet — das kann einen Moment dauern…', 'info');
     fetch('/api/backtest/runs/' + runId + '/analyse/start', {method: 'POST'})
       .then(function(r) { return r.json(); })
       .then(function(d) {
         console.log('[ANALYSE] Jobs gestartet:', d.queued);
+        showToast('Berechnung gestartet (' + (d.queued || 0) + ' Jobs eingereiht).', 'success');
         startRecomputePolling();
       })
       .catch(function(e) {
@@ -980,34 +1019,41 @@ document.addEventListener("DOMContentLoaded", function() {
         console.error('[ANALYSE] Start fehlgeschlagen:', e);
         btn.disabled = false;
         document.getElementById('recompute-status').textContent = 'Start fehlgeschlagen — bitte erneut versuchen.';
+        showToast('Start fehlgeschlagen — bitte erneut versuchen.', 'error');
       });
   });
 
   document.getElementById('btn-recompute-stop').addEventListener('click', function() {
+    showToast('Berechnung wird gestoppt — einen Moment…', 'info');
     fetch('/api/backtest/runs/' + runId + '/analyse/stop', {method: 'POST'})
       .then(function(r) { return r.json(); })
       .then(function(d) {
         console.log('[ANALYSE] Jobs gestoppt:', d.cancelled);
+        showToast('Gestoppt (' + (d.cancelled || 0) + ' wartende Jobs entfernt).', 'success');
         pollRecomputeProgress();
       })
       .catch(function(e) {
         console.error('[ANALYSE] Stop fehlgeschlagen:', e);
         document.getElementById('recompute-status').textContent = 'Stop fehlgeschlagen — bitte erneut versuchen.';
+        showToast('Stop fehlgeschlagen — bitte erneut versuchen.', 'error');
       });
   });
 
   document.getElementById('btn-recompute-reset').addEventListener('click', function() {
     if (!confirm('Alle Jobs für diesen Run löschen?')) return;
+    showToast('Wird zurückgesetzt — einen Moment…', 'info');
     fetch('/api/backtest/runs/' + runId + '/analyse/reset', {method: 'POST'})
       .then(function(r) { return r.json(); })
       .then(function(d) {
         console.log('[ANALYSE] Jobs gelöscht:', d.deleted);
+        showToast('Zurückgesetzt (' + (d.deleted || 0) + ' Jobs gelöscht).', 'success');
         stopRecomputePolling();
         updateProgressUI({queued: 0, running: 0, completed: 0, failed: 0, total: 0, is_active: false});
       })
       .catch(function(e) {
         console.error('[ANALYSE] Reset fehlgeschlagen:', e);
         document.getElementById('recompute-status').textContent = 'Reset fehlgeschlagen — bitte erneut versuchen.';
+        showToast('Reset fehlgeschlagen — bitte erneut versuchen.', 'error');
       });
   });
 
@@ -1044,12 +1090,27 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById('pb-completed').style.width = pctDone + '%';
     document.getElementById('pb-failed').style.width = pctFail + '%';
 
-    var statusText = d.total > 0
+    var progressText = d.total > 0
       ? d.completed + ' / ' + d.total + ' (' + pctDone.toFixed(1) + '%)' +
         (d.failed > 0 ? ', ' + d.failed + ' Fehler' : '') +
         (d.eta ? ' — fertig ca. ' + d.eta : '')
       : 'Keine Jobs';
-    document.getElementById('recompute-status').textContent = statusText;
+    // GEÄNDERT: Waehrend der Lauf aktiv ist deutlich sichtbar machen (rote, fette
+    // Statusschrift + animierter Balken), damit der langsame Fortschritt nicht wie
+    // eingefroren wirkt.
+    var statusEl = document.getElementById('recompute-status');
+    var pb = document.getElementById('pb-completed');
+    if (d.is_active) {
+      statusEl.textContent = 'läuft — ' + progressText;
+      statusEl.classList.remove('text-muted');
+      statusEl.classList.add('text-danger', 'fw-bold');
+      pb.classList.add('progress-bar-striped', 'progress-bar-animated');
+    } else {
+      statusEl.textContent = progressText;
+      statusEl.classList.remove('text-danger', 'fw-bold');
+      statusEl.classList.add('text-muted');
+      pb.classList.remove('progress-bar-striped', 'progress-bar-animated');
+    }
 
     document.getElementById('btn-recompute-start').disabled = d.is_active || (d.completed >= d.total && d.total > 0);
     document.getElementById('btn-recompute-stop').disabled = !d.is_active;

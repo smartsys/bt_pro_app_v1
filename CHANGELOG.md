@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.19] - 01.07.2026
+
+### Added
+- Reaper fuer verwaiste Recompute-Jobs plus Analyse-Seiten-UI (Status, Infobox, Toasts)
+  - Reaper (services/api/reap_stale_jobs.py + reap_logic.py): neuer periodischer Scheduler-Task (alle 5 Minuten) gleicht die Tabelle backtest_jobs mit dem echten RQ-Zustand ab. Behebt dauerhaft, dass die Worker-/Berechnungs-Anzeige auf 'aktiv' haengen blieb, wenn ein Worker mitten in einem Job starb.
+  - Verwaist-Erkennung versionsunabhaengig ueber Job.exists(): running-Job tot, wenn RQ-Job fehlt oder started_at aelter als Timeout+Puffer (900s); queued-Job, wenn Redis den Job verloren hat. Verwaiste Jobs werden neu eingereiht statt sofort failen; erst nach 3 Startversuchen (Original + 2 Neustarts) -> failed ('3x Abbruch mit Fehler'). Neue Spalte backtest_jobs.retry_count (Migration 0013) zaehlt die Neustarts. Atomarer Claim verhindert das Ueberschreiben gerade abgeschlossener Jobs. Scheduler-Image auf rq==2.10.0 (identisch zu den Workern). Unit-Tests in tests/test_reap_logic.py.
+  - Analyse-Seite (services/frontend/templates/backtest/analyse.html): Infobox erklaert die Buttons Start/Stop/Reset und dass es ein laengerer Hintergrund-Job ist (Fliesstext, Befehle in den jeweiligen Button-Farben; d-block hebt das Tabler-Flex des .alert auf).
+  - Analyse-Seite: waehrend die Berechnung laeuft wird der Status rot und fett ('laeuft - X / Y ...') und der Fortschrittsbalken animiert, damit der langsame Fortschritt nicht wie eingefroren wirkt. Die Berechnungs-Card ist auf halbe Breite (col-md-6, buendig mit der linken Heatmap) gesetzt.
+  - Analyse-Seite: Start/Stop/Reset geben sofort eine Toast-Rueckmeldung ('wird gestartet/gestoppt/zurueckgesetzt - einen Moment') und eine Abschluss- bzw. Fehlermeldung; der Toast-Container sitzt direkt unter der Card.
+
+### Files
+- services/api/reap_stale_jobs.py
+- services/api/reap_logic.py
+- services/scheduler/crontab
+- services/scheduler/Dockerfile
+- alembic/versions/0013_backtest_job_retry_count.py
+- user_data/utils/database/models.py
+- tests/test_reap_logic.py
+- services/frontend/templates/backtest/analyse.html
+
+
+
 ## [1.30.18] - 01.07.2026
 
 ### Added
