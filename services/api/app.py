@@ -57,6 +57,9 @@ from services.api.routes.api_knowledge import router as api_knowledge_router
 from services.api.routes.views_knowledge import router as views_knowledge_router
 # Onboarding-/Installations-Seite (/install)
 from services.api.routes.views_install import router as views_install_router
+# Queue-/Job-Übersicht (Monitoring)
+from services.api.routes.api_monitor import router as api_monitor_router
+from services.api.routes.views_monitor import router as views_monitor_router
 
 app = FastAPI(title="BT Pro App", version="1.0.0", debug=True)
 
@@ -94,6 +97,9 @@ app.include_router(api_knowledge_router)
 app.include_router(views_knowledge_router)
 # Onboarding-/Installations-Seite einbinden
 app.include_router(views_install_router)
+# Queue-/Job-Übersicht (Monitoring) einbinden
+app.include_router(api_monitor_router)
+app.include_router(views_monitor_router)
 
 
 @app.get('/')

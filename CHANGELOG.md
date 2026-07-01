@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.20] - 01.07.2026
+
+### Added
+- Job-Übersicht (Monitoring-Maske) für Queues, Worker und Job-Status
+  - Neue Seite /monitor, erreichbar über Konfiguration → Job-Übersicht (zwischen OHLC-Daten und Wissens-Index)
+  - Live-Sicht aus Redis: RQ-Queues (backtest, recompute, ohlc_download) mit wartend/laufend/fehlgeschlagen sowie aktive Worker mit Zustand, aktuellem Job und letztem Lebenszeichen
+  - Status-Zusammenfassung je Job-Tabelle (Backtest-Runs, Recompute-Jobs, OHLC-Downloads, TestSet-Läufe, Vault-Reindex) sowie eine Liste offener Jobs mit Laufzeit zum Erkennen hängender Jobs
+  - Auto-Update-Schiebeschalter (5 Sekunden, standardmäßig aus) analog zur Runs-Seite
+  - Roter Button 'Fehlgeschlagene löschen' leert per DELETE /api/monitor/failed die RQ-Failed-Registries aller Queues
+  - Status-Zählung je Tabelle per SQL-GROUP-BY, damit der Abruf auch bei kurzem Intervall leicht bleibt
+
+### Files
+- services/api/routes/api_monitor.py
+- services/api/routes/views_monitor.py
+- services/frontend/templates/monitor/overview.html
+- services/api/app.py
+- services/frontend/templates/base.html
+
+
+
 ## [1.30.19] - 01.07.2026
 
 ### Added

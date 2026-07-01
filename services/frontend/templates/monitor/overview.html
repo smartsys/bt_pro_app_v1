@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Job-Übersicht - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">Job-Übersicht</h2>
+        <div class="page-pretitle">Queues &amp; Worker</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-3 align-items-center">
+        <span id="last-update" class="text-secondary small"></span>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="toggle-auto-update">
+          <label class="form-check-label small" for="toggle-auto-update">Auto-Update (5s)</label>
+        </div>
+        <button id="btn-refresh" class="btn btn-outline-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>
+          Aktualisieren
+        </button>
+        <button id="btn-reset-failed" class="btn btn-danger">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          Fehlgeschlagene löschen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Toast-Container -->
+<div id="toast-container" style="position:fixed;top:1.5rem;right:1.5rem;z-index:9999;min-width:280px;"></div>
+
+<!-- Bestätigungs-Modal für das Zurücksetzen der fehlgeschlagenen Jobs -->
+<div class="modal modal-blur fade" id="modal-reset-failed" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="modal-title">Fehlgeschlagene löschen</div>
+        <div>Alle fehlgeschlagenen Jobs werden endgültig aus den Queues entfernt. Sie laufen nicht erneut. Fortfahren?</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary me-auto" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-danger" id="btn-reset-failed-confirm">Löschen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Warnung, falls Redis nicht erreichbar ist -->
+<div id="redis-alert" class="alert alert-warning d-none" role="alert">
+  <div class="d-flex">
+    <div>Redis ist nicht erreichbar — die Live-Sicht auf Queues und Worker fehlt. Die DB-Sicht unten funktioniert weiterhin. <span id="redis-error" class="text-secondary"></span></div>
+  </div>
+</div>
+
+<!-- Queue- und Worker-Karten (Live aus Redis) -->
+<div class="row row-cards" id="queue-cards"></div>
+
+<!-- Worker-Liste -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Worker (<span id="worker-total">...</span>)</h3>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>Worker</th>
+            <th>Zustand</th>
+            <th>Queues</th>
+            <th>Aktueller Job</th>
+            <th>Erledigt</th>
+            <th>Fehlgeschlagen</th>
+            <th>Letztes Lebenszeichen</th>
+          </tr>
+        </thead>
+        <tbody id="worker-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Status-Zusammenfassung aus der DB -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Status je Job-Art (Datenbank)</h3>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>Job-Art</th>
+            <th class="text-center">Wartend</th>
+            <th class="text-center">Läuft</th>
+            <th class="text-center">Fertig</th>
+            <th class="text-center">Fehlgeschlagen</th>
+          </tr>
+        </thead>
+        <tbody id="summary-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Offene Jobs quer über alle Tabellen -->
+<div class="card mt-3">
+  <div class="card-header">
+    <div>
+      <h3 class="card-title">Offene Jobs (<span id="active-total">...</span>)</h3>
+      <div class="card-subtitle">Wartende und laufende Jobs. Eine lange Laufzeit deutet auf einen hängenden Job hin.</div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>Art</th>
+            <th>ID</th>
+            <th>Bezeichnung</th>
+            <th>Status</th>
+            <th>Fortschritt</th>
+            <th>Erstellt</th>
+            <th>Laufzeit</th>
+            <th style="min-width:60px"></th>
+          </tr>
+        </thead>
+        <tbody id="active-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  var pollTimer = null;
+
+  function fmtDateDe(iso) {
+    if (!iso) return '-';
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear() +
+           ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  }
+
+  function fmtRuntime(iso) {
+    // Laufzeit seit dem gegebenen Zeitpunkt bis jetzt.
+    if (!iso) return '-';
+    var start = new Date(iso).getTime();
+    if (isNaN(start)) return '-';
+    var secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+    if (secs < 60) return secs + ' s';
+    if (secs < 3600) return Math.floor(secs / 60) + ' min';
+    return (secs / 3600).toFixed(1) + ' h';
+  }
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function statusBadge(s) {
+    var map = {
+      queued: 'bg-secondary-lt', running: 'bg-primary-lt',
+      completed: 'bg-success-lt', success: 'bg-success-lt', failed: 'bg-danger-lt'
+    };
+    return '<span class="badge ' + (map[s] || 'bg-secondary-lt') + '">' + escapeHtml(s) + '</span>';
+  }
+
+  function stateBadge(state) {
+    var map = {busy: 'bg-primary-lt', idle: 'bg-success-lt', suspended: 'bg-warning-lt'};
+    return '<span class="badge ' + (map[state] || 'bg-secondary-lt') + '">' + escapeHtml(state) + '</span>';
+  }
+
+  // Deutsche Beschriftung je Queue.
+  var QUEUE_LABELS = {
+    backtest: 'Backtest', recompute: 'Recompute', ohlc_download: 'OHLC-Download'
+  };
+
+  function renderQueueCards(redis) {
+    var wrap = document.getElementById('queue-cards');
+    wrap.innerHTML = '';
+    (redis.queues || []).forEach(function(q) {
+      var col = document.createElement('div');
+      col.className = 'col-sm-6 col-lg-3';
+      col.innerHTML =
+        '<div class="card card-sm">' +
+          '<div class="card-body">' +
+            '<div class="font-weight-medium">' + escapeHtml(QUEUE_LABELS[q.name] || q.name) + '</div>' +
+            '<div class="text-secondary small mb-2">Queue "' + escapeHtml(q.name) + '"</div>' +
+            '<div class="d-flex justify-content-between"><span class="text-secondary">Wartend</span><strong>' + q.queued + '</strong></div>' +
+            '<div class="d-flex justify-content-between"><span class="text-secondary">Läuft</span><strong>' + q.started + '</strong></div>' +
+            '<div class="d-flex justify-content-between"><span class="text-secondary">Fehlgeschlagen</span><strong class="' + (q.failed > 0 ? 'text-danger' : '') + '">' + q.failed + '</strong></div>' +
+          '</div>' +
+        '</div>';
+      wrap.appendChild(col);
+    });
+
+    // Worker-Zusammenfassungskarte
+    var workers = redis.workers || [];
+    var busy = workers.filter(function(w) { return w.state === 'busy'; }).length;
+    var col = document.createElement('div');
+    col.className = 'col-sm-6 col-lg-3';
+    col.innerHTML =
+      '<div class="card card-sm">' +
+        '<div class="card-body">' +
+          '<div class="font-weight-medium">Worker</div>' +
+          '<div class="text-secondary small mb-2">Aktive Prozesse</div>' +
+          '<div class="d-flex justify-content-between"><span class="text-secondary">Aktiv</span><strong>' + workers.length + '</strong></div>' +
+          '<div class="d-flex justify-content-between"><span class="text-secondary">Beschäftigt</span><strong>' + busy + '</strong></div>' +
+          '<div class="d-flex justify-content-between"><span class="text-secondary">Frei</span><strong>' + (workers.length - busy) + '</strong></div>' +
+        '</div>' +
+      '</div>';
+    wrap.appendChild(col);
+  }
+
+  function renderWorkers(redis) {
+    var workers = redis.workers || [];
+    document.getElementById('worker-total').textContent = workers.length;
+    var body = document.getElementById('worker-body');
+    if (!redis.available) {
+      body.innerHTML = '<tr><td colspan="7" class="text-secondary">Redis nicht erreichbar.</td></tr>';
+      return;
+    }
+    if (workers.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" class="text-secondary">Kein Worker aktiv.</td></tr>';
+      return;
+    }
+    body.innerHTML = workers.map(function(w) {
+      return '<tr>' +
+        '<td>' + escapeHtml(w.name) + '</td>' +
+        '<td>' + stateBadge(w.state) + '</td>' +
+        '<td class="text-secondary">' + escapeHtml((w.queues || []).join(', ')) + '</td>' +
+        '<td class="text-secondary">' + (w.current_job ? escapeHtml(w.current_job) : '-') + '</td>' +
+        '<td>' + w.successful_jobs + '</td>' +
+        '<td class="' + (w.failed_jobs > 0 ? 'text-danger' : '') + '">' + w.failed_jobs + '</td>' +
+        '<td class="text-secondary">' + fmtDateDe(w.last_heartbeat) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // Deutsche Beschriftung je DB-Tabelle.
+  var SUMMARY_LABELS = {
+    backtest_runs: 'Backtest-Runs', backtest_jobs: 'Recompute-Jobs',
+    ohlc_download_jobs: 'OHLC-Downloads', testset_runs: 'TestSet-Läufe',
+    vault_reindex_runs: 'Vault-Reindex'
+  };
+
+  function renderSummary(summary) {
+    var body = document.getElementById('summary-body');
+    var rows = [];
+    Object.keys(SUMMARY_LABELS).forEach(function(key) {
+      var c = summary[key] || {};
+      var done = (c.completed || 0) + (c.success || 0);
+      var failed = c.failed || 0;
+      rows.push('<tr>' +
+        '<td>' + SUMMARY_LABELS[key] + '</td>' +
+        '<td class="text-center">' + (c.queued || 0) + '</td>' +
+        '<td class="text-center">' + (c.running || 0) + '</td>' +
+        '<td class="text-center">' + done + '</td>' +
+        '<td class="text-center ' + (failed > 0 ? 'text-danger fw-bold' : '') + '">' + failed + '</td>' +
+      '</tr>');
+    });
+    body.innerHTML = rows.join('');
+  }
+
+  function renderActive(jobs) {
+    document.getElementById('active-total').textContent = jobs.length;
+    var body = document.getElementById('active-body');
+    if (jobs.length === 0) {
+      body.innerHTML = '<tr><td colspan="8" class="text-secondary">Aktuell laufen keine Jobs.</td></tr>';
+      return;
+    }
+    body.innerHTML = jobs.map(function(j) {
+      var runtimeSource = j.started_at || j.created_at;
+      var idCell = j.detail_url
+        ? '<a href="' + j.detail_url + '">' + j.id + '</a>'
+        : j.id;
+      var link = j.detail_url
+        ? '<a href="' + j.detail_url + '" class="btn btn-sm btn-outline-primary">Details</a>'
+        : '';
+      return '<tr>' +
+        '<td>' + escapeHtml(j.type_label) + '</td>' +
+        '<td>' + idCell + '</td>' +
+        '<td>' + escapeHtml(j.label) + '</td>' +
+        '<td>' + statusBadge(j.status) + '</td>' +
+        '<td class="text-secondary">' + (j.progress ? escapeHtml(j.progress) : '-') + '</td>' +
+        '<td class="text-secondary">' + fmtDateDe(j.created_at) + '</td>' +
+        '<td class="text-secondary">' + (j.status === 'running' ? fmtRuntime(runtimeSource) : '-') + '</td>' +
+        '<td class="text-end">' + link + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function showToast(msg, type) {
+    var container = document.getElementById('toast-container');
+    var div = document.createElement('div');
+    var bgClass = type === 'error' ? 'bg-danger' : 'bg-success';
+    div.className = 'alert ' + bgClass + ' text-white mb-2 shadow';
+    div.style.opacity = '1';
+    div.style.transition = 'opacity 0.5s';
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(function() {
+      div.style.opacity = '0';
+      setTimeout(function() { container.removeChild(div); }, 500);
+    }, 4000);
+  }
+
+  async function load() {
+    try {
+      var resp = await fetch('/api/monitor/overview');
+      if (!resp.ok) {
+        console.error('Monitor-Abruf fehlgeschlagen:', resp.status);
+        return;
+      }
+      var json = await resp.json();
+      var d = json.data || {};
+      var redis = d.redis || {available: false, queues: [], workers: []};
+
+      var alert = document.getElementById('redis-alert');
+      if (redis.available) {
+        alert.classList.add('d-none');
+      } else {
+        alert.classList.remove('d-none');
+        document.getElementById('redis-error').textContent = redis.error || '';
+      }
+
+      renderQueueCards(redis);
+      renderWorkers(redis);
+      renderSummary(d.db_summary || {});
+      renderActive(d.active_jobs || []);
+
+      document.getElementById('last-update').textContent =
+        'Stand: ' + fmtDateDe(new Date().toISOString());
+    } catch (e) {
+      console.error('Netzwerkfehler beim Monitor-Abruf:', e);
+    }
+  }
+
+  // Auto-Update alle 5 Sekunden. Standard AUS (wie auf der Runs-Seite) — der Poll
+  // wird nur über den Schiebeschalter aktiviert, damit sich bei mehreren offenen
+  // Tabs keine Abrufe stapeln.
+  function startPoll() {
+    if (pollTimer !== null) return;
+    pollTimer = setInterval(load, 5000);
+  }
+
+  function stopPoll() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  document.getElementById('toggle-auto-update').addEventListener('change', function() {
+    if (this.checked) { startPoll(); } else { stopPoll(); }
+  });
+
+  document.getElementById('btn-refresh').addEventListener('click', load);
+
+  // Fehlgeschlagene zurücksetzen: Bestätigung -> Failed-Registries leeren.
+  var resetModal = new tabler.Modal(document.getElementById('modal-reset-failed'));
+  document.getElementById('btn-reset-failed').addEventListener('click', function() {
+    resetModal.show();
+  });
+
+  document.getElementById('btn-reset-failed-confirm').addEventListener('click', async function() {
+    var btn = this;
+    btn.disabled = true;
+    resetModal.hide();
+    try {
+      var resp = await fetch('/api/monitor/failed', { method: 'DELETE' });
+      var json = await resp.json();
+      if (!resp.ok || json.error) {
+        showToast('Fehler: ' + (json.error || resp.status), 'error');
+        return;
+      }
+      var total = (json.data && json.data.removed_total) || 0;
+      showToast(total + ' fehlgeschlagene Jobs entfernt.', 'success');
+      load();
+    } catch (e) {
+      showToast('Netzwerkfehler: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  load();
+
+});
+</script>
+{% endblock %}
