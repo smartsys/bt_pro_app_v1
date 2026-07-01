@@ -9,9 +9,11 @@ RUN apt-get update && \
         python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Minimale Python-Abhaengigkeiten fuer enqueue_reindex.py
+# Minimale Python-Abhaengigkeiten fuer enqueue_reindex.py und reap_stale_jobs.py.
+# rq-Version identisch zu den Workern (2.10.0), damit Enqueue/Serialisierung und
+# die Job-Introspektion (Job.exists) konsistent sind.
 RUN pip3 install --no-cache-dir --break-system-packages \
-    rq==1.16.2 \
+    rq==2.10.0 \
     redis==5.0.4 \
     psycopg2-binary==2.9.9 \
     SQLAlchemy==2.0.35 \

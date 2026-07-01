@@ -389,6 +389,9 @@ class BacktestJob(Base):
     status = Column(Enum('queued', 'running', 'completed', 'failed'), nullable=False, default='queued')
     error_message = Column(Text, nullable=True)
     rq_job_id = Column(String(64), nullable=True)
+    # Anzahl automatischer Neustarts durch den Reaper (services/api/reap_stale_jobs.py).
+    # Nach insgesamt 3 Startversuchen (Original + 2 Neustarts) ohne Erfolg -> failed.
+    retry_count = Column(Integer, nullable=False, server_default='0', default=0)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)

@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.18] - 01.07.2026
+
+### Added
+- Reaper-Task raeumt verwaiste Recompute-Jobs automatisch auf
+  - Neuer periodischer Scheduler-Task (services/api/reap_stale_jobs.py, alle 5 Minuten) gleicht die Tabelle backtest_jobs mit dem echten RQ-Zustand ab. Behebt das Problem, dass die Worker-Anzeige der Runs-Liste dauerhaft 'aktiv' zeigte, wenn ein Worker mitten in einem Recompute-Job starb (Neustart/Absturz/Timeout) und die DB-Zeile fuer immer auf queued/running haengen blieb.
+  - Verwaist-Erkennung versionsunabhaengig ueber Job.exists(): running-Job gilt als tot, wenn der RQ-Job fehlt oder started_at aelter als Timeout+Puffer (900s) ist; queued-Job, wenn Redis den Job verloren hat.
+  - Verwaiste Jobs werden neu eingereiht statt sofort auf failed gesetzt. Erst nach insgesamt 3 Startversuchen (Original + 2 Neustarts) wird der Job auf failed gesetzt (Meldung '3x Abbruch mit Fehler'). Neue Spalte backtest_jobs.retry_count (Migration 0013) zaehlt die Neustarts.
+  - Atomarer Claim (Update nur solange queued/running) verhindert das Ueberschreiben eines Jobs, den ein Worker im selben Moment abschliesst. Der manuelle Rerun-Weg (Run neustarten / Analyse erneut starten) bleibt unberuehrt.
+  - Reine Entscheidungslogik in services/api/reap_logic.py ausgelagert (is_stale, classify_job) und per Unit-Test abgedeckt (tests/test_reap_logic.py). Scheduler-Image auf rq==2.10.0 angehoben (identisch zu den Workern).
+
+### Files
+- services/api/reap_stale_jobs.py
+- services/api/reap_logic.py
+- services/scheduler/crontab
+- services/scheduler/Dockerfile
+- alembic/versions/0013_backtest_job_retry_count.py
+- user_data/utils/database/models.py
+- tests/test_reap_logic.py
+
+
+
 ## [1.30.17] - 01.07.2026
 
 ### Fixed
