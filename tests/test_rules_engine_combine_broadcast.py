@@ -264,6 +264,77 @@ class TestDisjointBlocksCross:
 
 
 # ============================================================================
+# Testfall (a2): disjunkte Achsen GLEICHER Breite — Ticket 49 Bug-1-Kernfall
+#
+# vbt.broadcast wirft bei gleich breiten, disjunkten Operanden KEINE Exception,
+# sondern zippt sie positionsweise (Diagonale). Der bisherige try/except-Gate
+# griff daher nie. Zwei disjunkte 3×3-Achsen müssen zum vollen Kreuzprodukt
+# (9 Spalten) führen, nicht zur Diagonale (3 Spalten).
+# ============================================================================
+
+class TestDisjointEqualWidthCross:
+    """Disjunkte Param-Level GLEICHER Breite kreuzen statt zippen (Bug 1)."""
+
+    @pytest.fixture
+    def time_idx(self) -> pd.DatetimeIndex:
+        return _make_index(30)
+
+    @pytest.fixture
+    def ema_fast_df(self, time_idx: pd.DatetimeIndex) -> pd.DataFrame:
+        """ema_fast-Achse: 3 timeperiod-Werte, keine weiteren Level."""
+        return _make_multiindex_df(
+            time_idx,
+            level_names=['ema_fast_timeperiod'],
+            level_values=[[20, 30, 40]],
+            seed=50,
+        )
+
+    @pytest.fixture
+    def ema_slow_df(self, time_idx: pd.DatetimeIndex) -> pd.DataFrame:
+        """ema_slow-Achse: 3 timeperiod-Werte, disjunkter Level-Name, GLEICHE Breite."""
+        return _make_multiindex_df(
+            time_idx,
+            level_names=['ema_slow_timeperiod'],
+            level_values=[[50, 90, 130]],
+            seed=51,
+        )
+
+    def test_equal_width_disjoint_axes_produce_full_cross_product(
+        self, ema_fast_df: pd.DataFrame, ema_slow_df: pd.DataFrame
+    ) -> None:
+        """3×3 disjunkte Achsen -> 9 Spalten (Kreuzprodukt), NICHT 3 (Diagonale)."""
+        fast_bc, slow_bc = _combine_broadcast([ema_fast_df, ema_slow_df])
+        assert fast_bc.shape[1] == 9, (
+            f"Erwartet 9 Spalten (Kreuzprodukt 3x3), erhalten {fast_bc.shape[1]} "
+            "(3 wäre die fehlerhafte Diagonale aus Bug 1)"
+        )
+        assert slow_bc.shape[1] == 9, (
+            f"Erwartet 9 Spalten (Kreuzprodukt 3x3), erhalten {slow_bc.shape[1]}"
+        )
+
+    def test_equal_width_disjoint_axes_columns_identical(
+        self, ema_fast_df: pd.DataFrame, ema_slow_df: pd.DataFrame
+    ) -> None:
+        """Beide Operanden teilen nach dem Kreuz denselben Spalten-Index."""
+        fast_bc, slow_bc = _combine_broadcast([ema_fast_df, ema_slow_df])
+        assert fast_bc.columns.equals(slow_bc.columns)
+        assert set(fast_bc.columns.names) == {'ema_fast_timeperiod', 'ema_slow_timeperiod'}
+
+    def test_equal_width_disjoint_axes_values_replicated_correctly(
+        self, ema_fast_df: pd.DataFrame, ema_slow_df: pd.DataFrame
+    ) -> None:
+        """Jeder ema_fast-Wert erscheint für alle 3 ema_slow-Werte unverändert (echtes Kreuzen)."""
+        fast_bc, _ = _combine_broadcast([ema_fast_df, ema_slow_df])
+        # Spalten 0-2 gehören zur ersten ema_fast-Combo (gekreuzt mit den 3 ema_slow-Werten)
+        first_val = fast_bc.iloc[0, 0]
+        for col_offset in range(3):
+            val = fast_bc.iloc[0, col_offset]
+            assert val == first_val, (
+                f"Spalte {col_offset}: erwartet {first_val}, erhalten {val}"
+            )
+
+
+# ============================================================================
 # Testfall (b): Subset-Folding — fast_sma-Level ⊂ Indikator-Kette
 #
 # Wenn fast_sma-Level eine Teilmenge der Indikator-Level sind (z.B. weil der

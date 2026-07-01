@@ -118,17 +118,28 @@ def _combine_broadcast(objs: list) -> tuple:
     """Broadcastet Operanden und kreuzt disjunkte Indikator-Param-Level.
 
     `vbt.broadcast` alignt nur gemeinsame/Teilmengen-Level. Stammen zwei Operanden
-    aus Indikatoren mit disjunkten Param-Leveln (z.B. zwei Indikator-Ketten mit verschiedenen Param-Leveln),
-    gibt es keine gemeinsame Spalten-Achse und VBT scheitert mit 'Cannot align
-    indexes' — das gemeinsame, konstante `symbol`-Level reicht zum Alignen nicht.
+    aus Indikatoren mit disjunkten Param-Leveln (z.B. zwei Indikator-Ketten mit
+    verschiedenen Param-Leveln), gibt es keine gemeinsame Spalten-Achse — sie
+    müssen gekreuzt (Kartesisches Produkt) statt aligned werden.
 
-    Lösung: Zuerst normales Broadcasting versuchen (deckt rein alignbare Fälle
-    ab, inkl. Teilmengen, wenn das Level eines Indikators im anderen enthalten ist). Schlägt es fehl, wird ein
-    Ziel-Spalten-Index als Kartesisches Produkt der disjunkten Param-Level gebaut
-    (via `vbt.base.indexes.cross_indexes`) und jeder Operand per
+    GEÄNDERT: Ticket 49 Bugfix — die Entscheidung "alignen vs. kreuzen" hing bisher
+    davon ab, ob `vbt.broadcast` eine Exception wirft. Das ist bei disjunkten
+    Leveln GLEICHER Breite falsch: `vbt.broadcast` richtet zwei gleich breite
+    Operanden dann positionsweise aus (Diagonale, z.B. 3x3 -> 3 statt 9) und wirft
+    KEINE Exception, der Kreuz-Pfad griff also nie. Fix: ein echter Gate-Check auf
+    den Spalten-Level-NAMEN statt try/except. Sind die Level-Namen-Mengen aller
+    DataFrame-Operanden paarweise in einer Teilmengen-/Gleichheits-Beziehung (echt
+    alignbar — z.B. gemeinsames `symbol`-Level oder ein Indikator-Level, das im
+    anderen Operanden mit enthalten ist), reicht normales `vbt.broadcast`. Sonst
+    (mindestens ein Paar mit disjunkten privaten Leveln) wird IMMER gekreuzt: ein
+    Ziel-Spalten-Index als Kartesisches Produkt der disjunkten Param-Level wird
+    gebaut (via `vbt.base.indexes.cross_indexes`) und jeder Operand per
     `columns_from=target` dorthin expandiert. Gemeinsame Carrier-Level wie `symbol`
-    bleiben dabei aligned (werden nicht gekreuzt). Teilmengen-Operanden werden vor
-    dem Kreuzen herausgefaltet, damit ihre Level nicht doppelt entstehen.
+    bleiben dabei aligned (werden NIE gekreuzt) — ihre privaten (Nicht-Carrier-)
+    Werte werden je Operand über `.unique()` dedupliziert, damit Carrier-bedingte
+    Wiederholungen (z.B. dieselben Param-Werte je Symbol) nicht fälschlich mitgekreuzt
+    werden. Operanden ohne eigenes privates Level (nur Carrier-Level) tragen keine
+    Kreuz-Achse bei und werden aus der Kreuz-Bestimmung herausgenommen.
 
     Args:
         objs: Liste der zu broadcastenden Series/DataFrames.
@@ -138,21 +149,38 @@ def _combine_broadcast(objs: list) -> tuple:
     """
     if sum(isinstance(o, pd.DataFrame) for o in objs) < 2:
         return vbt.broadcast(*objs)
-    try:
-        return vbt.broadcast(*objs)
-    except Exception:
-        pass
 
     dfs = [o for o in objs if isinstance(o, pd.DataFrame)]
+    name_sets = [set(d.columns.names) for d in dfs]
+
+    # Gate: alignen reicht nur, wenn JEDES Paar von Level-Namen-Mengen in einer
+    # Teilmengen-/Gleichheits-Beziehung steht. Sonst immer kreuzen — nicht mehr
+    # vom Exception-Zufall von vbt.broadcast abhängig (Kern von Bug 1).
+    pairwise_alignable = all(
+        name_sets[i] <= name_sets[j] or name_sets[j] <= name_sets[i]
+        for i in range(len(name_sets)) for j in range(i + 1, len(name_sets))
+    )
+    if pairwise_alignable:
+        return vbt.broadcast(*objs)
+
     # Carrier = Level-Namen, die ALLE DataFrames teilen (typisch: 'symbol').
-    carrier = set.intersection(*(set(d.columns.names) for d in dfs))
+    carrier = set.intersection(*name_sets)
 
     def _private(idx):
-        return idx.droplevel(list(carrier)) if carrier else idx
+        """Private (Nicht-Carrier-)Werte eines Spalten-Index, dedupliziert.
+
+        None, wenn der Operand außer Carrier-Leveln keine eigenen Level hat —
+        trägt dann keine private Achse zum Kreuzen bei.
+        """
+        keep = [n for n in idx.names if n not in carrier]
+        if not keep:
+            return None
+        return idx.droplevel(list(carrier)).unique()
 
     # Maximale Operanden bestimmen: private Level-Menge ist nicht echte Teilmenge
     # eines anderen und kommt nur einmal vor (gleiche Level-Mengen sind redundant).
     privs = [(d, _private(d.columns)) for d in dfs]
+    privs = [(d, p) for d, p in privs if p is not None]
     level_sets = [set(p.names) for _, p in privs]
     maximal_idxs: list = []
     seen_sets: list = []
@@ -419,6 +447,36 @@ def _evaluate_condition(cond: dict, ohlc_data: Any, indicators: dict):
     return _OPS[op_name](lhs, rhs)
 
 
+def _uniquify_param_levels(obj: Any, inst: Any, ind_id: str) -> Any:
+    """Benennt die Param-Level eines Indikator-Outputs instanz-eindeutig um.
+
+    vbt leitet den Param-Level-Namen vom Indikator-Klassennamen ab
+    (`<short_name>_<param>`, z.B. `dwsconst_value` oder `ema_timeperiod`). Zwei
+    Instanzen derselben Klasse mit gesweeptem Parameter — etwa zweimal dwsConst als
+    Schwellen-Konstante (ADX- und AssetDD-Schwelle) — erzeugen damit denselben
+    Level-Namen. `cross_indexes` kann zwei gleichnamige Achsen mit unterschiedlichen
+    Werten nicht kreuzen und bricht den Broadcast ab.
+
+    Fix: `<short_name>_<param>` -> `<ind_id>_<param>`. Der Spec-Key (`ind_id`) ist pro
+    Iteration eindeutig, damit werden die Achsen instanz-eindeutig und kreuzen sauber.
+    Nur echte Param-Level werden umbenannt (aus `inst.param_names` abgeleitet);
+    Carrier-Level wie `symbol` bleiben unberuehrt. Reine Werte/Series (kein
+    Param-Level) bleiben unveraendert.
+    """
+    if not isinstance(obj, pd.DataFrame):
+        return obj
+    short_name = getattr(inst, 'short_name', None)
+    param_names = getattr(inst, 'param_names', ()) or ()
+    if not short_name or not param_names:
+        return obj
+    current = set(obj.columns.names)
+    mapping = {f"{short_name}_{p}": f"{ind_id}_{p}"
+               for p in param_names if f"{short_name}_{p}" in current}
+    if mapping:
+        obj = obj.rename_axis(columns=mapping)
+    return obj
+
+
 def _resolve_ref(ref: Any, ohlc_data: Any, indicators: dict):
     """Löst eine Condition-Referenz auf (OHLCV, Indikator oder Skalar)."""
     # Skalar
@@ -456,7 +514,9 @@ def _resolve_ref(ref: Any, ohlc_data: Any, indicators: dict):
             if not output_names:
                 raise ValueError(f"Indikator {ind_id!r} hat keine output_names")
             output_name = output_names[0]
-        return getattr(inst, output_name)
+        # Param-Level instanz-eindeutig benennen (verhindert cross_indexes-Kollision
+        # bei zwei Instanzen derselben Indikator-Klasse, z.B. zweimal dwsConst).
+        return _uniquify_param_levels(getattr(inst, output_name), inst, ind_id)
 
     # OHLCV-Feld
     key = ref.lower()
@@ -1200,6 +1260,7 @@ def _build_static_block_arr(
     indicators: dict,
     T: int,
     n_cols: int,
+    combo_columns: Any = None,
 ) -> np.ndarray:
     """Baut die statische Block-Maske (n_blocks, T, W) für den nativen Pfad.
 
@@ -1208,12 +1269,27 @@ def _build_static_block_arr(
     all-True. Alle Blöcke werden auf die gemeinsame Spaltenbreite W gebracht
     (1 für Single-Combo, n_cols für Multi-Combo).
 
+    GEÄNDERT: Ticket 49 Bug-2-Fix — eine Block-Maske, deren Achsen eine echte
+    Teilmenge der `n_cols`-Achsen sind (z.B. Exit `ema_fast < ema_slow`, schmaler
+    als der volle Entry-Kreuz-Combo), wurde bisher per `m[:, :width]` blind
+    zugeschnitten — das sprengt bei width>1 UND m.shape[1] != width die
+    `arr[b] = m`-Zuweisung, sobald die Maske breiter als 1, aber schmaler als
+    width ist ('could not broadcast input array from shape (T,9) into shape
+    (T,27)'). Fix: die Maske stattdessen per `vbt.broadcast(mask,
+    columns_from=combo_columns, align_index=False)` auf den vollen
+    Combo-Spalten-Index EXPANDIEREN (kreuzen mit den fehlenden Achsen), statt
+    sie zu truncaten. `combo_columns` ist der volle Combo-Spalten-MultiIndex aus
+    `evaluate_rules_native` (`_consider`).
+
     Args:
         block_static_conds: Liste je Block mit dessen statischen Conditions.
         ohlc_data: vbt.Data-Objekt.
         indicators: Berechnete Indikatoren.
         T: Anzahl der Balken.
         n_cols: Portfolio-Spalten (close).
+        combo_columns: Voller Combo-Spalten-MultiIndex (Breite n_cols), auf den
+            schmalere Teilmengen-Masken expandiert werden. None nur zulässig,
+            wenn n_cols <= 1 (Single-Combo, keine Expansion nötig).
 
     Returns:
         Bool-Array (n_blocks, T, W).
@@ -1229,18 +1305,25 @@ def _build_static_block_arr(
             {'blocks': [{'conditions': conds}]}, ohlc_data, indicators
         )
         if isinstance(mask, pd.DataFrame):
-            m = mask.fillna(False).astype(bool).values
-            if m.ndim == 1:
-                m = m.reshape(T, 1)
+            n_mask_cols = mask.shape[1]
+            if n_mask_cols == 1 and width > 1:
+                m = np.repeat(mask.fillna(False).astype(bool).values, width, axis=1)
+            elif n_mask_cols != width:
+                # Teilmengen- (oder allgemein nicht direkt passende) Maske auf den
+                # vollen Combo-Spalten-Index kreuzen statt zu truncaten.
+                if combo_columns is None:
+                    raise ValueError(
+                        "Block-Maske mit abweichender Breite "
+                        f"({n_mask_cols} != {width}), aber kein combo_columns übergeben."
+                    )
+                expanded = vbt.broadcast(mask, columns_from=combo_columns, align_index=False)
+                m = expanded.fillna(False).astype(bool).values
+            else:
+                m = mask.fillna(False).astype(bool).values
         else:
             m = mask.fillna(False).astype(bool).values.reshape(T, 1)
-        # Auf die gemeinsame Breite bringen
-        if m.shape[1] == 1 and width > 1:
-            m = np.repeat(m, width, axis=1)
-        elif m.shape[1] != width:
-            # Mehr Spalten als n_cols (disjunkte Indikatoren) — auf die genutzte
-            # Spaltenbreite zuschneiden (entspricht dem col-Index-Zugriff).
-            m = m[:, :width]
+            if width > 1:
+                m = np.repeat(m, width, axis=1)
         arr[b] = m
 
     return arr
@@ -1415,7 +1498,9 @@ def evaluate_rules_native(
         long_block_start = np.array([0, 0], dtype=np.int64)
         n_long_exit_blocks_nb = np.int64(0)
     else:
-        long_static_block_arr = _build_static_block_arr(long_static_conds, ohlc_data, indicators, T, n_combo)
+        long_static_block_arr = _build_static_block_arr(
+            long_static_conds, ohlc_data, indicators, T, n_combo, combo_columns
+        )
         n_long_exit_blocks_nb = np.int64(n_long_exit_blocks)
 
     # Wenn keine Short-Exit-Blöcke: Platzhalter
@@ -1424,7 +1509,9 @@ def evaluate_rules_native(
         short_block_start = np.array([0, 0], dtype=np.int64)
         n_short_exit_blocks_nb = np.int64(0)
     else:
-        short_static_block_arr = _build_static_block_arr(short_static_conds, ohlc_data, indicators, T, n_combo)
+        short_static_block_arr = _build_static_block_arr(
+            short_static_conds, ohlc_data, indicators, T, n_combo, combo_columns
+        )
         n_short_exit_blocks_nb = np.int64(n_short_exit_blocks)
 
     # Date-Range-Mask auf Entry-Signale anwenden (falls angegeben)

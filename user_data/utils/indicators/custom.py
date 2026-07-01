@@ -548,6 +548,38 @@ dwsSMI = vbt.IF(
 ).with_apply_func(smi_inc, takes_1d=True)
 
 
+def const_inc(source, value=0.0):
+    """Konstanter Indikator: liefert für jeden Balken denselben Wert.
+
+    Der Input `source` dient ausschließlich als Längen-/Index-Vorlage — sein
+    Inhalt geht nicht in die Berechnung ein. Zweck: eine Regel-Schwelle, die
+    heute eine feste rhs-Konstante ist (z.B. `adx > 20`), wird über den
+    Umweg `indicator:adx > indicator:const` sweep-fähig, indem `value` als
+    Parameter-Achse (vbt.Param) im Multiparameter-Lauf variiert wird.
+
+    Args:
+        source: Beliebige Zeitreihe (typischerweise Close), nur für Länge/Index.
+        value: Der konstante Wert, den jeder Balken erhält (Default 0.0).
+
+    Returns:
+        numpy-Array der Länge len(source), komplett gefüllt mit `value`.
+    """
+    return np.full(len(source), float(value))
+
+
+# dwsConst — generischer Konstanten-Indikator. Macht Regel-Schwellen sweep-fähig:
+# statt fester rhs-Konstante `adx > 20` schreibt man `adx > const` und variiert
+# const.value im IndicatorConfig-Raster (z.B. [15, 20, 25]). Ein Baustein deckt
+# alle Schwellen ab (ADX, AssetDD, ...). Struktur wie dwsAssetDD: ein Längen-Input
+# plus ein Param, Output `result`.
+dwsConst = vbt.IF(
+    class_name='dwsConst',
+    input_names=['source'],
+    param_names=['value'],
+    output_names=['result'],
+).with_apply_func(const_inc, takes_1d=True)
+
+
 # dwsTrendlineTouch — TAP-Methode: 3./4. Trendlinien-Berührung mit Abpraller.
 # Multi-Output: short_line/long_line (preisskalierte Trendlinien, über dem Chart),
 # short_signal/long_signal (1.0 an Entry-Bars). SMI-Filter + Stops liegen außerhalb.

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.22] - 02.07.2026
+
+### Fixed
+- Multiparameter-Lauf kreuzt getrennte Indikator-Achsen jetzt korrekt (Ticket 49)
+  - Bug 1 in _combine_broadcast: Disjunkte Indikator-Param-Level gleicher Breite wurden bisher positionsweise gezippt (Diagonale, z.B. 3x3 -> 3 statt 9), weil vbt.broadcast keine Exception warf und der Kreuz-Pfad nie griff. Ersetzt durch einen Gate-Check auf die Spalten-Level-Namen: echt alignbare Level (Teilmenge/Gleichheit, Carrier wie symbol) werden aligned, disjunkte private Level immer ueber cross_indexes gekreuzt.
+  - Bug 2 in _build_static_block_arr: Eine Teilmengen-Exit-Maske (schmaler als die volle Combo-Breite, aber >1) sprengte die arr[b]=m-Zuweisung. Sie wird jetzt per vbt.broadcast(columns_from=combo_columns) auf den vollen Combo-Spalten-Index expandiert statt truncatet; combo_columns wird aus evaluate_rules_native durchgereicht.
+  - Verifiziert ueber echte Worker-Laeufe: gleiche Laengen 81, ungleiche Laengen mit Teilmengen-Exit 108 (vorher Absturz), zwei gleiche Indikator-Klassen 486, Regression A-D 27/81/81/81, VWMA-Anker 33813 unveraendert.
+  - Neuer Unit-Test in tests/test_rules_engine_combine_broadcast.py fuer den Bug-1-Kern (zwei disjunkte Achsen gleicher Breite -> volles Kreuzprodukt statt Diagonale).
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- tests/test_rules_engine_combine_broadcast.py
+
+
+
 ## [1.30.21] - 01.07.2026
 
 ### Fixed
