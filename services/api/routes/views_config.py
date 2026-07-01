@@ -327,14 +327,17 @@ def playground_setup_edit_page(request: Request, setup_id: int) -> HTMLResponse:
 def strategy_concepts_page(request: Request) -> HTMLResponse:
     """Strategie-Konzepte Übersicht — DataTable lädt per AJAX von /api/strategy/concepts."""
     templates = request.app.state.templates
-    # GEÄNDERT: Vault-Name aus Env-Variable für konfigurierbare Obsidian-Links
-    obsidian_vault_name = os.environ.get('OBSIDIAN_VAULT_NAME', 'vault')
+    # GEÄNDERT: Obsidian-Links per absolutem Host-Pfad (obsidian://open?path=) statt Vault-Name.
+    # Obsidian ermittelt den Vault selbst aus dem absoluten Pfad — kein separater Vault-Name noetig.
+    # Es zaehlt der Windows-Host-Pfad (dort laeuft Obsidian), nicht der Container-Mount /obsidian_vault.
+    # Backslashes zu Forward-Slashes normalisieren, damit der Pfad URL-tauglich ist.
+    obsidian_vault_base = os.environ.get('OBSIDIAN_VAULT_HOST_PATH', '').replace('\\', '/').rstrip('/')
     return templates.TemplateResponse(
         request=request,
         name='config/strategy_concepts.html',
         context={
             'active_nav': 'strategy_concepts',
-            'obsidian_vault_name': obsidian_vault_name,
+            'obsidian_vault_base': obsidian_vault_base,
         },
     )
 

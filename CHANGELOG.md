@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.15] - 01.07.2026
+
+### Fixed
+- Obsidian-Deeplinks der Strategie-Konzepte-Seite öffnen wieder korrekt (vorher „Vault not found")
+  - Ursache: Der Link nutzte den Vault-Namen aus OBSIDIAN_VAULT_NAME, das ungesetzt war und auf den Default 'vault' zurückfiel — Obsidian kennt keinen Vault dieses Namens.
+  - Umbau auf die vom Hersteller vorgesehene Methode obsidian://open?path=<absoluter Pfad>: Obsidian ermittelt den Vault selbst aus dem absoluten Pfad, ein separater Vault-Name ist nicht mehr nötig.
+  - Der Host-Pfad wird aus OBSIDIAN_VAULT_HOST_PATH abgeleitet (Backslash zu Slash normalisiert) — einzige Konfigurationsquelle, keine doppelte Pflege mehr.
+  - OBSIDIAN_VAULT_NAME aus .env.example entfernt; Kommentar auf absoluten Host-Pfad geschärft.
+
+### Files
+- services/api/routes/views_config.py
+- services/frontend/templates/config/strategy_concepts.html
+- .env.example
+
+
+
 ## [1.30.14] - 01.07.2026
 
 ### Added

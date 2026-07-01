@@ -36,6 +36,8 @@ VAULT_ROOT=$(wslpath -u "$(grep -E '^OBSIDIAN_VAULT_HOST_PATH=' .env | cut -d= -
 
 Alle Vault-Pfade unten sind relativ zu `$VAULT_ROOT`, Konvention `$VAULT_ROOT/30_Trading/strategies/<slug>/` (identisch zur App-Pfadlogik in `services/api/utils/obsidian_paths.py`). Fehlt `.env` oder die Variable, ist der Vault nicht konfiguriert — dann wie unter „Vault nicht erreichbar" (siehe Fehlerbilder) verfahren.
 
+> **WICHTIG — die Version ist eine reine Integer-Zahl, KEIN `v`-Präfix.** Der Iterations-Ordner und die Notiz heißen `iterations/<version>/<slug>-<version>.md` mit `version` als blanker Zahl. Richtig: `iterations/1/teststrategie-1.md`, `iterations/1/vwma-1.md`, `iterations/12/vwma-12.md`. **Falsch (gibt es nicht):** `iterations/v1/...`, `vwma-v1.md`, `# v1 — …`. Das gilt für Ordner, Dateiname UND Überschrift in der Notiz. Die App baut ihre Obsidian-Links exakt aus dieser Integer-Form (`strategy_concepts.html` + `obsidian_paths.py`) — ein `v` im Pfad bricht den Link (Notiz erscheint als „nicht vorhanden").
+
 ## Pfad A — Strategie-Session starten
 
 ### Phase 1 — Konzepte erfassen
@@ -88,7 +90,7 @@ Wenn der User antwortet (Slug oder "default" oder leer = Default übernehmen), d
    - `$VAULT_ROOT/30_Trading/short-term-memory.md` — aktueller Zustandsschnappschuss
    Diese zwei Dateien sind interner Kontext für das Briefing — kein eigener Output-Block, aber ihr Inhalt informiert "Bester Stand", "Backlog" und "Nicht anfassen".
 1. `$VAULT_ROOT/30_Trading/strategies/<slug-kebab>/status.md` (operativer Anker — Hauptquelle, liegt im Vault)
-2. Letzte Iter-Notiz im Vault, falls vorhanden — **per Versions-String sortiert**, nicht mtime. Notes liegen in Versions-Unterordnern (`iterations/<version>/<slug>-<version>.md`), daher rekursiv listen (`find "$VAULT_ROOT/30_Trading/strategies/<kebab>/iterations/" -name '*.md'`), höchste Versions-Nummer in natürlicher Sortierung (`v42` > `v32` > `v3` > `v2`).
+2. Letzte Iter-Notiz im Vault, falls vorhanden — **per Versions-String sortiert**, nicht mtime. Notes liegen in Versions-Unterordnern (`iterations/<version>/<slug>-<version>.md`), daher rekursiv listen (`find "$VAULT_ROOT/30_Trading/strategies/<kebab>/iterations/" -name '*.md'`), höchste Versions-Nummer numerisch sortiert (`42` > `32` > `3` > `2` > `1` — reine Integer, kein `v`-Präfix).
 3. Konzept-Frontmatter (`<slug>-concept.md`)
 
 Output-Format:

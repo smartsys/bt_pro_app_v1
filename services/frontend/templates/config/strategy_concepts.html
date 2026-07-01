@@ -155,8 +155,13 @@
 
 {% block scripts %}
 <script>
-// GEÄNDERT: Vault-Name aus Server-Kontext (konfigurierbar via OBSIDIAN_VAULT_NAME)
-var OBSIDIAN_VAULT_NAME = {{ obsidian_vault_name | tojson }};
+// GEÄNDERT: Absoluter Vault-Host-Pfad aus Server-Kontext (aus OBSIDIAN_VAULT_HOST_PATH abgeleitet).
+// Damit bauen wir obsidian://open?path=<absoluter Pfad> — Obsidian findet den Vault selbst, kein Name noetig.
+var OBSIDIAN_VAULT_BASE = {{ obsidian_vault_base | tojson }};
+// Baut einen Obsidian-Deeplink aus einem vault-relativen Dateipfad ueber den absoluten Host-Pfad.
+function buildObsidianUrl(vaultRelativeFile) {
+  return 'obsidian://open?path=' + encodeURIComponent(OBSIDIAN_VAULT_BASE + '/' + vaultRelativeFile);
+}
 
 document.addEventListener("DOMContentLoaded", function() {
 
@@ -307,7 +312,7 @@ document.addEventListener("DOMContentLoaded", function() {
             var docName = slug + '-' + version;
             if (!slug || !version) return '<span class="text-muted">-</span>';
             var vaultFile = '30_Trading/strategies/' + slug + '/iterations/' + version + '/' + docName + '.md';
-            var url = 'obsidian://open?vault=' + OBSIDIAN_VAULT_NAME + '&file=' + encodeURIComponent(vaultFile);
+            var url = buildObsidianUrl(vaultFile);
             if (data.vault_exists) {
               return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen (' + version + ')">' +
                 '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
@@ -406,7 +411,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { data: null, render: function(data) {
             var slug = data.slug || '';
             var vaultFile = '30_Trading/strategies/' + slug + '/' + slug + '-concept.md';
-            var url = 'obsidian://open?vault=' + OBSIDIAN_VAULT_NAME + '&file=' + encodeURIComponent(vaultFile);
+            var url = buildObsidianUrl(vaultFile);
             if (data.vault_exists) {
               return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen">' +
                 '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
