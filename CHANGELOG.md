@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.16] - 01.07.2026
+
+### Fixed
+- Runs-Analyse: Parameter-Heatmaps blieben sporadisch leer ("Zwei verschiedene Parameter auswählen"), obwohl Results und variierte Parameter vorhanden waren
+  - Ursache 1 (Timing-Race): Das initiale Heatmap-Rendern hing an einem festen setTimeout(500), die Dropdown-Befüllung aber am asynchronen Summary-Fetch. Kam die Summary-Antwort später als 500 ms zurück (große Runs, Kaltstart), traf der Timer die noch leeren Dropdowns und die Heatmap blieb dauerhaft leer. Das Rendern hängt jetzt am Summary-Callback statt am Timer.
+  - Ursache 2 (transienter Verbindungsabbruch): Ein einzelnes 'Failed to fetch' auf den Summary-Fetch (z.B. uvicorn-Reload-Neustart oder Docker-Port-Proxy-Reset unter dem Request-Burst beim Seitenaufbau) ließ die Dropdowns leer. Der Summary-Fetch fällt jetzt bei transientem Fehler mehrfach nach (Retry) und meldet endgültiges Scheitern sichtbar in der Konsole.
+  - Doku: README um einen Screenshot der Runs-Analyse-Seite ergänzt.
+
+### Files
+- services/frontend/templates/backtest/analyse.html
+- README.md
+- documentation/knowledge/assets/runs-analyse.png
+
+
+
 ## [1.30.15] - 01.07.2026
 
 ### Fixed

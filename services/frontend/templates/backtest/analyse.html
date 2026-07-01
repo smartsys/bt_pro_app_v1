@@ -249,9 +249,26 @@ document.addEventListener("DOMContentLoaded", function() {
   var paramCharts = {};  // ECharts Instanzen
   var paramNames = [];   // Verfügbare Parameter-Namen
 
-  // Zusammenfassung laden
-  fetch('/api/backtest/runs/' + runId + '/analyse/summary')
-    .then(function(r) { return r.json(); })
+  // GEAENDERT: JSON-Fetch mit Retry gegen transiente Verbindungsabbrueche.
+  // Ein einzelnes "Failed to fetch" (z.B. uvicorn-Reload-Neustart oder Docker-
+  // Port-Proxy-Reset unter dem Request-Burst beim Seitenaufbau) darf die
+  // Summary-Antwort nicht verschlucken — sonst bleiben die Heatmap-Dropdowns
+  // leer und die Heatmap haengt dauerhaft bei "Zwei verschiedene Parameter auswaehlen".
+  function fetchJsonWithRetry(url, tries, delayMs) {
+    return fetch(url)
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .catch(function(e) {
+        if (tries <= 1) throw e;
+        return new Promise(function(res) { setTimeout(res, delayMs); })
+          .then(function() { return fetchJsonWithRetry(url, tries - 1, delayMs); });
+      });
+  }
+
+  // Zusammenfassung laden (mit Retry, weil die Heatmap-Dropdowns davon abhaengen)
+  fetchJsonWithRetry('/api/backtest/runs/' + runId + '/analyse/summary', 4, 700)
     .then(function(d) {
       document.getElementById('sum-total').textContent = d.total_results ? d.total_results.toLocaleString('de-DE') : '—';
       document.getElementById('sum-profitable').textContent = d.profitable_count ? d.profitable_count.toLocaleString('de-DE') : '0';
@@ -315,6 +332,16 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('volume-chart').style.display = 'none';
         document.getElementById('volume-hint').style.display = 'flex';
       }
+
+      // GEAENDERT: Heatmaps erst jetzt rendern — hier sind die Selects garantiert befuellt.
+      // Ersetzt das fruehere feste setTimeout(500), das bei langsamem Summary-Fetch
+      // die noch leeren Selects traf und die Heatmap dauerhaft leer liess (Race Condition).
+      loadHeatmap();
+      loadHeatmap2();
+    })
+    .catch(function(e) {
+      // GEAENDERT: Nach erschoepften Retries den Fehler sichtbar machen statt still leer zu lassen.
+      console.error('[ANALYSE] Summary konnte nicht geladen werden — Heatmaps bleiben leer:', e);
     });
 
   // Metrik-Buttons
@@ -1059,8 +1086,9 @@ document.addEventListener("DOMContentLoaded", function() {
   loadDistribution();
   loadEquityOverview();
   loadTopResults();
-  // Heatmap erst nach Summary (weil paramNames gebraucht werden)
-  setTimeout(function() { loadHeatmap(); loadHeatmap2(); }, 500);
+  // GEAENDERT: Heatmap-Initialrendern haengt jetzt am Summary-Callback (siehe oben),
+  // nicht mehr an einem festen setTimeout(500). Das feste Timing traf bei langsamem
+  // Summary-Fetch die noch leeren Dropdowns und liess die Heatmap dauerhaft leer.
 
   /* Speichern-Aktionen aus Result in Top-Results-Tabelle (Ticket 43) */
   function _saveFromResult(endpoint, label, id) {

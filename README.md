@@ -39,6 +39,8 @@ Die App ist **keine** Trading-Plattform: Sie führt keinen echten Handel aus, ha
 | ![Indikator-Konfiguration](documentation/knowledge/assets/indicator-configs-edit.png) | ![Runs](documentation/knowledge/assets/runs.png) |
 | **Results (Einzelergebnisse, filter- und sortierbar)** | **OHLC-Daten verwalten** |
 | ![Results](documentation/knowledge/assets/results.png) | ![OHLC-Daten](documentation/knowledge/assets/ohlc-data.png) |
+| **Runs-Analyse (Kennzahlen, Verteilungen, Top-10 & Parameter-Heatmaps)** | |
+| ![Runs-Analyse](documentation/knowledge/assets/runs-analyse.png) | |
 
 ---
 
