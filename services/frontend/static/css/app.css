@@ -768,6 +768,17 @@ tr.dt-hasChild td.dt-control::before {
   margin-top: auto;
 }
 
+/* GEÄNDERT: Die Visuell-Panels (JSON/Visuell-Umschalter) liegen zwischen card-body und
+   Aktions-Leiste — sie müssen die Flex-Spalte weiterreichen, sonst greift das
+   margin-top:auto der Aktions-Leisten nicht mehr gegen den unteren Card-Rand.
+   ([hidden] bleibt wirksam: Tabler setzt display:none !important) */
+#cpIndVisualPanel,
+#cpRulesVisualPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
 /* Entry/Exit-Blöcke (disjunktive Normalform): Block intern UND, Blöcke ODER.
    Gleicher Card-Look wie die Indikator-Cards (cp-ind-row): Surface-Hintergrund + Schatten. */
 .cp-rule-block {

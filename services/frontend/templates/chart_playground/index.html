@@ -1666,6 +1666,10 @@
     const existingNames = new Set(state.indicators.map(i => i.name));
     const base = slugifyIndicatorType(meta.id);
     const name = nextFreeName(base, existingNames);
+    // GEÄNDERT: Steht die Stops-Zeile am Ende, bleibt sie dort — der neue Indikator wird
+    // als letzter Indikator OBERHALB von Stops eingefügt (renderIndicatorList materialisiert
+    // stopsPos, daher muss die Position hier aktiv mitgezogen werden)
+    const stopsAtEnd = (state.stopsPos == null) || (state.stopsPos >= state.indicators.length);
     state.indicators.push({
       client_id: cid(),
       name,
@@ -1685,6 +1689,7 @@
       enabled: true,
       outputs: null,
     });
+    if (stopsAtEnd) state.stopsPos = state.indicators.length;
     renderIndicatorList();
     scheduleAutoApply(100);
   }

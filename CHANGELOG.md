@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.30] - 02.07.2026
+
+### Fixed
+- Chart-Playground: Aktions-Buttons wieder am unteren Card-Rand, neue Indikatoren landen oberhalb der Stops-Zeile
+  - Die Speichern-Leisten der Cards Indikatoren und Entry/Exit-Logic klebten seit dem JSON/Visuell-Umschalter direkt unter dem Inhalt (links unter der Stops-Zeile) statt am unteren Card-Rand — die Visuell-Panels reichen die Flex-Spalte jetzt weiter, damit margin-top:auto wieder greift
+  - Beim Hinzufügen eines Indikators rutschte dieser hinter die Stops-Zeile ans Listenende — steht die Stops-Zeile am Ende, wird ihre Position jetzt mitgezogen: der neue Indikator wird letzter Indikator, Stops bleibt darunter
+  - Eine bewusst per Drag in die Listenmitte gezogene Stops-Zeile bleibt unangetastet — nur die End-Position ist klebrig
+
+### Files
+- services/frontend/static/css/app.css
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.29] - 02.07.2026
 
 ### Changed
