@@ -18,8 +18,9 @@
 {% block content %}
 
 {% if result %}
-<div class="alert {% if result.ok %}alert-success{% else %}alert-danger{% endif %}" role="alert">
+<div class="alert {% if result.ok %}bg-success{% else %}bg-danger{% endif %} text-white alert-dismissible shadow" role="alert">
   {{ result.message }}
+  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
 

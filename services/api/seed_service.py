@@ -99,7 +99,12 @@ def export_to_store() -> Path:
     dated = SNAPSHOT_DIR / f"seed-{date.today().isoformat()}.dump"
     _run_pg_dump(dated, params)
     # Pointer auf den zuletzt gespeicherten Stand aktualisieren.
-    shutil.copy2(dated, POINTER)
+    # GEÄNDERT: copyfile statt copy2 — die bestehende seed.dump kann einem
+    # anderen Nutzer (root aus dem Bind-Mount) gehören; copy2 ruft am Ende
+    # copystat/chmod auf und scheitert dann mit EPERM, obwohl der Inhalt
+    # (Datei ist world-writable) längst geschrieben ist. copyfile kopiert
+    # nur den Inhalt, ohne die Metadaten anzufassen.
+    shutil.copyfile(dated, POINTER)
     return dated
 
 
