@@ -4,9 +4,10 @@ Prueft das scharf geschaltete tf-Verhalten des echten Runners:
   - Indikator mit groeberem tf rechnet auf resampled OHLC, Output landet look-ahead-sicher
     am Basis-Index (Multi-Combo-Spalten erhalten) und ist in einen _RealignedIndicator gekapselt
   - Chaining ueber TF-Grenzen (RSI@4h -> EMA@1d) liefert Output am Basis-Index
-  - tf gleich Basis = No-Op (echte Instanz, bit-identisch zu "ohne tf")
+  - tf gleich Basis = No-Op (echte Instanz, bit-identisch zu tf='same')
   - tf feiner als Basis -> ValueError (Downsampling abgelehnt)
-  - ohne tf bleibt alles unveraendert (echte vbt-Instanz, kein Wrapper)
+  - tf 'same' = expliziter Sentinel fuer "gleicher tf wie Basis" (kein Wrapper)
+  - fehlender tf -> ValueError (kein implizites "gleich" mehr)
 """
 
 import sys
@@ -74,16 +75,17 @@ class TestPerIndicatorTf:
         assert out.index.equals(base_index)
 
     def test_tf_equal_base_is_noop(self, base_data):
-        """tf == Basis liefert eine echte Instanz, bit-identisch zu 'ohne tf'."""
+        """tf == Basis liefert eine echte Instanz, bit-identisch zu tf='same'."""
         spec_tf = {"rsi": {"indicator": "talib:RSI", "tf": "5min",
                            "close": "close", "timeperiod": 14}}
-        spec_no = {"rsi": {"indicator": "talib:RSI",
-                           "close": "close", "timeperiod": 14}}
+        # GEÄNDERT: Vergleichsbasis ist der explizite Sentinel 'same' (kein fehlender tf mehr)
+        spec_same = {"rsi": {"indicator": "talib:RSI", "tf": "same",
+                             "close": "close", "timeperiod": 14}}
         res_tf = build_indicators(spec_tf, base_data)["rsi"]
-        res_no = build_indicators(spec_no, base_data)["rsi"]
+        res_same = build_indicators(spec_same, base_data)["rsi"]
         assert not isinstance(res_tf, _RealignedIndicator), "kein Wrapper bei gleichem tf"
         a = np.asarray(res_tf.real)
-        b = np.asarray(res_no.real)
+        b = np.asarray(res_same.real)
         assert np.array_equal(a, b, equal_nan=True)
 
     def test_finer_tf_rejected(self, base_data):
@@ -92,12 +94,20 @@ class TestPerIndicatorTf:
         with pytest.raises(ValueError, match="feiner"):
             build_indicators(spec, base_data)
 
-    def test_no_tf_unchanged(self, base_data):
-        spec = {"rsi": {"indicator": "talib:RSI",
+    def test_tf_same_is_noop(self, base_data):
+        # GEÄNDERT: expliziter Sentinel 'same' rechnet unveraendert auf dem Basis-Raster
+        spec = {"rsi": {"indicator": "talib:RSI", "tf": "same",
                         "close": "close", "timeperiod": 14}}
         inst = build_indicators(spec, base_data)["rsi"]
         assert not isinstance(inst, _RealignedIndicator)
         assert inst.real.index.equals(base_data.wrapper.index)
+
+    def test_missing_tf_raises(self, base_data):
+        # GEÄNDERT: fehlender tf ist kein implizites "gleich" mehr, sondern ein Fehler
+        spec = {"rsi": {"indicator": "talib:RSI",
+                        "close": "close", "timeperiod": 14}}
+        with pytest.raises(ValueError, match="fehlt"):
+            build_indicators(spec, base_data)
 
     def test_base_tf_string_detects_noop_without_wrapper(self, base_data):
         """Objekt ohne .wrapper (z.B. Test-Wrapper): tf==base_tf via String -> kein Resample.

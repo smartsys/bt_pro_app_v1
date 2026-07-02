@@ -441,18 +441,20 @@
   }
   function setStatus(msg, kind) { const el = document.getElementById('cpStatus'); el.className = 'cp-status ' + (kind || ''); el.textContent = msg || ''; }
   const CHART_TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '1w': 604800 };
-  // GEÄNDERT: Variante A — ein Indikator-tf, der FEINER als der Basis-Timeframe ist, ist immer ungültig
-  // (Downsampling der OHLC-Kerzen unmöglich, s. tf_resample.py). Beim Laden eines Setups/einer Config
-  // auf null ("gleich") normalisieren, damit Anzeige (Dropdown zeigt "(gleich)") und Rechen-tf
-  // übereinstimmen. Umgestellte Indikatoren werden in `sink` gesammelt, um sie danach sichtbar zu melden.
+  // GEÄNDERT: "gleich" ist jetzt der explizite Wert 'same' (TF_SAME im Backend) — null/fehlend
+  // bedeutet "Wert fehlt" und bleibt beim Laden unverändert null (kein Fallback; der Fehler
+  // fällt sichtbar bei der Berechnung auf). Ein Indikator-tf, der FEINER als der Basis-Timeframe
+  // ist, ist immer ungültig (Downsampling unmöglich, s. tf_resample.py) und wird beim Laden auf
+  // 'same' umgestellt; umgestellte Indikatoren werden in `sink` gesammelt und sichtbar gemeldet.
   function normalizeLoadedTf(tf, sink, label) {
     if (!tf) return null;
+    if (tf === 'same') return 'same';
     const baseTf = document.getElementById('cpTimeframe').value;
     const baseSec = CHART_TF_SEC[baseTf] || 0;
     if (baseSec && (CHART_TF_SEC[tf] || 0) < baseSec) {
       // GEÄNDERT: Vollständiger Satz pro Indikator — welcher Indikator, von welchem tf, und warum (Basis-tf).
       sink.push('Indikator „' + label + '": Timeframe von ' + tf + ' auf „(gleich)" umgestellt — muss größer oder gleich dem Basis-Timeframe ' + baseTf + ' sein.');
-      return null;
+      return 'same';
     }
     return tf;
   }
@@ -925,12 +927,16 @@
     if (kind === 'timeframe') {
       const TF_SECS = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '1w': 604800 };
       const chartSec = TF_SECS[document.getElementById('cpTimeframe').value] || 0;
-      const TF_OPTIONS = [''].concat(Object.keys(TF_SECS).filter(tf => TF_SECS[tf] >= chartSec));
+      // GEÄNDERT: "gleich" = expliziter Wert 'same'. Fehlender tf (null) wird als eigene
+      // Option "(fehlt)" sichtbar gemacht statt still als "gleich" zu erscheinen.
+      const TF_OPTIONS = ['same'].concat(Object.keys(TF_SECS).filter(tf => TF_SECS[tf] >= chartSec));
       const curTf = ind.timeframe || '';
+      if (curTf === '') TF_OPTIONS.unshift('');
+      const tfLabel = tf => tf === 'same' ? '(gleich)' : (tf || '(fehlt)');
       return `
         <div>
           <label class="form-label">tf</label>
-          <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-tf="1">${TF_OPTIONS.map(tf => `<option value="${tf}" ${tf === curTf ? 'selected' : ''}>${tf || '(gleich)'}</option>`).join('')}</select>
+          <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-tf="1">${TF_OPTIONS.map(tf => `<option value="${tf}" ${tf === curTf ? 'selected' : ''}>${tfLabel(tf)}</option>`).join('')}</select>
         </div>`;
     }
     if (kind === 'input') {
@@ -1670,7 +1676,8 @@
       inputNames: meta.inputs || [],
       outputNames: meta.outputs || [],
       inputs: {},
-      timeframe: null,
+      // GEÄNDERT: neue Indikatoren starten mit explizitem 'same' (= gleicher tf wie Basis), nicht null
+      timeframe: 'same',
       color: nextColor(),
       plot_type: meta.plot_type || 'subplot',
       chartVisible: true,
@@ -2231,7 +2238,9 @@
       // Flat-Spec: Inputs direkt am Top-Level.
       const entry = {
         indicator: ind.id,
-        tf: ind.timeframe || document.getElementById('cpTimeframe').value,
+        // GEÄNDERT: tf verbatim ('same' oder tf-String) — keine Auflösung auf den Basis-tf
+        // mehr; fehlender tf (null) geht als null raus und schlägt im Runner sichtbar fehl.
+        tf: ind.timeframe || null,
         ...inputs,
       };
       // GEÄNDERT: Ticket 48 — enabled als Meta-Feld mitsenden (deaktivierter Indikator wird vom Runner übersprungen)

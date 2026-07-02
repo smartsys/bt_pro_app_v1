@@ -1,7 +1,7 @@
 """Unit-Tests fuer user_data/strategies/generic/tf_resample.py.
 
 Prueft die geteilte Per-Indikator-tf-Mechanik (Runner + Preview):
-  - normalize_tf: leer / None / gleich Basis -> None; abweichend -> getrimmt
+  - normalize_tf: 'same' / gleich Basis -> None; leer / None -> ValueError; abweichend -> getrimmt
   - validate_tf: feiner als Basis -> ValueError; gleich/groeber/None-Basis -> ok
   - resampled_ohlc + realign_to_index: Multi-Combo-DataFrame ueberlebt tf->Basis (alle
     Param-Spalten), look-ahead-sicher; Basis->tf (Chaining) trifft exakt den tf-Index
@@ -56,12 +56,20 @@ def base_data() -> vbt.Data:
 # ============================================================================
 
 class TestNormalizeTf:
-    def test_empty_string_to_none(self):
-        assert normalize_tf("", "4h") is None
-        assert normalize_tf("   ", "4h") is None
+    # GEÄNDERT: "gleich" ist jetzt der explizite Sentinel 'same'; leer/None ist ein Fehler.
+    def test_same_to_none(self):
+        assert normalize_tf("same", "4h") is None
+        assert normalize_tf(" SAME ", "4h") is None  # getrimmt + case-insensitiv
 
-    def test_none_to_none(self):
-        assert normalize_tf(None, "4h") is None
+    def test_empty_string_raises(self):
+        with pytest.raises(ValueError, match="fehlt"):
+            normalize_tf("", "4h")
+        with pytest.raises(ValueError, match="fehlt"):
+            normalize_tf("   ", "4h")
+
+    def test_none_raises(self):
+        with pytest.raises(ValueError, match="fehlt"):
+            normalize_tf(None, "4h")
 
     def test_equal_to_base_to_none(self):
         assert normalize_tf("4h", "4h") is None

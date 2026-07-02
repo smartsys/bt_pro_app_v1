@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.29] - 02.07.2026
+
+### Changed
+- Per-Indikator-Timeframe: „gleich“ ist jetzt der explizite Wert 'same' — null/fehlend bedeutet „Wert fehlt“ und schlägt bei der Verarbeitung sichtbar fehl (kein impliziter Fallback mehr)
+  - normalize_tf (tf_resample.py): Sentinel TF_SAME='same' eingeführt; 'same' und tf gleich Basis-TF bedeuten „kein Resampling“; None/leer/Nicht-String wirft ValueError mit klarer Meldung statt still als „gleich“ durchzulaufen
+  - spec_runner: Result-Metadaten übernehmen den tf verbatim aus dem Spec — kein stiller Default auf den Basis-Timeframe mehr bei fehlendem Key
+  - Frontend (Chart-Playground + Indikator-Config-Editor): Dropdown-Wert 'same' mit Label „(gleich)“; ein null-tf erscheint als eigene Option „(fehlt)“ statt als „(gleich)“; neue Indikatoren starten mit 'same'
+  - Schnell-Backtest im Playground sendet den tf verbatim statt ihn zum Basis-Timeframe aufzulösen (Inkonsistenz zu den Speicherpfaden beseitigt)
+  - Beim Laden bleibt ein null-tf unangetastet (keine Korrektur); nur ein feinerer-als-Basis-tf wird weiterhin sichtbar auf 'same' umgestellt
+  - Tests auf neue Semantik umgestellt und erweitert ('same' = No-Op, fehlender tf = ValueError); Doku indicators.md aktualisiert
+
+### Files
+- user_data/strategies/generic/tf_resample.py
+- user_data/strategies/generic/indicator_factory.py
+- user_data/strategies/generic/spec_runner.py
+- services/api/routes/api_chart_playground.py
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/templates/config/indicator_config_edit.html
+- documentation/knowledge/indicators.md
+- tests/test_tf_resample.py
+- tests/test_build_indicators_tf.py
+
+
+
 ## [1.30.28] - 02.07.2026
 
 ### Added

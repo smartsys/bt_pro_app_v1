@@ -613,7 +613,10 @@ def _build_indicators_results(indicators: dict, indicators_json: dict, timeframe
         out[ind_id] = {
             'name': ind_id,
             'type': spec.get('indicator'),
-            'tf': spec.get('tf', timeframe),
+            # GEÄNDERT: tf verbatim aus dem Spec ('same' oder tf-String) — kein Default
+            # auf den Basis-Timeframe mehr; ein fehlender tf wäre schon in build_indicators
+            # als Fehler aufgefallen.
+            'tf': spec.get('tf'),
             'enabled': spec.get('enabled', True),
             'params': params,
             'data': inst,

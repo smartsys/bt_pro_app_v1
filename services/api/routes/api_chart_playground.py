@@ -489,10 +489,11 @@ def compute_indicators(req: ComputeRequest) -> dict:
             factory = _extract_factory(spec.id)
             # Inputs zusammenstellen
             input_names = list(getattr(factory, 'input_names', ()) or ())
-            # GEÄNDERT: Paket B — tf-Normalisierung + Downsampling-Guard über den geteilten
-            # Helper (gleiche Regel wie der Runner). normalize_tf: leer / gleich Basis-tf -> None
-            # (No-Op). validate_tf: feiner als Basis -> ValueError (vom per-Indikator-try/except
-            # in die errors-Liste gefangen, statt still falsch zu rechnen).
+            # GEÄNDERT: tf-Normalisierung + Downsampling-Guard über den geteilten Helper
+            # (gleiche Regel wie der Runner). normalize_tf: 'same' / gleich Basis-tf -> None
+            # (No-Op); fehlender/leerer tf -> ValueError (kein implizites "gleich" mehr).
+            # validate_tf: feiner als Basis -> ValueError. Beides landet über das
+            # per-Indikator-try/except in der errors-Liste, statt still falsch zu rechnen.
             target_tf = normalize_tf(spec.timeframe, req.timeframe)
             if target_tf is not None:
                 validate_tf(target_tf, tf_to_timedelta(req.timeframe))

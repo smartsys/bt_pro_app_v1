@@ -44,7 +44,7 @@ Ein Indikator-Eintrag (in `config_json` / `indicators_config_json`):
 
 - **Key** (`"fast_sma"`) = eindeutiger Slug-Name im Setup (frei umbenennbar). Wird in Regeln und Input-Referenzen verwendet.
 - `indicator` = aufgelöste Katalog-ID inkl. Bibliotheks-Prefix.
-- `tf` = Rechen-Timeframe des Indikators (`null`/fehlt = gleicher TF wie der Chart/Run). Ein gesetzter, **gröberer** tf lässt den Indikator nativ auf `vbt.Data.resample(tf)` rechnen und holt die Outputs look-ahead-sicher (`realign_closing`) aufs Basis-Raster zurück — **sowohl im Chart-Preview als auch im echten Run** (seit Paket B identischer Pfad, Preview == Lauf). Ein **feinerer** tf (Downsampling) wird abgewiesen.
+- `tf` = Rechen-Timeframe des Indikators. **Pflichtfeld:** `"same"` (expliziter Sentinel `TF_SAME`, = gleicher TF wie der Chart/Run) oder ein tf-String. `null`/fehlt ist **kein** implizites „gleich" mehr, sondern ein Fehler — `normalize_tf` wirft `ValueError` (Frontend-Dropdowns zeigen so einen Eintrag als „(fehlt)"). Ein gesetzter, **gröberer** tf lässt den Indikator nativ auf `vbt.Data.resample(tf)` rechnen und holt die Outputs look-ahead-sicher (`realign_closing`) aufs Basis-Raster zurück — **sowohl im Chart-Preview als auch im echten Run** (seit Paket B identischer Pfad, Preview == Lauf). Ein **feinerer** tf (Downsampling) wird abgewiesen.
 - Alle weiteren Keys sind entweder **Inputs** (Wert = OHLCV-Spalte oder Referenz `indicator:<name>:<output>`) oder **Parameter** (Skalar oder Multiparameter-Lauf-Range-Objekt). Ob ein Key Input oder Parameter ist, ergibt sich aus dem Katalog (`factory.input_names`), nicht aus der gespeicherten Form.
 
 ### Wertformen eines Feldes
@@ -149,7 +149,7 @@ Wird in beiden Lade-Pfaden genutzt: `identity`/`timeframe` → eigene State-Slot
 ### 5.3 Der EINE Renderer — `renderField` + `renderValueWidget`
 `renderField(ind, key, kind, ctx)` zeichnet je `kind`:
 - `identity` → read-only Textfeld mit `ind.display_name`.
-- `timeframe` → TF-Dropdown (nur TFs >= Chart-TF).
+- `timeframe` → TF-Dropdown (nur TFs >= Chart-TF; erste Option ist der explizite Wert `same` mit Label „(gleich)"; ein fehlender tf (`null`) wird als eigene Option „(fehlt)" sichtbar, kein stilles „gleich").
 - `input` → Quellen-Select (OHLCV + `indicator:<name>:<out>`-Referenzen anderer Indikatoren).
 - `value` → `renderValueWidget` nach Wertform:
   - Boolean → Schiebeschalter (`data-parambool`).

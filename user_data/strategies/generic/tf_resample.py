@@ -17,13 +17,18 @@ Mechanik (durchgaengig nativ ueber vbt):
       * Basis -> tf: Chaining-Input eines Indikators auf den groeberen Rechen-tf
         (last-in-bucket, derselbe Index wie die tf-OHLCV-Inputs).
   - `validate_tf(tf, base_freq)`: Guard. Downsampling (tf feiner als Basis) wird abgelehnt.
-  - `normalize_tf(tf, base_tf)`: leerer / mit Basis identischer tf -> None (kein Resampling).
+  - `normalize_tf(tf, base_tf)`: `TF_SAME` ('same') / mit Basis identischer tf -> None (kein
+    Resampling). Fehlender/leerer tf ist KEIN implizites "gleich" mehr -> ValueError.
 """
 
 from typing import Any, Optional
 
 import pandas as pd
 import vectorbtpro as vbt
+
+# GEÄNDERT: Expliziter Sentinel für "gleicher Timeframe wie die Basis". Ein fehlender oder
+# null-tf bedeutet NICHT mehr "gleich", sondern ist ein Fehler (fehlender Wert).
+TF_SAME = 'same'
 
 
 def tf_to_timedelta(tf: str) -> pd.Timedelta:
@@ -32,19 +37,29 @@ def tf_to_timedelta(tf: str) -> pd.Timedelta:
 
 
 def normalize_tf(tf: Optional[str], base_tf: Optional[str]) -> Optional[str]:
-    """Normalisiert den Ziel-tf: leer / None / gleich Basis-tf -> None (kein Resampling noetig).
+    """Normalisiert den Ziel-tf: TF_SAME ('same') / gleich Basis-tf -> None (kein Resampling).
+
+    GEÄNDERT: null/fehlend/leer ist kein implizites "gleich" mehr — "gleich" muss explizit
+    als TF_SAME gesetzt sein. Ein fehlender Wert ist ein Fehler im Spec und schlägt hier
+    sichtbar fehl (kein stiller Fallback).
 
     Args:
-        tf: Roher Per-Indikator-Timeframe (z.B. '4h', '', None).
+        tf: Roher Per-Indikator-Timeframe (z.B. '4h', 'same').
         base_tf: Basis-Timeframe der geladenen Kerzen (z.B. '4h'); darf None sein.
 
     Returns:
         Der getrimmte tf-String, oder None wenn kein Resampling noetig ist.
+
+    Raises:
+        ValueError: Wenn tf fehlt (None, kein String oder leer).
     """
-    if not isinstance(tf, str):
-        return None
+    if not isinstance(tf, str) or tf.strip() == '':
+        raise ValueError(
+            f"Per-Indikator-Timeframe fehlt (tf={tf!r}). Erwartet wird '{TF_SAME}' "
+            f"(= gleicher Timeframe wie die Basis) oder ein Timeframe-String wie '4h'."
+        )
     trimmed = tf.strip()
-    if trimmed == '':
+    if trimmed.lower() == TF_SAME:
         return None
     if base_tf is not None and trimmed.lower() == (base_tf or '').strip().lower():
         return None

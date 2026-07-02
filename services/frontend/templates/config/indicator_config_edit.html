@@ -588,13 +588,15 @@ document.addEventListener("DOMContentLoaded", function() {
       '<input class="form-control form-control-sm cp-param-field" type="' + inputType + '"' + stepHtml + ' data-cid="' + ind.client_id + '" data-paramscalar="' + key + '" data-numeric="' + (isNum ? "1" : "0") + '" value="' + valStr + '"></div>';
   }
   // GEÄNDERT: tf-Feld ohne Chart-Bezug — statische TF-Liste statt Filterung nach Chart-Timeframe.
-  var TF_OPTIONS = ["", "1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"];
+  // "gleich" = expliziter Wert 'same'; fehlender tf (null) erscheint als eigene Option "(fehlt)".
+  var TF_OPTIONS = ["same", "1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"];
   function renderField(ind, key, kind, ctx) {
     if (kind === "timeframe") {
       var curTf = ind.timeframe || "";
+      var opts = curTf === "" ? [""].concat(TF_OPTIONS) : TF_OPTIONS;
       return '<div><label class="form-label">tf</label>' +
         '<select class="form-select form-select-sm" data-cid="' + ind.client_id + '" data-tf="1">' +
-        TF_OPTIONS.map(function(tf) { return '<option value="' + tf + '" ' + (tf === curTf ? "selected" : "") + '>' + (tf || "(gleich)") + '</option>'; }).join("") + '</select></div>';
+        opts.map(function(tf) { var label = tf === "same" ? "(gleich)" : (tf || "(fehlt)"); return '<option value="' + tf + '" ' + (tf === curTf ? "selected" : "") + '>' + label + '</option>'; }).join("") + '</select></div>';
     }
     if (kind === "input") {
       var current = (ind.inputs && ind.inputs[key]) || defaultInputSource(key);
@@ -815,7 +817,8 @@ document.addEventListener("DOMContentLoaded", function() {
       client_id: cid(), name: name, id: meta.id, display_name: meta.id,
       paramsMeta: meta.params || [], params: defaults,
       inputNames: meta.inputs || [], outputNames: meta.outputs || [],
-      inputs: {}, timeframe: null,
+      // GEÄNDERT: neue Indikatoren starten mit explizitem 'same' (= gleicher tf wie Basis), nicht null
+      inputs: {}, timeframe: "same",
     });
     renderIndicatorList();
     syncVisualToJson();

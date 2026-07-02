@@ -280,9 +280,10 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
 def _resolve_target_tf(raw_tf: Any, base_freq: Any, base_tf: Optional[str] = None) -> Optional[str]:
     """Ermittelt den effektiven Rechen-tf eines Indikators (oder None = Basis-Raster).
 
-    Leerer/fehlender tf -> None. tf gleich Basis (per String `base_tf` ODER Frequenz
-    `base_freq`) -> None (No-Op). tf feiner als Basis -> ValueError (Downsampling). tf
-    groeber -> der getrimmte tf-String.
+    GEÄNDERT: tf 'same' -> None (explizit gleicher tf wie die Basis). Fehlender/leerer tf
+    -> ValueError (kein implizites "gleich" mehr, s. normalize_tf). tf gleich Basis (per
+    String `base_tf` ODER Frequenz `base_freq`) -> None (No-Op). tf feiner als Basis ->
+    ValueError (Downsampling). tf groeber -> der getrimmte tf-String.
 
     Args:
         raw_tf: Roher 'tf'-Wert aus dem Spec-Eintrag.
