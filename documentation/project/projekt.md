@@ -2,7 +2,9 @@
 
 > Was dieses Dokument ist: Eine verständliche Übersicht über das Projekt für Einsteiger — Zweck, Funktionsumfang, Architektur-Überblick. Bleibt über die Projekt-Lebenszeit stabil und wird nur bei strategischen Änderungen aktualisiert.
 >
-> Was dieses Dokument nicht ist: Technische Architektur, Pfade, Deployment-Details. Das steht in `knowledge/project-structure.md`.
+> Was dieses Dokument nicht ist: Technische Architektur, Pfade, Deployment-Details.
+>
+> Zur konkreten Bedienung einzelner Funktionen (z.B. die Run-Analyse-Seite, Toolbox-Werkzeuge): `handbuch.md`.
 
 ---
 

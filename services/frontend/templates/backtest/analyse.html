@@ -9,7 +9,7 @@
     <div class="row g-2 align-items-center">
       <div class="col-auto">        <h2 class="page-title">Analyse Run #{{ run.id }}</h2>
 
-        <div class="page-pretitle">Backtesting</div>
+        <div class="page-pretitle">Analyse der Runs — findet dynamisch nur auf den bestehenden Results statt</div>
       </div>
       <div class="col-auto ms-auto text-muted">
         <span class="badge bg-purple-lt">{{ run.strategy_name }}</span>
@@ -225,7 +225,7 @@
     <div class="card mt-3" id="recompute-card">
   <div class="card-body py-2">
     <div class="d-flex align-items-center gap-3">
-      <span class="text-muted small">Berechnung:</span>
+      <span class="text-muted small">Erweiterte Datenberechnung:</span>
       <button class="btn btn-sm btn-primary" id="btn-recompute-start">Start</button>
       <button class="btn btn-sm btn-warning" id="btn-recompute-stop" disabled>Stop</button>
       <button class="btn btn-sm btn-outline-danger" id="btn-recompute-reset">Reset</button>
@@ -242,7 +242,7 @@
          echter Fliesstext laeuft (sonst werden die Textstuecke zwischen den
          hervorgehobenen Befehlen zu nebeneinander liegenden Flex-Spalten). -->
     <div class="alert alert-info mt-2 mb-0 py-2 px-3 small d-block" role="alert">
-      Die Berechnung führt für jede Kombination des Runs den Backtest erneut aus und speichert die
+      Die erweiterte Datenberechnung führt für jede Kombination des Runs den Backtest erneut aus und speichert die
       Detail-Daten (Equity-Kurve, Trades, Orders, Positionen, Indikatoren) für die Analyse-Ansichten.
       <strong class="text-primary">Start</strong> beginnt die Berechnung bzw. setzt sie fort (es werden
       nur noch fehlende Kombinationen gerechnet), <strong class="text-warning">Stop</strong> pausiert die

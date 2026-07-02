@@ -10,7 +10,7 @@ Namens-Konvention: Funktionen heißen `<bereich>_<aktion>` (z.B. `iteration_read
 
 Jede Maßnahme ist ein einzelnes Werkzeug, einzeln aufrufbar. Es gibt keine
 vorgegebene Reihenfolge. Vollständige Werkzeug-Liste mit je einem Satz:
-documentation/project/toolbox-werkzeuge.md.
+documentation/project/handbuch.md (Abschnitt "Toolbox-Werkzeuge").
 
 Wichtig zum Leaderboard: Ein Testset-Lauf erzeugt NICHT automatisch einen Leaderboard-
 Eintrag. Das passiert nur, wenn das Testset 'leaderboard_enabled=True' gesetzt hat

@@ -133,7 +133,7 @@ Danach **eine** Anschluss-Frage außerhalb des Briefings, z.B.:
 
 ## Pfad B — Ad-hoc Objekt-Toolbox
 
-Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten**. Jede Maßnahme ist ein **einzelnes Werkzeug**, einzeln aufgerufen — keine vorgegebene Reihenfolge. Vollständige Werkzeug-Liste mit je einem Satz: `documentation/project/toolbox-werkzeuge.md`. Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
+Helper-Skript `toolbox.py`, um bt_pro_app-Objekte in einem Schritt zu **lesen** (kompaktes Markdown-Briefing statt 4-5 Einzel-Curls), zu **kopieren**, **anzulegen**, zu **ändern/löschen** oder Läufe zu **starten**. Jede Maßnahme ist ein **einzelnes Werkzeug**, einzeln aufgerufen — keine vorgegebene Reihenfolge. Vollständige Werkzeug-Liste mit je einem Satz: `documentation/project/handbuch.md` (Abschnitt „Toolbox-Werkzeuge"). Läuft als Folge-Aktion in einer Pfad-A-Session oder eigenständig.
 
 **Wichtig:** Pfad B startet NIE die Pfad-A-Routine. Wenn der User mitten in anderer Arbeit nur schnell `iteration:2` lesen oder kopieren will, blockiert das sein laufendes Vorhaben nicht — kein Konzept-Listing, keine Strategie-Rückfrage.
 

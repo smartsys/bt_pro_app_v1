@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.23] - 02.07.2026
+
+### Added
+- Benutzerhandbuch angelegt und Run-Analyse-Maske sprachlich geschärft
+  - Neues documentation/project/handbuch.md als wachsendes Nachschlagewerk zur Bedienung; Kapitel Run-Analyse (Erweiterte Datenberechnung mit Start/Stop/Reset, Vorher/Nachher-Datentabelle auf Feldebene, Abschnitt Warum drei Stufen) und Toolbox-Werkzeuge
+  - Inhaltsverzeichnis mit Anker-Links statt nummerierter Ueberschriften, damit Einschuebe kein Umnummerieren erzwingen
+  - toolbox-werkzeuge.md ins Handbuch verschoben (Single Source); Verweise in ds-strategie-session (SKILL.md, toolbox.py) nachgezogen
+  - Analysemaske: Label Berechnung zu Erweiterte Datenberechnung umbenannt, pretitle Backtesting durch Erklaerungstext ersetzt
+  - projekt.md: toter Verweis auf knowledge/project-structure.md (gitignored) entfernt, Verweis auf handbuch.md ergaenzt
+
+### Files
+- documentation/project/handbuch.md
+- documentation/project/projekt.md
+- services/frontend/templates/backtest/analyse.html
+- .claude/skills/ds-strategie-session/SKILL.md
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+
+
+
 ## [1.30.22] - 02.07.2026
 
 ### Fixed
