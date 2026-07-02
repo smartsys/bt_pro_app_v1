@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.28] - 02.07.2026
+
+### Added
+- Chart-Playground: Umschalter JSON/Visuell für die Indikatoren- und Entry/Exit-Logic-Card
+  - Beide Cards haben im Header links neben den Aktions-Buttons eine Btn-Group JSON/Visuell (analog zum Editor der Indikator-Konfiguration)
+  - JSON-Modus zeigt read-only die JSON-Quelle: Indikatoren-Card das config_json exakt im Save-Format (collectIndicatorConfigJson, inkl. _stops), Entry/Exit-Card die rules im spec_json-Format (cleanRules)
+  - JSON wird bei jedem Umschalten frisch aus dem State erzeugt; die Hinzufügen-Buttons schalten automatisch auf Visuell zurück, damit keine veraltete JSON-Ansicht stehen bleibt
+  - Umschalter ist als reines Darstellungs-Control vom Verwerfen des Schnellbacktest-Ergebnisses ausgenommen (Klasse cp-json-toggle in onSettingChanged)
+  - Neue CSS-Klasse cp-json-view (formatiertes pre, Tabler-Theme-Variablen für Hell/Dunkel)
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/static/css/app.css
+
+
+
 ## [1.30.27] - 02.07.2026
 
 ### Fixed

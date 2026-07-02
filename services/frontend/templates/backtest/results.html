@@ -396,25 +396,52 @@ document.addEventListener("DOMContentLoaded", function() {
         // GEÄNDERT: Iterations-Spalte mit ID, Parameter-Tooltip und Fallback-Hinweis
         data: null,
         render: function(data) {
-          // GEÄNDERT: API-Feld heißt actual_params (nicht actual_params_json) — Bugfix Tooltip
-          var params = data.actual_params;
-          // GEÄNDERT: K4 — kein hartgecodetes Label-Mapping mehr; Parameter roh anzeigen (key|value)
+          // GEÄNDERT: Tooltip zeigt ALLE Eingabewerte je Indikator aus der aufgelösten
+          // Indikator-Config (resolved_indicators); Zeilen ohne '|' sind Gruppen-Titel.
           var lines = [];
-          // GEÄNDERT: Stop-Keys hier überspringen — sie kommen aufgelöst aus data.stops (Duplikat-Schutz)
-          var stopKeys = { td_stop: 1, tp_stop: 1, sl_stop: 1, tsl_stop: 1, tsl_th: 1 };
-          if (params) {
-            for (var key in params) {
-              if (key === 'symbol') continue;
-              if (stopKeys[key]) continue;
-              var v = params[key];
-              lines.push(key + '|' + (typeof v === 'number' ? parseFloat(v.toFixed(4)) : v));
+          function fmtTipValue(v) {
+            if (typeof v === 'number') return parseFloat(v.toFixed(4));
+            // Unaufgelöste Range (sollte nach Auflösung nicht vorkommen) lesbar machen
+            if (v && typeof v === 'object' && 'start' in v) return v.start + '..' + v.stop + ' (step ' + v.step + ')';
+            return v;
+          }
+          if (data.resolved_indicators) {
+            for (var indName in data.resolved_indicators) {
+              var cfg = data.resolved_indicators[indName];
+              if (!cfg || typeof cfg !== 'object') continue;
+              var cls = String(cfg.indicator || '').split(':').pop();
+              lines.push(indName + (cls && cls !== indName ? ' (' + cls + ')' : ''));
+              // GEÄNDERT: generisch ALLE Felder der Config anzeigen (nichts wegfiltern);
+              // nur 'indicator' steht bereits im Gruppen-Titel. Leere Werte als '-'.
+              for (var pk in cfg) {
+                if (pk === 'indicator') continue;
+                var pv = cfg[pk];
+                lines.push(pk + '|' + (pv === null || pv === undefined || pv === '' ? '-' : fmtTipValue(pv)));
+              }
+            }
+          } else {
+            // Fallback: flache actual_params (alte Antworten ohne resolved_indicators)
+            var params = data.actual_params;
+            // GEÄNDERT: Stop-Keys hier überspringen — sie kommen aufgelöst aus data.stops (Duplikat-Schutz)
+            var stopKeys = { td_stop: 1, tp_stop: 1, sl_stop: 1, tsl_stop: 1, tsl_th: 1 };
+            if (params) {
+              for (var key in params) {
+                if (key === 'symbol') continue;
+                if (stopKeys[key]) continue;
+                lines.push(key + '|' + fmtTipValue(params[key]));
+              }
             }
           }
           // GEÄNDERT: Stoppdaten (td/tp/sl/tsl) aus dem Result-Snapshot in den Tooltip aufnehmen
           if (data.stops) {
+            var stopEntries = [];
             for (var sk in data.stops) {
-              var sv = data.stops[sk];
-              lines.push(sk + '|' + (typeof sv === 'number' ? parseFloat(sv.toFixed(4)) : sv));
+              stopEntries.push(sk + '|' + fmtTipValue(data.stops[sk]));
+            }
+            if (stopEntries.length) {
+              // Gruppen-Titel nur in der gruppierten Ansicht (sonst flache Liste wie bisher)
+              if (data.resolved_indicators) lines.push('Stops');
+              lines = lines.concat(stopEntries);
             }
           }
           // GEÄNDERT: Name der Indikator-Config ans Feld anhängen, falls am Result vorhanden
@@ -703,13 +730,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
   /* Parameter-Tooltip (fixed position, kein Clipping) */
   var paramTip = document.getElementById("param-tooltip");
-  document.addEventListener("mouseover", function(e) {
-    var el = e.target.closest(".param-tip");
-    if (!el) return;
+  // GEÄNDERT: Klick auf die Iteration pinnt den Tooltip fest (z.B. für Screenshots);
+  // erneuter Klick oder Klick außerhalb löst ihn wieder.
+  var paramTipPinned = false;
+
+  function showParamTip(el) {
     var raw = el.getAttribute("data-params");
-    if (!raw) return;
-    var html = raw.split(";").map(function(item) {
+    if (!raw) return false;
+    var html = raw.split(";").map(function(item, idx) {
       var parts = item.split("|");
+      // GEÄNDERT: Zeilen ohne '|' sind Gruppen-Titel (Indikator-Name / Stops) — fett,
+      // mit kleinem Abstand zur vorherigen Gruppe (nicht vor dem ersten Titel)
+      if (parts.length < 2) {
+        var gap = idx > 0 ? 'margin-top:8px;' : '';
+        return '<span style="display:inline-block;' + gap + 'font-weight:600">' + parts[0] + '</span>';
+      }
       return '<span style="color:#888">' + parts[0] + '</span> ' + parts[1];
     }).join("<br>");
     paramTip.innerHTML = html;
@@ -717,10 +752,35 @@ document.addEventListener("DOMContentLoaded", function() {
     var rect = el.getBoundingClientRect();
     paramTip.style.left = rect.left + "px";
     paramTip.style.top = (rect.bottom + 4) + "px";
+    return true;
+  }
+
+  document.addEventListener("mouseover", function(e) {
+    if (paramTipPinned) return;
+    var el = e.target.closest(".param-tip");
+    if (!el) return;
+    showParamTip(el);
   });
   document.addEventListener("mouseout", function(e) {
+    if (paramTipPinned) return;
     var el = e.target.closest(".param-tip");
     if (el) paramTip.style.display = "none";
+  });
+  document.addEventListener("click", function(e) {
+    var el = e.target.closest(".param-tip");
+    if (el) {
+      if (paramTipPinned) {
+        paramTipPinned = false;
+        paramTip.style.display = "none";
+        return;
+      }
+      paramTipPinned = showParamTip(el);
+      return;
+    }
+    if (paramTipPinned) {
+      paramTipPinned = false;
+      paramTip.style.display = "none";
+    }
   });
 
   /* Speichern-Aktionen aus Result (Ticket 43) */

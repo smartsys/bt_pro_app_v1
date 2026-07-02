@@ -166,18 +166,33 @@
             <div class="card h-100 cp-ind-panel">
               <div class="card-header d-flex justify-content-between align-items-center py-2">
                 <h3 class="card-title mb-0">Indikatoren</h3>
-                <button class="btn btn-sm btn-primary" id="cpAddIndBtn">+ hinzufügen</button>
+                <div class="d-flex gap-2 align-items-center">
+                  <!-- GEÄNDERT: Umschalter JSON-Quelle <-> Visuell (analog Indikator-Konfiguration) -->
+                  <div class="btn-group btn-group-sm cp-json-toggle" role="group" aria-label="Ansicht Indikatoren">
+                    <input type="radio" class="btn-check" name="cpIndViewMode" id="cpIndModeJson" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="cpIndModeJson">JSON</label>
+                    <input type="radio" class="btn-check" name="cpIndViewMode" id="cpIndModeVisual" autocomplete="off" checked>
+                    <label class="btn btn-outline-secondary" for="cpIndModeVisual">Visuell</label>
+                  </div>
+                  <button class="btn btn-sm btn-primary" id="cpAddIndBtn">+ hinzufügen</button>
+                </div>
               </div>
               <div class="card-body p-2">
-                <!-- GEÄNDERT: Stops sind eine verschiebbare Zeile innerhalb dieser Liste (per JS gerendert, siehe buildStopsRow) -->
-                <div id="cpIndicatorList"></div>
-                <!-- GEÄNDERT: Speichern/Speichern unter für die Indikator-Konfiguration -->
-                <div class="d-flex align-items-center gap-2" id="cpIndCfgActions" style="display:none !important">
-                  <span id="cpIndCfgStatus" class="cp-status small me-auto"></span>
-                  <span id="cpIndCfgCombos" class="fw-bold small"></span>
-                  <button class="btn btn-sm btn-outline-secondary" id="cpIndCfgCombosBtn" title="Anzahl der Parameter-Kombinationen über alle Indikatoren berechnen">Kombinationen berechnen</button>
-                  <button class="btn btn-sm btn-outline-success" id="cpIndCfgSaveBtn" title="Bestehende Indikator-Konfiguration überschreiben — Ziel im Dialog wählbar (oben eingestellte vorausgewählt)">Speichern</button>
-                  <button class="btn btn-sm btn-outline-success" id="cpIndCfgSaveAsBtn" title="Als neue Indikator-Konfiguration speichern">Speichern unter...</button>
+                <!-- GEÄNDERT: JSON-Ansicht (read-only) — zeigt das config_json exakt im Save-Format -->
+                <div id="cpIndJsonPanel" hidden>
+                  <pre class="cp-json-view" id="cpIndJsonView"></pre>
+                </div>
+                <div id="cpIndVisualPanel">
+                  <!-- GEÄNDERT: Stops sind eine verschiebbare Zeile innerhalb dieser Liste (per JS gerendert, siehe buildStopsRow) -->
+                  <div id="cpIndicatorList"></div>
+                  <!-- GEÄNDERT: Speichern/Speichern unter für die Indikator-Konfiguration -->
+                  <div class="d-flex align-items-center gap-2" id="cpIndCfgActions" style="display:none !important">
+                    <span id="cpIndCfgStatus" class="cp-status small me-auto"></span>
+                    <span id="cpIndCfgCombos" class="fw-bold small"></span>
+                    <button class="btn btn-sm btn-outline-secondary" id="cpIndCfgCombosBtn" title="Anzahl der Parameter-Kombinationen über alle Indikatoren berechnen">Kombinationen berechnen</button>
+                    <button class="btn btn-sm btn-outline-success" id="cpIndCfgSaveBtn" title="Bestehende Indikator-Konfiguration überschreiben — Ziel im Dialog wählbar (oben eingestellte vorausgewählt)">Speichern</button>
+                    <button class="btn btn-sm btn-outline-success" id="cpIndCfgSaveAsBtn" title="Als neue Indikator-Konfiguration speichern">Speichern unter...</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -193,21 +208,34 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg>
                   </span>
                 </h3>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
+                  <!-- GEÄNDERT: Umschalter JSON-Quelle <-> Visuell (analog Indikator-Konfiguration) -->
+                  <div class="btn-group btn-group-sm cp-json-toggle" role="group" aria-label="Ansicht Entry/Exit-Logic">
+                    <input type="radio" class="btn-check" name="cpRulesViewMode" id="cpRulesModeJson" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="cpRulesModeJson">JSON</label>
+                    <input type="radio" class="btn-check" name="cpRulesViewMode" id="cpRulesModeVisual" autocomplete="off" checked>
+                    <label class="btn btn-outline-secondary" for="cpRulesModeVisual">Visuell</label>
+                  </div>
                   <button class="btn btn-sm btn-primary" id="cpAddEntryBlockBtn">+ Entry hinzufügen</button>
                   <button class="btn btn-sm btn-primary" id="cpAddExitBlockBtn">+ Exit hinzufügen</button>
                 </div>
               </div>
               <div class="card-body p-2">
-                <div id="cpEntryConditions" class="mb-3"></div>
+                <!-- GEÄNDERT: JSON-Ansicht (read-only) — zeigt die rules exakt im spec_json-Format -->
+                <div id="cpRulesJsonPanel" hidden>
+                  <pre class="cp-json-view" id="cpRulesJsonView"></pre>
+                </div>
+                <div id="cpRulesVisualPanel">
+                  <div id="cpEntryConditions" class="mb-3"></div>
 
-                <div id="cpExitConditions" class="mb-2"></div>
+                  <div id="cpExitConditions" class="mb-2"></div>
 
-                <!-- GEÄNDERT: Spec speichern (neues Konzept ODER neue Iteration) + Überschreiben der gewählten Iteration -->
-                <div class="d-flex align-items-center gap-2" id="cpIterActions">
-                  <span id="cpIterStatus" class="cp-status small me-auto"></span>
-                  <button class="btn btn-sm btn-outline-success" id="cpIterSaveBtn" title="Überschreibt die oben gewählte Konzept-Iteration" style="display:none">Speichern</button>
-                  <button class="btn btn-sm btn-outline-success" id="cpIterSaveAsBtn" title="Spec als neue Iteration eines bestehenden Konzepts oder als neues Konzept speichern">Spec speichern…</button>
+                  <!-- GEÄNDERT: Spec speichern (neues Konzept ODER neue Iteration) + Überschreiben der gewählten Iteration -->
+                  <div class="d-flex align-items-center gap-2" id="cpIterActions">
+                    <span id="cpIterStatus" class="cp-status small me-auto"></span>
+                    <button class="btn btn-sm btn-outline-success" id="cpIterSaveBtn" title="Überschreibt die oben gewählte Konzept-Iteration" style="display:none">Speichern</button>
+                    <button class="btn btn-sm btn-outline-success" id="cpIterSaveAsBtn" title="Spec als neue Iteration eines bestehenden Konzepts oder als neues Konzept speichern">Spec speichern…</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3338,6 +3366,37 @@
 
   document.getElementById('cpLoadChartBtn').addEventListener('click', loadChart);
   document.getElementById('cpAddIndBtn').addEventListener('click', openPicker);
+  // GEÄNDERT: Umschalter JSON-Quelle <-> Visuell für Indikatoren- und Entry/Exit-Card (analog Indikator-Konfiguration).
+  // Reine Anzeige (read-only) — zeigt exakt das JSON, das die Speichern-Buttons der jeweiligen Card schreiben würden.
+  function setIndViewMode(mode) {
+    const isJson = (mode === 'json');
+    if (isJson) {
+      document.getElementById('cpIndJsonView').textContent =
+        JSON.stringify(collectIndicatorConfigJson().config_json, null, 2);
+    }
+    document.getElementById('cpIndJsonPanel').hidden = !isJson;
+    document.getElementById('cpIndVisualPanel').hidden = isJson;
+    document.getElementById(isJson ? 'cpIndModeJson' : 'cpIndModeVisual').checked = true;
+  }
+  function setRulesViewMode(mode) {
+    const isJson = (mode === 'json');
+    if (isJson) {
+      document.getElementById('cpRulesJsonView').textContent =
+        JSON.stringify(cleanRules(state.rules), null, 2);
+    }
+    document.getElementById('cpRulesJsonPanel').hidden = !isJson;
+    document.getElementById('cpRulesVisualPanel').hidden = isJson;
+    document.getElementById(isJson ? 'cpRulesModeJson' : 'cpRulesModeVisual').checked = true;
+  }
+  document.getElementById('cpIndModeJson').addEventListener('change', () => setIndViewMode('json'));
+  document.getElementById('cpIndModeVisual').addEventListener('change', () => setIndViewMode('visual'));
+  document.getElementById('cpRulesModeJson').addEventListener('change', () => setRulesViewMode('json'));
+  document.getElementById('cpRulesModeVisual').addEventListener('change', () => setRulesViewMode('visual'));
+  // Die Hinzufügen-Buttons im Card-Header bearbeiten den visuellen Editor — bei Klick zurück auf Visuell schalten,
+  // damit die JSON-Ansicht nicht veraltet stehen bleibt.
+  document.getElementById('cpAddIndBtn').addEventListener('click', () => setIndViewMode('visual'));
+  document.getElementById('cpAddEntryBlockBtn').addEventListener('click', () => setRulesViewMode('visual'));
+  document.getElementById('cpAddExitBlockBtn').addEventListener('click', () => setRulesViewMode('visual'));
   // GEÄNDERT: Jede Einstellungsänderung macht das Schnellbacktest-Ergebnis ungültig -> Anzeige verwerfen.
   // Delegiert über input+change auf den editierbaren Bereichen (Chart-Config + Strategie-Pane mit
   // Indikatoren/Regeln/Portfolio). Reine Darstellungs-Controls dürfen das Ergebnis NICHT verwerfen:
@@ -3347,7 +3406,8 @@
   //   - .cp-ind-vis-group: Sichtbarkeits-Schalter pro Indikator (nur Chart-Anzeige, kein Backtest-Einfluss).
   //     Die einzige backtest-relevante Aktion an den Indikatoren (Löschen) ruft invalidateLiteResult selbst auf.
   const onSettingChanged = (e) => {
-    if (e.target.closest('.cp-ind-advanced-body, .cp-ind-vis-group')) return;
+    // GEÄNDERT: .cp-json-toggle (Umschalter JSON/Visuell) ist ein reines Darstellungs-Control — kein Verwerfen.
+    if (e.target.closest('.cp-ind-advanced-body, .cp-ind-vis-group, .cp-json-toggle')) return;
     invalidateLiteResult();
   };
   [document.querySelector('.cp-toolbar'), document.getElementById('cp-tab-setup')].forEach(el => {

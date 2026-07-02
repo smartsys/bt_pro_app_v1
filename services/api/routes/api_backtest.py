@@ -35,7 +35,8 @@ from user_data.utils.database.models import (
     StrategyConcept, StrategyIteration,
     TestSet, TestSetRun,
 )
-from user_data.utils.database.repository import create_backtest_run, _count_combinations
+# GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
+from user_data.utils.database.repository import create_backtest_run, _count_combinations, _build_resolved_config
 # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version, SPEC_RUNNER_IMPORT_PATH
 
@@ -731,6 +732,11 @@ def get_results_datatable(request: Request) -> dict:
                 'indicator_config_name': ind_config.name if ind_config else None,
                 # GEÄNDERT: Alle aufgelösten Stops für den Iterations-Tooltip
                 'stops': _result_stops_dict(result),
+                # GEÄNDERT: Aufgelöste Indikator-Config (alle Eingabewerte je Indikator,
+                # Ranges durch die konkreten Werte dieses Results ersetzt) für den Tooltip
+                'resolved_indicators': _build_resolved_config(
+                    run.indicators_config_json, result.actual_params_json or {}
+                ) if run.indicators_config_json else None,
                 'symbol': run.symbol,
                 'exchange': run.exchange,
                 'timeframe': run.timeframe,

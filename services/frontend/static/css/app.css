@@ -1209,6 +1209,21 @@ tr.dt-hasChild td.dt-control::before {
   color: #f76707;
 }
 
+/* GEÄNDERT: JSON-Quelle-Ansicht im Playground (Indikatoren- und Entry/Exit-Card) */
+.cp-json-view {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--tblr-bg-surface);
+  color: var(--tblr-body-color);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  white-space: pre;
+}
+
 /* Zahlen-Inputs zentrieren */
 input[type="number"].form-control,
 input[type="number"].form-control-sm {
