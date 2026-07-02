@@ -486,7 +486,6 @@ document.addEventListener("DOMContentLoaded", function() {
     var map = { close: "close", open: "open", high: "high", low: "low", volume: "volume", source: "close" };
     return map[iname.toLowerCase()] || "close";
   }
-  var INPUT_DEFAULTS = { source: "close", close: "close", open: "open", high: "high", low: "low", volume: "volume" };
 
   function paramRangeFields(value, dflt) {
     if (value != null && typeof value === "object") {
@@ -557,6 +556,11 @@ document.addEventListener("DOMContentLoaded", function() {
       if (kind === "input") { inputs[k] = v; return; }
       if (detectStale && !knownParams.has(k)) { stale.push(name + "." + k); return; }
       params[k] = v;
+    });
+    // GEÄNDERT: In der geladenen Config fehlende Inputs mit dem angezeigten Default belegen
+    // (defaultInputSource) — Anzeige und Zustand bleiben deckungsgleich (s. addIndicator).
+    (meta && Array.isArray(meta.inputs) ? meta.inputs : []).forEach(function(iname) {
+      if (inputs[iname] == null) inputs[iname] = defaultInputSource(iname);
     });
     return { params: params, inputs: inputs, stale: stale };
   }
@@ -813,12 +817,17 @@ document.addEventListener("DOMContentLoaded", function() {
     var existingNames = new Set(vis.indicators.map(function(i) { return i.name; }));
     var base = slugifyIndicatorType(meta.id);
     var name = nextFreeName(base, existingNames);
+    // GEÄNDERT: Inputs sofort mit dem angezeigten Default belegen (defaultInputSource) —
+    // sonst zeigt das Dropdown nur optisch "close", gespeichert wird bei Nicht-OHLCV-Inputnamen
+    // (z.B. series_a bei dwsCrossover) der unbrauchbare rohe Name.
+    var inputs = {};
+    (meta.inputs || []).forEach(function(iname) { inputs[iname] = defaultInputSource(iname); });
     vis.indicators.push({
       client_id: cid(), name: name, id: meta.id, display_name: meta.id,
       paramsMeta: meta.params || [], params: defaults,
       inputNames: meta.inputs || [], outputNames: meta.outputs || [],
       // GEÄNDERT: neue Indikatoren starten mit explizitem 'same' (= gleicher tf wie Basis), nicht null
-      inputs: {}, timeframe: "same",
+      inputs: inputs, timeframe: "same",
     });
     renderIndicatorList();
     syncVisualToJson();
@@ -977,9 +986,11 @@ document.addEventListener("DOMContentLoaded", function() {
     var stale = [];
     vis.indicators.forEach(function(i) {
       var entry = { indicator: i.id, tf: i.timeframe || null };
+      // GEÄNDERT: Fallback über defaultInputSource (eine Default-Quelle, wie die Dropdown-Anzeige) —
+      // der alte Fallback auf den rohen Inputnamen schrieb unbrauchbare Werte wie "series_a".
       (i.inputNames || []).forEach(function(iname) {
         var explicit = i.inputs && i.inputs[iname];
-        entry[iname] = explicit || INPUT_DEFAULTS[iname.toLowerCase()] || iname.toLowerCase();
+        entry[iname] = explicit || defaultInputSource(iname);
       });
       var knownParams = new Set((i.paramsMeta || []).map(function(p) { return p.name; }));
       if (i.params) {

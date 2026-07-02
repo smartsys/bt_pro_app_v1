@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.31] - 02.07.2026
+
+### Fixed
+- Indikator-Inputs mit Nicht-OHLCV-Namen (z.B. series_a/series_b bei custom:dwsCrossover) schlugen im Playground und Config-Editor fehl („Kein Mapping für Input")
+  - Ursache: Input-Dropdowns zeigten den Default „close" nur optisch an — in den Zustand geschrieben wurde nichts, und das Backend kennt für frei benannte Inputs keinen Default
+  - Inputs werden jetzt beim Anlegen eines Indikators und beim Laden von Setups/Configs sofort mit dem angezeigten Default (defaultInputSource) vorbelegt — Anzeige und Zustand sind deckungsgleich
+  - Serialisierungs-Fallback vereinheitlicht: buildBacktestPayload und collectIndicatorConfigJson (Playground + Config-Editor) nutzen dieselbe Default-Quelle statt des rohen Inputnamens, der unbrauchbare Werte wie „series_a" in gespeicherte Configs schrieb
+  - Verwaiste Konstante INPUT_DEFAULTS in beiden Templates entfernt
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/templates/config/indicator_config_edit.html
+
+
+
 ## [1.30.30] - 02.07.2026
 
 ### Fixed

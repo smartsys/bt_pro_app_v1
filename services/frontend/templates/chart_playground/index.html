@@ -868,6 +868,11 @@
       if (detectStale && !knownParams.has(k)) { stale.push(name + '.' + k); return; }
       params[k] = v;
     });
+    // GEÄNDERT: In der geladenen Config fehlende Inputs mit dem angezeigten Default belegen
+    // (defaultInputSource) — Anzeige und Zustand bleiben deckungsgleich (s. addIndicator).
+    (meta && Array.isArray(meta.inputs) ? meta.inputs : []).forEach(iname => {
+      if (inputs[iname] == null) inputs[iname] = defaultInputSource(iname);
+    });
     return { params, inputs, stale };
   }
 
@@ -1663,6 +1668,12 @@
   function addIndicator(meta) {
     const defaults = {};
     (meta.params || []).forEach(p => { if (p.default != null) defaults[p.name] = p.default; });
+    // GEÄNDERT: Inputs sofort mit dem angezeigten Default belegen (defaultInputSource).
+    // Vorher blieb inputs leer und das Dropdown zeigte nur optisch "close" — bei
+    // Nicht-OHLCV-Inputnamen (z.B. series_a bei dwsCrossover) kannte das Backend keinen
+    // Default und brach mit 'Kein Mapping für Input' ab.
+    const inputs = {};
+    (meta.inputs || []).forEach(iname => { inputs[iname] = defaultInputSource(iname); });
     const existingNames = new Set(state.indicators.map(i => i.name));
     const base = slugifyIndicatorType(meta.id);
     const name = nextFreeName(base, existingNames);
@@ -1679,7 +1690,7 @@
       params: defaults,
       inputNames: meta.inputs || [],
       outputNames: meta.outputs || [],
-      inputs: {},
+      inputs,
       // GEÄNDERT: neue Indikatoren starten mit explizitem 'same' (= gleicher tf wie Basis), nicht null
       timeframe: 'same',
       color: nextColor(),
@@ -2227,18 +2238,16 @@
   // TF-Wechsel mit-resampled werden kann (sonst bleibt sie auf dem Basis-TF hängen).
   let cpCurrentEquityRaw = null;
 
-  // Standard-OHLCV-Mapping für nicht gesetzte Indikator-Inputs
-  const INPUT_DEFAULTS = { source: 'close', close: 'close', open: 'open', high: 'high', low: 'low', volume: 'volume' };
   function buildBacktestPayload() {
     const indicators = {};
     state.indicators.forEach(ind => {
-      // Inputs explizit füllen (User-Override oder Default-Mapping)
+      // Inputs explizit füllen (User-Override oder Default-Mapping).
+      // GEÄNDERT: Fallback über defaultInputSource (eine Default-Quelle, wie die Dropdown-Anzeige) —
+      // der alte Fallback auf den rohen Inputnamen schrieb unbrauchbare Werte wie "series_a".
       const inputs = {};
       (ind.inputNames || []).forEach(iname => {
         const explicit = ind.inputs && ind.inputs[iname];
-        if (explicit) { inputs[iname] = explicit; return; }
-        const key = iname.toLowerCase();
-        inputs[iname] = INPUT_DEFAULTS[key] || key;
+        inputs[iname] = explicit || defaultInputSource(iname);
       });
       // Flat-Spec: Inputs direkt am Top-Level.
       const entry = {
@@ -2988,9 +2997,11 @@
       };
       // GEÄNDERT (Punkt 1): Inputs immer mit aufgelösten Defaults serialisieren (analog buildBacktestPayload).
       // Sonst gehen im UI nicht aktiv angefasste Default-Inputs (z.B. source) beim Speichern verloren.
+      // GEÄNDERT: Fallback über defaultInputSource (eine Default-Quelle, wie die Dropdown-Anzeige) —
+      // der alte Fallback auf den rohen Inputnamen schrieb unbrauchbare Werte wie "series_a".
       (i.inputNames || []).forEach(iname => {
         const explicit = i.inputs && i.inputs[iname];
-        entry[iname] = explicit || INPUT_DEFAULTS[iname.toLowerCase()] || iname.toLowerCase();
+        entry[iname] = explicit || defaultInputSource(iname);
       });
       // GEÄNDERT (Punkt 2): Nur bekannte Katalog-Params übernehmen. Unbekannte Keys (Altlasten wie 'src',
       // der alte Name für 'source') werden verworfen und gesammelt — bricht den Roundtrip Lade->Param->Save.
