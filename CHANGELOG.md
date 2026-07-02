@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.26] - 02.07.2026
+
+### Changed
+- Toolbox: Indikator-Katalog filterbar gemacht und stille 4000-Zeichen-Kürzung behoben (Ticket 50)
+  - playground-indicators ist jetzt ein eigenes Verb: ohne Filter kompakte Gruppen-Übersicht (Name + Anzahl je Gruppe), mit --group <name> nur diese Gruppe, mit --search <substring> case-insensitiv über id/name — beide Flags kombinierbar
+  - Treffer-Ausgabe kompakt: eine Zeile je Indikator mit id/inputs/params (Namen)/outputs statt vollem JSON-Dump mit Defaults
+  - _print_data weist Kürzungen jetzt immer sichtbar mit Original-Größe aus ([gekürzt: 4000 von N Zeichen — Filter nutzen]) — betrifft alle generischen GET-Verben, kein stilles Abschneiden mehr
+  - Filter- und Format-Logik als reine Funktionen (_filter_indicators, _format_indicator_line) mit pytest-Tests ohne Netzwerk-Abhängigkeit
+  - Handbuch-Abschnitt Toolbox-Werkzeuge und code-referenz.md (Service-Check) um die neuen Flags ergänzt
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- tests/test_toolbox_indicator_filter.py
+- documentation/project/handbuch.md
+- documentation/knowledge/strategy-development/code-referenz.md
+- documentation/tickets/50-toolbox-indikator-katalog-filter-statt-kuerzung.md
+
+
+
+## [1.30.25] - 02.07.2026
+
+### Added
+- Ticket 50 angelegt: Toolbox-Indikator-Katalog filterbar machen (--group/--search), stille 4000-Zeichen-Kürzung in _print_data durch expliziten Kürzungs-Hinweis ersetzen
+  - Befund aus der Strategie-Ideen-Verifikation: toolbox.py playground-indicators zeigt nur die ersten 4000 Zeichen (_print_data, toolbox.py:1195) — die Gruppen talib/vbt/wqa101 (fast 300 Indikatoren) fehlen stillschweigend in der Ausgabe
+  - Kürzung betrifft generisch alle GET-Antworten des Routen-Pfads, nicht nur den Katalog
+  - Ticket fordert: Filter-Flags statt größerem Dump, kompakte Ausgabe je Indikator, sichtbarer Kürzungs-Hinweis mit Original-Größe, Handbuch-Update
+
+### Files
+- documentation/tickets/50-toolbox-indikator-katalog-filter-statt-kuerzung.md
+
+
+
 ## [1.30.24] - 02.07.2026
 
 ### Added

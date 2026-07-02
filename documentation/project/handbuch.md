@@ -154,6 +154,11 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 > Alle Werkzeuge des Helfer-Skripts `toolbox.py` (Pfad B des Skills `ds-strategie-session`).
 > Jede Maßnahme ist ein einzelnes Werkzeug. Kein Loop, keine vorgegebene Reihenfolge.
 > Aufruf: `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py <werkzeug> ...`
+>
+> Sehr lange GET-Antworten werden auf 4000 Zeichen gekürzt — die Toolbox weist das dann
+> immer sichtbar mit der Original-Größe aus (`[gekürzt: 4000 von N Zeichen — Filter nutzen]`),
+> nie stillschweigend. Bei betroffenen Werkzeugen gezielt filtern (z.B. `playground-indicators`
+> mit `--group`/`--search`) statt den gekürzten Rohdump zu lesen.
 
 ### Lesen — ein Objekt als kompaktes Briefing
 
@@ -191,7 +196,7 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 | `filters-list` | Listet die verfügbaren Backtest-Filter. |
 | `playground-setup-list` | Listet alle Chart-Playground-Setups. |
 | `playground-sources` | Listet die verfügbaren Datenquellen des Playgrounds. |
-| `playground-indicators` | Listet alle nutzbaren Indikatoren mit Inputs, Params und Outputs. |
+| `playground-indicators` | Ohne Filter: Gruppen-Übersicht (Name + Anzahl je Gruppe, z.B. custom/ta/talib/vbt/wqa101). Mit `--group <name>` nur diese Gruppe, mit `--search <text>` case-insensitiv über id/name gefiltert (kombinierbar); Treffer als kompakte Zeile mit id/inputs/params/outputs. |
 | `knowledge-runs-list` | Listet die Indizierungs-Läufe der Wissens-Datenbank. |
 
 ### Auswerten — Run oder Result im Detail lesen

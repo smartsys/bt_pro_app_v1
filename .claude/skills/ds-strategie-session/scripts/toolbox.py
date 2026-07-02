@@ -59,6 +59,9 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
                                                               #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
   python3 toolbox.py run-favorites-reset --testset-run 6      # Favoriten einer Run-Menge zuruecksetzen; ohne Flag beide Sterne, sonst --doc (rot) und/oder --user (gelb)
                                                               #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
+  python3 toolbox.py playground-indicators                    # Gruppen-Übersicht (Name + Anzahl), kein voller Dump
+  python3 toolbox.py playground-indicators --group talib      # nur diese Gruppe, kompakt: id/inputs/params/outputs
+  python3 toolbox.py playground-indicators --search ema       # case-insensitiv über id/name, --group kombinierbar
 
 Anlegen (create — Schreib-Aktion). Komplexe Payloads per --file als JSON-Datei.
 KEIN stiller Konverter, kein Fallback: spec_json/config_json wird unverändert
@@ -102,7 +105,7 @@ Weitere Listen/Reads: strategy-config-list · data-files-list · data-jobs-list 
   run-results/run-summary/run-distribution/run-equity-overview/run-heatmap/run-analyse-progress <id> ·
   result-stats/result-trades/result-orders/result-positions/result-ohlcv/result-chart-data/result-metrics-level <id> ·
   knowledge-runs-list · knowledge-run <id> · knowledge-stats ·
-  playground-sources/playground-ohlcv/playground-indicators/playground-setup-list
+  playground-sources/playground-ohlcv/playground-setup-list
 
 Generischer Direktzugriff auf JEDE (auch künftige) Route:
   python3 toolbox.py api GET /api/backtest/runs
@@ -706,6 +709,81 @@ def symbol_list(args: list) -> int:
     return 0
 
 
+def _filter_indicators(groups: list, group_filter: str = None, search: str = "") -> list:
+    """Filtert die Indikator-Gruppen des Katalogs nach Gruppe und/oder Suchtext.
+
+    Reine Funktion (kein Netzwerk-Zugriff) — testbar ohne laufenden Server.
+
+    Args:
+        groups: Liste der Gruppen-Objekte (`{"name": ..., "indicators": [...]}`),
+            wie von `GET /api/chart-playground/indicators` geliefert.
+        group_filter: Falls gesetzt, nur Indikatoren dieser Gruppe (exakter Name-Match).
+        search: Case-insensitiver Substring-Filter über `id` und `name`. Leerer
+            String = kein Filter.
+
+    Returns:
+        Liste der passenden Indikator-Objekte über alle betroffenen Gruppen hinweg.
+    """
+    search = (search or "").lower()
+    matches = []
+    for g in groups:
+        if group_filter and g["name"] != group_filter:
+            continue
+        for ind in g["indicators"]:
+            if search and search not in ind["id"].lower() and search not in ind["name"].lower():
+                continue
+            matches.append(ind)
+    return matches
+
+
+def _format_indicator_line(ind: dict) -> str:
+    """Formatiert einen Indikator als kompakte Markdown-Zeile (id/inputs/params/outputs).
+
+    Args:
+        ind: Indikator-Objekt aus dem Katalog (`id`, `inputs`, `params`, `outputs`).
+
+    Returns:
+        Eine einzelne Markdown-Bullet-Zeile ohne Defaults-Ballast.
+    """
+    params = ", ".join(p["name"] for p in ind.get("params", []))
+    return (f"- **{ind['id']}** — inputs: {', '.join(ind.get('inputs', [])) or '—'} | "
+            f"params: {params or '—'} | outputs: {', '.join(ind.get('outputs', [])) or '—'}")
+
+
+def playground_indicators_list(args: list) -> int:
+    """Indikator-Katalog des Chart-Playgrounds — gefiltert statt voll gedumpt.
+
+    Ohne Filter: kompakte Gruppen-Übersicht (Name + Anzahl je Gruppe).
+    Mit --group <name>: nur diese Gruppe (z.B. talib, vbt, custom, ta, wqa101).
+    Mit --search <substring>: case-insensitiv über id/name gefiltert (z.B. "ema").
+    Beide Flags kombinierbar. Bei Treffern: eine Zeile je Indikator mit
+    id/inputs/params(Namen)/outputs — kein voller JSON-Dump mit Defaults.
+    """
+    f = _parse_flags(args)
+    group_filter = f.get("group")
+    search = f.get("search") or ""
+    groups = fetch("/api/chart-playground/indicators")["data"]["groups"]
+
+    if not group_filter and not search:
+        total = sum(len(g["indicators"]) for g in groups)
+        print(f"## Indikator-Katalog ({total} gesamt)")
+        for g in groups:
+            print(f"- {g['name']}: {len(g['indicators'])}")
+        print("\nFilter: --group <name> und/oder --search <substring>\n")
+        return 0
+
+    matches = _filter_indicators(groups, group_filter, search)
+    label = " / ".join(
+        p for p in (f"Gruppe {group_filter}" if group_filter else None,
+                    f"Suche '{search}'" if search else None) if p
+    )
+    print(f"## Indikator-Katalog — {label} ({len(matches)} Treffer)")
+    for ind in matches:
+        print(_format_indicator_line(ind))
+    print()
+    return 0
+
+
 def run_parameter_ranking(args: list) -> int:
     if not args:
         raise ValueError("run-parameter-ranking braucht <run_id> [metric]")
@@ -1188,11 +1266,20 @@ def testset_run_start(args: list) -> int:
 # ---------------------------------------------------------------------------
 
 def _print_data(verb: str, resp) -> None:
-    """Druckt die Antwort einer Route als kompakten JSON-Block."""
+    """Druckt die Antwort einer Route als kompakten JSON-Block.
+
+    Kürzt sehr lange Antworten auf 4000 Zeichen, weist die Kürzung dabei aber
+    immer sichtbar mit Original-Größe aus — nie stilles Abschneiden.
+    """
     payload = resp.get("data", resp) if isinstance(resp, dict) else resp
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     print(f"## {verb}")
     print("```json")
-    print(json.dumps(payload, ensure_ascii=False, indent=2)[:4000])
+    if len(text) > 4000:
+        print(text[:4000])
+        print(f"[gekürzt: 4000 von {len(text)} Zeichen — Filter nutzen]")
+    else:
+        print(text)
     print("```\n")
 
 
@@ -1383,7 +1470,6 @@ TABLE_VERBS = {
     "knowledge-stats": ("GET", "/api/knowledge/stats", 0, None, False),
     "playground-sources": ("GET", "/api/chart-playground/sources", 0, None, False),
     "playground-ohlcv": ("GET", "/api/chart-playground/ohlcv", 0, None, True),
-    "playground-indicators": ("GET", "/api/chart-playground/indicators", 0, None, False),
     "playground-setup-list": ("GET", "/api/chart-playground/setups", 0, None, False),
 }
 
@@ -1404,6 +1490,7 @@ SINGLE_VERBS = {
     "testset-list": testset_list,
     "leaderboard-list": leaderboard_list,
     "symbol-list": symbol_list,
+    "playground-indicators": playground_indicators_list,
     "run-parameter-ranking": run_parameter_ranking,
     "run-top-results": run_top_results,
     "run-best": run_best,
