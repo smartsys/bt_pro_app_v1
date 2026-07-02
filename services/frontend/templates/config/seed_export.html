@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}DB Exportieren - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">DB exportieren</h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if result %}
+<div class="alert {% if result.ok %}alert-success{% else %}alert-danger{% endif %}" role="alert">
+  {{ result.message }}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Aktuellen Datenbankstand als Snapshot speichern</h3>
+  </div>
+  <div class="card-body">
+    <p class="text-secondary">
+      Speichert einen vollständigen Snapshot der Datenbank (alle Konfigurationen,
+      Strategien, Runs, Leaderboard) im Ordner <code>db_snapshot/data/</code> und
+      aktualisiert <code>seed.dump</code> als Vorlage für den Import. OHLC-Candles
+      liegen als Dateien vor und sind nicht Teil des Snapshots.
+    </p>
+
+    {% if snapshot %}
+    <p class="text-secondary">
+      Zuletzt gespeichert: <strong>{{ snapshot.name }}</strong>
+      ({{ '%.1f'|format(snapshot.size_mb) }} MB)
+    </p>
+    {% else %}
+    <p class="text-secondary">Noch kein Snapshot gespeichert.</p>
+    {% endif %}
+
+    <div class="d-flex gap-2">
+      <form method="post" action="/config/seed/export">
+        <button type="submit" class="btn btn-primary">Snapshot speichern</button>
+      </form>
+      <a href="/config/seed/export/download" class="btn btn-outline-secondary">
+        Stattdessen herunterladen
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

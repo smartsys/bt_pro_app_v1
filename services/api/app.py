@@ -60,6 +60,8 @@ from services.api.routes.views_install import router as views_install_router
 # Queue-/Job-Übersicht (Monitoring)
 from services.api.routes.api_monitor import router as api_monitor_router
 from services.api.routes.views_monitor import router as views_monitor_router
+# Seed-Export/-Import über die GUI
+from services.api.routes.views_seed import router as views_seed_router
 
 app = FastAPI(title="BT Pro App", version="1.0.0", debug=True)
 
@@ -100,6 +102,8 @@ app.include_router(views_install_router)
 # Queue-/Job-Übersicht (Monitoring) einbinden
 app.include_router(api_monitor_router)
 app.include_router(views_monitor_router)
+# Seed-Export/-Import einbinden
+app.include_router(views_seed_router)
 
 
 @app.get('/')

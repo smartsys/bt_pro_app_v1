@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}DB Importieren - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title">DB importieren</h2>
+        <div class="page-pretitle">Konfiguration</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if result %}
+<div class="alert {% if result.ok %}alert-success{% else %}alert-danger{% endif %}" role="alert">
+  {{ result.message }}
+</div>
+{% endif %}
+
+<div class="alert alert-warning" role="alert">
+  <h4 class="alert-title">Achtung: überschreibt die komplette Datenbank</h4>
+  <div class="text-secondary">
+    Der Import ersetzt den gesamten aktuellen Datenbankstand durch den gespeicherten
+    Snapshot. Alles, was seit dem Speichern dazugekommen ist (Konfigurationen,
+    Strategien, Runs, Leaderboard), geht dabei verloren. Sichere im Zweifel vorher
+    über <strong>DB Exportieren</strong>.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Gespeicherten Snapshot einspielen</h3>
+  </div>
+  <div class="card-body">
+    {% if snapshot %}
+    <p class="text-secondary">
+      Gespeicherter Snapshot: <strong>{{ snapshot.name }}</strong>
+      ({{ '%.1f'|format(snapshot.size_mb) }} MB)
+    </p>
+    <form id="import-form" method="post" action="/config/seed/import">
+      <button type="submit" class="btn btn-danger">Snapshot einspielen</button>
+    </form>
+    {% else %}
+    <p class="text-secondary">
+      Kein gespeicherter Snapshot vorhanden. Erst über
+      <strong>DB Exportieren</strong> einen Snapshot speichern.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if snapshot %}
+<script>
+  // Sicherheitsabfrage vor dem Einspielen.
+  document.getElementById('import-form').addEventListener('submit', function (event) {
+    try {
+      if (!window.confirm('Datenbank wirklich überschreiben? Dieser Schritt kann nicht rückgängig gemacht werden.')) {
+        event.preventDefault();
+      }
+    } catch (err) {
+      event.preventDefault();
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

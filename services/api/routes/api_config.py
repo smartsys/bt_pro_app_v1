@@ -652,6 +652,29 @@ def count_indicator_config_combos(config_json: dict = Body(..., embed=True)):
         return JSONResponse({'data': None, 'error': str(exc)}, status_code=400)
 
 
+@router.post('/indicator/preview-labels')
+def preview_indicator_config_labels(
+    config_json: dict = Body(..., embed=True),
+    concept_name: Optional[str] = Body(None, embed=True),
+    iteration_number: Optional[int] = Body(None, embed=True),
+):
+    """Berechnet Name und Beschreibung nach Notation (zustandslos, ohne Speichern).
+
+    Single Source: nutzt build_indicator_config_labels aus indicator_labels — dieselbe
+    Notation wie der speichernde Endpunkt /indicator/{id}/generate-labels. Diese Route
+    arbeitet auf dem uebergebenen (ungespeicherten) config_json und persistiert nichts,
+    damit die Frontend-Buttons und die Toolbox denselben Server-Builder statt eigener
+    JS-Mathematik nutzen.
+    """
+    try:
+        labels = build_indicator_config_labels(
+            config_json or {}, concept_name, iteration_number
+        )
+        return {'data': labels, 'error': None}
+    except ValueError as exc:
+        return JSONResponse({'data': None, 'error': str(exc)}, status_code=400)
+
+
 @router.delete('/indicator/{config_id}')
 def delete_indicator_config(config_id: int):
     """Indicator-Config löschen."""

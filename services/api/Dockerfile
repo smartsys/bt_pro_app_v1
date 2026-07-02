@@ -2,6 +2,14 @@ FROM bt_pro_app_v1-vbt:latest
 
 WORKDIR /app
 
+# GEÄNDERT: PostgreSQL-Client 17 für Seed-Export/-Import über die GUI (pg_dump/pg_restore).
+# Debian 13 (trixie, Basis dieses Images) liefert postgresql-client-17 nativ — passend zur
+# TimescaleDB-Server-Version (pg17), kein PGDG-Repo nötig. Ohne diese Tools kann der
+# App-Container nicht per TCP dumpen/restoren.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Web-spezifische Dependencies nachinstallieren
 COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

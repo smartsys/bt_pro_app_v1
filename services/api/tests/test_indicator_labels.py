@@ -100,6 +100,20 @@ def test_description_leerer_stops_block():
     assert build_indicator_config_description({}) == ""
 
 
+def test_description_sl_range_als_prozentbereich():
+    # Gesweepter SL als arange-Dict: als Prozentbereich "start%-stop%" auflösen (nicht crashen)
+    stops = {"sl_stop": {"step": 0.05, "stop": 0.21, "type": "arange", "dtype": "float", "start": 0.1},
+             "delta_format": "percent"}
+    assert build_indicator_config_description(stops) == "SL 10%-21%"
+
+
+def test_description_td_range_als_bereich():
+    # Gesweepter TD (ganze Zahlen) als Bereich, ohne Prozent
+    stops = {"td_stop": {"step": 1, "stop": 12, "type": "arange", "dtype": "int", "start": 8},
+             "time_delta_format": "rows"}
+    assert build_indicator_config_description(stops) == "TD 8-12, rows"
+
+
 # --- Kombiniert ---
 
 def test_build_labels_kombiniert(config_2018):

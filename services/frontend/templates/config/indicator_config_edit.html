@@ -338,109 +338,56 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Titel generieren — Format: konzept-iteration - X Kombi. tp/sl (nur Namensfeld) */
-  document.getElementById("btn-gen-title").addEventListener("click", async function() {
-    var config;
-    try {
-      config = JSON.parse(editor.getValue());
-    } catch(e) {
-      alert('Ungültiges JSON: ' + e.message);
-      return;
+  /* Labels (Name + Beschreibung) über den Server berechnen — zustandslos, ohne Speichern.
+     Einzige Notations-Wahrheit ist services/api/utils/indicator_labels.py; das Frontend
+     rechnet nichts mehr selbst nach, sondern ruft /api/config/indicator/preview-labels. */
+  async function _fetchPreviewLabels() {
+    var config = JSON.parse(editor.getValue());  // wirft bei ungültigem JSON
+
+    // Konzept-Name aus dem Dropdown (Schreibweise wie im Konzept)
+    var conceptSelEl = document.getElementById("cfg-strategy-concept");
+    var conceptName = null;
+    if (conceptSelEl.selectedIndex >= 0 && conceptSelEl.value) {
+      conceptName = conceptSelEl.options[conceptSelEl.selectedIndex].text.trim();
     }
+
+    // Iterations-Nummer (version) aus dem data-Attribut der gewählten Option
+    var iterationSelEl = document.getElementById("cfg-strategy-iteration");
+    var iterationNumber = null;
+    if (iterationSelEl.selectedIndex >= 0 && iterationSelEl.value) {
+      var v = iterationSelEl.options[iterationSelEl.selectedIndex].getAttribute('data-version');
+      if (v !== null && v !== '') iterationNumber = parseInt(v, 10);
+    }
+
+    var resp = await fetch('/api/config/indicator/preview-labels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config_json: config, concept_name: conceptName, iteration_number: iterationNumber })
+    });
+    var data = await resp.json();
+    if (!resp.ok || data.error) {
+      throw new Error(data.error || resp.status);
+    }
+    return data.data;  // { name, description }
+  }
+
+  /* Titel generieren — nur das Namensfeld setzen */
+  document.getElementById("btn-gen-title").addEventListener("click", async function() {
     try {
-      // Kombinationen über den Server-Endpunkt (einzige Zähl-Wahrheit, inkl. Listen/Stops/TSL-Paar)
-      var resp = await fetch('/api/config/indicator/count-combos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config_json: config })
-      });
-      var comboData = await resp.json();
-      if (!resp.ok || comboData.error) {
-        alert('Fehler bei der Kombinationsberechnung: ' + (comboData.error || resp.status));
-        return;
-      }
-      var total = comboData.data.total;
-
-      // Konzept-Name aus dem Dropdown (Schreibweise wie im Konzept)
-      var conceptSelEl = document.getElementById("cfg-strategy-concept");
-      var concept = '';
-      if (conceptSelEl.selectedIndex >= 0 && conceptSelEl.value) {
-        concept = conceptSelEl.options[conceptSelEl.selectedIndex].text.trim();
-      }
-
-      // Iterations-Nummer (version) aus dem data-Attribut der gewählten Option
-      var iterationSelEl = document.getElementById("cfg-strategy-iteration");
-      var iterVersion = '';
-      if (iterationSelEl.selectedIndex >= 0 && iterationSelEl.value) {
-        iterVersion = iterationSelEl.options[iterationSelEl.selectedIndex].getAttribute('data-version') || '';
-      }
-
-      // TP/SL aus _stops; bei delta_format "percent" als Prozentzahl (0.05 -> 5)
-      var stops = config._stops || {};
-      var isPercent = stops.delta_format === 'percent';
-      function fmtStop(v) {
-        if (v === null || v === undefined) return '';
-        if (typeof v === 'object' && v.start !== undefined && v.stop !== undefined) {
-          return fmtStop(v.start) + '-' + fmtStop(v.stop);
-        }
-        var num = isPercent ? v * 100 : v;
-        return String(parseFloat(num.toFixed(6)));
-      }
-      var tp = fmtStop(stops.tp_stop);
-      var sl = fmtStop(stops.sl_stop);
-
-      // Format zusammensetzen: konzept-iteration - X Kombi. tp/sl — nur ins Namensfeld
-      // Kein Konzept -> Kopf entfällt komplett (auch kein führendes " - ");
-      // Konzept ohne Iteration -> Iteration (mit Bindestrich) weglassen.
-      var head = '';
-      if (concept) {
-        head = concept;
-        if (iterVersion !== '') head += '-' + iterVersion;
-      }
-      // GEÄNDERT: Ohne TP und SL entfällt der Stop-Teil samt Schrägstrich
-      var comboPart = total.toLocaleString('de-DE') + ' Kombi.';
-      if (tp || sl) comboPart += ' ' + tp + '/' + sl;
-      var title = head ? head + ' - ' + comboPart : comboPart;
-
-      document.getElementById("cfg-name").value = title;
+      var labels = await _fetchPreviewLabels();
+      document.getElementById("cfg-name").value = labels.name;
     } catch(e) {
       alert('Fehler beim Titel generieren: ' + e.message);
     }
   });
 
-  /* Beschreibung generieren — Stops in Reihenfolge TP, SL, TSL, (delta_format), TD, (time_delta_format).
-     Stop wird gezeigt, wenn gesetzt; delta_format nur bei gesetztem tsl_th, time_delta_format nur bei gesetztem td_stop. */
-  document.getElementById("btn-gen-desc").addEventListener("click", function() {
+  /* Beschreibung generieren — nur das Beschreibungsfeld setzen */
+  document.getElementById("btn-gen-desc").addEventListener("click", async function() {
     try {
-      var config = JSON.parse(editor.getValue());
-      var stops = config._stops || {};
-
-      function isSet(v) { return v !== null && v !== undefined; }
-      // TP/SL/TSL als Prozent: x100 mit "%"
-      function pct(v) { return String(parseFloat((+v * 100).toFixed(6))) + '%'; }
-
-      var parts = [];
-      if (isSet(stops.tp_stop)) parts.push('TP ' + pct(stops.tp_stop));
-      if (isSet(stops.sl_stop)) parts.push('SL ' + pct(stops.sl_stop));
-
-      // TSL aus tsl_th/tsl_stop: vorhandene Werte als <th>/<stop> verbinden
-      var tslParts = [];
-      if (isSet(stops.tsl_th)) tslParts.push(pct(stops.tsl_th));
-      if (isSet(stops.tsl_stop)) tslParts.push(pct(stops.tsl_stop));
-      if (tslParts.length > 0) parts.push('TSL ' + tslParts.join('/'));
-
-      // delta_format gehört zu TSL: nur zeigen, wenn tsl_th gesetzt ist
-      if (isSet(stops.tsl_th) && stops.delta_format) parts.push(stops.delta_format);
-
-      // TD als ganze Zahl; time_delta_format gehört zu TD und wird nur bei gesetztem td_stop gezeigt
-      if (isSet(stops.td_stop)) {
-        parts.push('TD ' + String(parseFloat((+stops.td_stop).toFixed(6))));
-        if (stops.time_delta_format) parts.push(stops.time_delta_format);
-      }
-
-      document.getElementById("cfg-description").value = parts.join(', ');
+      var labels = await _fetchPreviewLabels();
+      document.getElementById("cfg-description").value = labels.description;
     } catch(e) {
-      alert('Ungültiges JSON: ' + e.message);
+      alert('Fehler beim Beschreibung generieren: ' + e.message);
     }
   });
 

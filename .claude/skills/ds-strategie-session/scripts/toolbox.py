@@ -66,8 +66,10 @@ durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
   python3 toolbox.py concept-create --slug teststrategie --name "Teststrategie" [--category ... --description ... --status active]
   python3 toolbox.py iteration-create --concept 1 --file spec.json [--name "v5" --type generic --description ... --parent 41]
         --file = das spec_json (Flat-Dict indicators + DNF-rules). type=hardcoded braucht --import-path.
-  python3 toolbox.py indicator-config-create --name "Teststrategie Grid" --file config.json [--concept 1 --iteration 41 --description ...]
+  python3 toolbox.py indicator-config-create --file config.json [--concept 1 --iteration 41 --name "..." --description ...]
         --file = das config_json (Parameter-Raster, arange je Indikator).
+        Ohne --name: Standard-Titel (und Beschreibung) nach Notation über den Server (preview-labels).
+        Mit --name: individueller Name, verbatim. --description überschreibt die Auto-Beschreibung.
   python3 toolbox.py backtest-config-create --file backtest.json
         --file = der volle Body (Pflicht: name, start, end, ohlc_start, ohlc_end; Defaults: symbol BTCUSDT, exchange binance, timeframe 4h, size 100, size_type value, init_cash 100, fees 0.001).
   python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
@@ -1073,17 +1075,52 @@ def iteration_create(args: list) -> int:
     return 0
 
 
+def _preview_labels(config_json: dict, concept_id, iteration_id) -> dict:
+    """Standard-Labels (Name + Beschreibung) über den Server-Endpunkt berechnen.
+
+    Nutzt dieselbe zustandslose Route wie die Frontend-Buttons
+    (/api/config/indicator/preview-labels) — einzige Notations-Wahrheit ist
+    services/api/utils/indicator_labels.py. Konzeptname und Iterations-Nummer werden
+    aus den verknüpften IDs aufgelöst; ohne Verknüpfung entfällt der jeweilige Teil.
+    """
+    concept_name = None
+    iteration_number = None
+    if iteration_id:
+        it = fetch(f"/api/strategy/iterations/{iteration_id}")["data"]
+        iteration_number = it.get("version")
+        if not concept_id:
+            concept_id = it.get("concept_id")
+    if concept_id:
+        concept_name = fetch(f"/api/strategy/concepts/{concept_id}")["data"].get("name")
+    body = {
+        "config_json": config_json,
+        "concept_name": concept_name,
+        "iteration_number": iteration_number,
+    }
+    return post("/api/config/indicator/preview-labels", body)["data"]
+
+
 def indicator_config_create(args: list) -> int:
     f = _parse_flags(args)
-    name = _require(f, "name", "indicator-config-create")
     config_json = _read_json_file(_require(f, "file", "indicator-config-create"))
+    concept_id = int(f["concept"]) if f.get("concept") else None
+    iteration_id = int(f["iteration"]) if f.get("iteration") else None
+    name = f.get("name") if f.get("name") and f.get("name") is not True else None
+    description = f.get("description") if f.get("description") and f.get("description") is not True else None
+    # Ohne --name: Standard-Titel (und, falls keine --description, Standard-Beschreibung)
+    # nach Notation über den Server erzeugen. Mit --name: individuell, verbatim.
+    if name is None:
+        labels = _preview_labels(config_json, concept_id, iteration_id)
+        name = labels.get("name")
+        if description is None:
+            description = labels.get("description")
     body = {"name": name, "config_json": config_json}
-    if f.get("concept"):
-        body["strategy_concept_id"] = int(f["concept"])
-    if f.get("iteration"):
-        body["strategy_iteration_id"] = int(f["iteration"])
-    if f.get("description"):
-        body["description"] = f["description"]
+    if concept_id:
+        body["strategy_concept_id"] = concept_id
+    if iteration_id:
+        body["strategy_iteration_id"] = iteration_id
+    if description:
+        body["description"] = description
     d = post("/api/config/indicator", body)["data"]
     print(f"## Erstellt: Indicator-Config **{d['id']}** ({d.get('name')})\n")
     return 0

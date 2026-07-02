@@ -80,8 +80,16 @@ def build_indicator_config_description(stops: dict) -> str:
     if not stops:
         return ""
 
+    # Range (arange-Dict) als "start-stop" auflösen — gesweepte Stops erscheinen als Bereich.
     def pct(v) -> str:
+        if _is_range(v):
+            return pct(v["start"]) + "-" + pct(v["stop"])
         return _clean_num(v * 100) + "%"
+
+    def td(v) -> str:
+        if _is_range(v):
+            return td(v["start"]) + "-" + td(v["stop"])
+        return _clean_num(v)
 
     parts = []
     if _is_set(stops.get("tp_stop")):
@@ -103,7 +111,7 @@ def build_indicator_config_description(stops: dict) -> str:
 
     # TD als ganze Zahl; time_delta_format gehört zu TD
     if _is_set(stops.get("td_stop")):
-        parts.append("TD " + _clean_num(stops["td_stop"]))
+        parts.append("TD " + td(stops["td_stop"]))
         if stops.get("time_delta_format"):
             parts.append(stops["time_delta_format"])
 

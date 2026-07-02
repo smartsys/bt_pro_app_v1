@@ -65,6 +65,8 @@ services:
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
       - ./documentation/backup:/app/documentation/backup
+      # DB-Snapshot-Ablage: Export/Import ueber die GUI speichert/liest hier (wie die CLI-Skripte)
+      - ./db_snapshot/data:/app/db_snapshot/data
     environment:
       POSTGRES_SERVER: db_bt_pro_v1
       POSTGRES_PORT: "5432"

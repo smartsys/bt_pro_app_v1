@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.24] - 02.07.2026
+
+### Added
+- GUI für DB-Snapshot Export/Import unter Konfiguration
+  - Neuer Menuebereich Konfiguration -> DB Snapshot mit den Punkten DB Exportieren und DB Importieren
+  - Export erzeugt einen vollstaendigen DB-Snapshot per pg_dump direkt aus dem App-Container (TCP-Verbindung zur DB) und speichert ihn im Ordner db_snapshot/data/ (datierter Snapshot plus seed.dump als Pointer); zusaetzlich Download-Option im Browser
+  - Import spielt den gespeicherten Snapshot per pg_restore zurueck - ohne Compose-Stack-Neustart: fremde DB-Verbindungen werden gekappt, das public-Schema neu aufgesetzt, die TimescaleDB-Extension geladen und die gecachte SQLAlchemy-Engine verworfen (pool_pre_ping baut neu auf)
+  - postgresql-client-17 ins App-Image aufgenommen (passend zur TimescaleDB-Server-Version pg17, aus dem Debian-Standard-Repo)
+  - Bind-Mount des Snapshot-Ordners in den App-Container in der lokalen Compose-Datei
+  - Umbenennung: Ordner seed/ nach db_snapshot/, CLI-Skripte export_seed.py/import_seed.py nach db_export.py/db_import.py; .gitignore und Projekt-Doku nachgezogen
+  - Verifiziert: Export/Import-Zyklus mit echtem Datenbankbestand verlustfrei - Zeilenzahlen aller Tabellen vor/nach identisch, TimescaleDB-Hypertables korrekt wiederhergestellt, App-Zugriff nach Import intakt
+
+### Files
+- services/api/seed_service.py
+- services/api/routes/views_seed.py
+- services/api/app.py
+- services/api/Dockerfile
+- services/frontend/templates/config/seed_export.html
+- services/frontend/templates/config/seed_import.html
+- services/frontend/templates/base.html
+- docker-compose-local.yml
+- db_snapshot/db_export.py
+- db_snapshot/db_import.py
+- .gitignore
+- CLAUDE.md
+
+
+
 ## [1.30.23] - 02.07.2026
 
 ### Added
