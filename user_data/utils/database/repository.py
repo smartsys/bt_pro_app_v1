@@ -554,25 +554,35 @@ def _build_resolved_config(indicators_config: dict, actual_params: dict) -> dict
         # — NICHT 'custom:fastsma_length'. Früher wurde der volle Typ-String
         # ('custom:fastSMA') als Präfix genutzt, wodurch nie ein Param matchte und
         # der Recompute den vollen Sweep statt der Einzel-Kombination rechnete.
+        # GEÄNDERT: Zweites Präfix-Schema — _uniquify_param_levels (rules_engine)
+        # benennt Param-Level auf '<spec_key>_<param>' um (z.B. 'vwma_length' bei
+        # Spec-Key 'vwma' und Klasse dwsVWMA). Ohne dieses Präfix blieben Ranges
+        # solcher Indikatoren unaufgelöst im Snapshot stehen.
         indicator_type = config_val.get('indicator', config_key)
         short_name = indicator_type.split(':', 1)[1] if ':' in indicator_type else indicator_type
-        prefix = short_name.lower() + '_'
+        prefixes = [short_name.lower() + '_', config_key.lower() + '_']
 
         for param_key, param_val in config_val.items():
             if not isinstance(param_val, dict) or 'start' not in param_val:
                 continue
-            # Exakter Match: prefix + param_key
-            exact_key = prefix + param_key.lower()
-            matched_value = actual_params.get(exact_key)
+            # Exakter Match: prefix + param_key (beide Präfix-Schemata)
+            matched_value = None
+            for prefix in prefixes:
+                matched_value = actual_params.get(prefix + param_key.lower())
+                if matched_value is not None:
+                    break
 
             # Kein exakter Match: Prefix-basiert suchen (Abkürzungen)
             if matched_value is None:
-                for ap_key, ap_val in actual_params.items():
-                    if not ap_key.lower().startswith(prefix):
-                        continue
-                    ap_suffix = ap_key.lower()[len(prefix):]
-                    if ap_suffix.startswith(param_key.lower()) or param_key.lower().startswith(ap_suffix):
-                        matched_value = ap_val
+                for prefix in prefixes:
+                    for ap_key, ap_val in actual_params.items():
+                        if not ap_key.lower().startswith(prefix):
+                            continue
+                        ap_suffix = ap_key.lower()[len(prefix):]
+                        if ap_suffix.startswith(param_key.lower()) or param_key.lower().startswith(ap_suffix):
+                            matched_value = ap_val
+                            break
+                    if matched_value is not None:
                         break
 
             if matched_value is not None:

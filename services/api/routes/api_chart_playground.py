@@ -722,9 +722,11 @@ def get_result_config(result_id: int) -> dict:
 
     Indikatoren kommen als Dict (Name -> Flat-Spec), nicht als Liste.
     ui_state_json.selected_configs wird, soweit moeglich, aus dem zugehoerigen
-    BacktestRun zurückgeführt (Konzept, Iteration, Indicator-/Backtest-Config),
-    damit die oberen Dropdowns im Playground vorausgewählt sind. Lose Referenzen
-    (Configs nach Cleanup geloescht, ad-hoc-Runs) bleiben None.
+    BacktestRun zurückgeführt (Konzept, Iteration, Backtest-Config), damit die
+    oberen Dropdowns im Playground vorausgewählt sind. Lose Referenzen (Configs
+    nach Cleanup geloescht, ad-hoc-Runs) bleiben None. Die Indikator-Config des
+    Runs wird bewusst NICHT gesetzt — sie enthält das Sweep-Raster des Laufs,
+    nicht die konkreten Indikatorwerte dieses Results.
     """
     from user_data.utils.database.models import (
         BacktestResult,
@@ -732,6 +734,7 @@ def get_result_config(result_id: int) -> dict:
         StrategyIteration,
         StrategyConcept,
     )
+    from user_data.utils.database.repository import _build_resolved_config
 
     session = get_session()
     try:
@@ -756,9 +759,12 @@ def get_result_config(result_id: int) -> dict:
                 detail=f'Snapshot-Indikatoren in Result {result_id} sind kein Dict.',
             )
 
-        # Indikatoren: Snapshot-Dict direkt als indicators_config_json übernehmen
-        # (bereits Flat-Spec, kein topo_sort nötig — Snapshot enthält aufgelöste Reihenfolge)
-        indicators_config_json = dict(indicators_flat)
+        # Indikatoren: Snapshot-Dict als indicators_config_json übernehmen
+        # (bereits Flat-Spec, kein topo_sort nötig — Snapshot enthält aufgelöste Reihenfolge).
+        # GEÄNDERT: Ranges beim Lesen gegen actual_params_json nachauflösen — ältere
+        # Snapshots tragen teils unaufgelöste Sweep-Ranges (Präfix-Mismatch beim
+        # Snapshot-Bau); ein Einzelresult hat aber immer konkrete Werte, keine Ranges.
+        indicators_config_json = _build_resolved_config(indicators_flat, result.actual_params_json or {})
         # GEÄNDERT: Schritt 4d — Stops gehören in indicators_config_json._stops (Wire-Format-Vertrag),
         # die Werte stammen weiterhin aus dem Backtest-Config-Snapshot (bc).
         indicators_config_json['_stops'] = {
@@ -793,7 +799,6 @@ def get_result_config(result_id: int) -> dict:
         run = session.query(BacktestRun).filter(BacktestRun.id == result.run_id).first()
         iteration_id = result.iteration_id or (run.iteration_id if run else None)
         backtest_config_id = run.backtest_config_id if run else None
-        indicator_config_id = run.indicator_config_id if run else None
 
         # Konzept-Slug ueber die Iteration aufloesen (cpConceptSlug nutzt den Slug als value)
         concept_slug = None
@@ -820,7 +825,9 @@ def get_result_config(result_id: int) -> dict:
             'selected_configs': {
                 'iteration_id': iteration_id,
                 'backtest_config_id': backtest_config_id,
-                'indicator_config_id': indicator_config_id,
+                # GEÄNDERT: Indikator-Config des Runs NICHT zurückführen — sie trägt das
+                # Sweep-Raster des Laufs, nicht die konkreten Werte dieses Results.
+                'indicator_config_id': None,
             },
         }
 

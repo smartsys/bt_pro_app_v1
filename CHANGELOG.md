@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.27] - 02.07.2026
+
+### Fixed
+- Chart-Playground: Result-Laden zeigt konkrete Indikatorwerte des Results statt Sweep-Ranges des Laufs
+  - _build_resolved_config prüft jetzt beide Level-Präfix-Schemata (vbt-Klassenname und Spec-Key) — die Rules-Engine benennt Param-Level per _uniquify_param_levels auf <spec_key>_<param> um, wodurch Ranges bislang unaufgelöst im Config-Snapshot blieben (betrifft auch den Recompute-Pfad)
+  - GET /api/chart-playground/result-config/{id} löst die Snapshot-Indikatoren beim Lesen zusätzlich gegen actual_params_json nach, damit auch bereits gespeicherte Results mit unaufgelösten Ranges korrekt angezeigt werden
+  - Indikator-Config-Dropdown wird beim Result-Laden nicht mehr vorbelegt — die Indikator-Config des Runs trägt das Sweep-Raster, nicht die Werte des Results
+
+### Files
+- user_data/utils/database/repository.py
+- services/api/routes/api_chart_playground.py
+
+
+
 ## [1.30.26] - 02.07.2026
 
 ### Changed
