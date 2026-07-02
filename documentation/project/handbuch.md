@@ -208,6 +208,14 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 | `run-best <run_id> <metrik> [min_trades] [limit]` | Bester Metrik-Wert eines Runs mit Mindest-Trade-Zahl. |
 | `run-bestwerte --run <id>` | Zieht die vier festen Bestwerte eines Runs und markiert sie als roten Doku-Favorit (idempotent). |
 | `run-favorites-reset --run <id> [--doc] [--user]` | Setzt die Favoriten einer Run-Menge zurück (ohne Flag beide Sterne; `--doc` rot/Doku, `--user` gelb/persönlich). Selektoren wie `run-bestwerte`. |
+| `run-favorites-list --run <id> [--doc] [--user]` | Gibt die markierten Favoriten-Results einer Run-Menge mit Kennzahlen und Parametern aus (reiner Read). Selektoren/Flags wie `run-favorites-reset`. |
+| `result-lookup --run <id> --params "k=w,…" [--tolerance <t>] [--limit <n>] [--summary]` | Schlägt Results per Parameter-Werten nach (Subset, serverseitig). Ohne Toleranz exakter Lookup der einen Kombination; mit `--tolerance` alle Results je ±t um die Zielwerte. `--summary` verdichtet die Nachbarschaft zum Plateau-Score (Median/Mittel/Streuung, Anteil profitabel, Bester/Schlechtester). |
+| `result-query --run <id> --where "sharpe_ratio>=1.5,total_trades>=100" [--sort <metrik>] [--direction asc\|desc] [--limit <n>]` | Fragt Results mit kombinierten Metrik-Filtern ab (nur `>=`/`<=`, UND-verknüpft, serverseitig). Metriken: total_return_pct, win_rate_pct, sharpe_ratio, profit_factor, max_drawdown_pct, total_trades. |
+| `kreuztest --from-run <A> --to-run <B> [--user] [--tolerance <t>]` | Schlägt die roten Doku-Favoriten (Bestwerte) aus Run A in Run B nach und gibt eine Vergleichstabelle der Metriken aus (`--user` nimmt gelbe Sterne dazu). |
+| `kreuztest --from-testset-run <A> --to-testset-run <B> [--user] [--tolerance <t>]` | Kreuz-Test über ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (BTC-Run zu BTC-Run usw.), je Paar eine Vergleichstabelle; Runs ohne Gegenstück werden ausgewiesen. Deckt die Walk-Forward-Auslesung über eine Fenster-Kette ab. |
+| `combo-trace --params "k=w,…" --testset-run <id> [--tolerance <t>] [--limit <n>]` | Verfolgt eine Parameterkombination über eine Run-Menge (1:N) und listet je Run den Treffer mit Symbol/Timeframe und Kennzahlen; Runs ohne Treffer werden ausgewiesen. Selektoren wie `run-bestwerte` (`--run` \| `--strategy [--version]` \| `--iteration` \| `--testset-run`). |
+
+Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-list`, `result-lookup`, `result-query`, `kreuztest` und `combo-trace` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen.
 | `run-results <id>` | Rohe Result-Liste eines Runs. |
 | `run-summary <id>` | Zusammenfassung der Analyse eines Runs. |
 | `run-distribution <id>` | Verteilung der Kennzahlen über die Kombinationen eines Runs. |

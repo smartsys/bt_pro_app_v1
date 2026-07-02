@@ -3,7 +3,9 @@ JSON-API Endpoints für Backtest-Daten
 
 GET /api/backtest/runs              — Alle Runs
 GET /api/backtest/runs/{id}/results — Results eines Runs
+GET /api/backtest/runs/{id}/results/lookup — Result-Lookup per Parameter-Werten (exakt/±Toleranz)
 GET /api/backtest/results           — Alle Results (mit Filtern)
+GET /api/backtest/results/lookup    — Kombinations-Verfolgung über mehrere Runs (run_ids)
 GET /api/backtest/results/dt        — DataTables Server-Side Processing
 GET /api/backtest/filters           — Verfügbare Filter-Werte
 """
@@ -11,7 +13,7 @@ GET /api/backtest/filters           — Verfügbare Filter-Werte
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Dict, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Query, HTTPException, Request, Body
@@ -36,7 +38,11 @@ from user_data.utils.database.models import (
     TestSet, TestSetRun,
 )
 # GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
-from user_data.utils.database.repository import create_backtest_run, _count_combinations, _build_resolved_config
+from user_data.utils.database.repository import (
+    create_backtest_run, _count_combinations, _build_resolved_config,
+    get_run_param_names, lookup_result_rows_by_params,
+    get_scope_param_names, lookup_results_across_runs,
+)
 # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version, SPEC_RUNNER_IMPORT_PATH
 
@@ -412,6 +418,108 @@ def get_results(run_id: int, limit: int = Query(10000), offset: int = Query(0)) 
         return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=offset))
     finally:
         session.close()
+
+
+# GEÄNDERT: Result-Lookup per Parameter-Werten (exakt + Nachbarschafts-Modus).
+# Query-Logik liegt in repository.py (lookup_result_rows_by_params), damit sie
+# ohne die Container-Abhängigkeiten dieser Route (rq/redis) testbar ist.
+# Query-Keys der Lookup-Route, die KEINE Parameter-Filter sind.
+_LOOKUP_RESERVED_KEYS = {'tolerance', 'limit'}
+
+
+@router.get('/runs/{run_id}/results/lookup', response_model=ApiResponse)
+def lookup_results_by_params(
+    run_id: int,
+    request: Request,
+    tolerance: float = Query(0.0, ge=0),
+    limit: int = Query(100, ge=1),
+) -> ApiResponse:
+    """Result-Lookup per Parameter-Werten innerhalb eines Runs.
+
+    Alle Query-Parameter außer tolerance/limit werden als Parameter-Filter
+    gelesen (z.B. ?vwma_length=6&vwma_below_pct=10). tolerance=0 (Default) =
+    exakter Lookup der einen Kombination; tolerance>0 = Nachbarschafts-Modus:
+    alle Results, deren Parameter je ±tolerance um die Zielwerte liegen
+    (Plateau-Prüfung). Unbekannte Parameter-Namen und nicht-numerische Werte
+    geben 400 mit den vorhandenen Namen des Runs.
+    """
+    filters: Dict[str, float] = {}
+    for key, raw in request.query_params.items():
+        if key in _LOOKUP_RESERVED_KEYS:
+            continue
+        try:
+            filters[key] = float(raw)
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail=f"Parameter {key!r}: Wert {raw!r} ist nicht numerisch")
+    if not filters:
+        raise HTTPException(status_code=400,
+                            detail="Mindestens ein Parameter-Filter nötig (z.B. ?vwma_length=6)")
+
+    engine = get_engine()
+    known = get_run_param_names(engine, run_id)
+    unknown = sorted(set(filters) - set(known))
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Parameter für Run {run_id}: {', '.join(unknown)}. "
+                   f"Vorhanden: {', '.join(known) or 'keine (Run leer?)'}",
+        )
+    items, total = lookup_result_rows_by_params(engine, run_id, filters, tolerance, limit)
+    return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=0))
+
+
+# GEÄNDERT: Kombinations-Verfolgung — Lookup über MEHRERE Runs (combo-trace).
+# Query-Keys der Across-Runs-Route, die KEINE Parameter-Filter sind.
+_TRACE_RESERVED_KEYS = {'run_ids', 'tolerance', 'limit'}
+
+
+@router.get('/results/lookup', response_model=ApiResponse)
+def lookup_results_across_runs_route(
+    request: Request,
+    run_ids: str = Query(..., description='Komma-getrennte Run-IDs, z.B. 10,11,12'),
+    tolerance: float = Query(0.0, ge=0),
+    limit: int = Query(200, ge=1),
+) -> ApiResponse:
+    """Kombinations-Verfolgung: Result-Lookup per Parameter-Werten über mehrere Runs.
+
+    Wie /runs/{run_id}/results/lookup, aber mit expliziter Run-Menge (run_ids)
+    statt einem festen Run — der Aufrufer löst den Scope (Iteration, Strategie,
+    Testset-Lauf) selbst zu Run-IDs auf. Ergebnis enthält Run-Kontext
+    (run_id, symbol, timeframe) und ist nach run_id sortiert.
+    """
+    try:
+        run_id_list = [int(part) for part in run_ids.split(',') if part.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400,
+                            detail=f"run_ids muss eine Komma-Liste von IDs sein, bekommen: {run_ids!r}")
+    if not run_id_list:
+        raise HTTPException(status_code=400, detail="run_ids ist leer")
+
+    filters: Dict[str, float] = {}
+    for key, raw in request.query_params.items():
+        if key in _TRACE_RESERVED_KEYS:
+            continue
+        try:
+            filters[key] = float(raw)
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail=f"Parameter {key!r}: Wert {raw!r} ist nicht numerisch")
+    if not filters:
+        raise HTTPException(status_code=400,
+                            detail="Mindestens ein Parameter-Filter nötig (z.B. ?vwma_length=6)")
+
+    engine = get_engine()
+    known = get_scope_param_names(engine, run_id_list)
+    unknown = sorted(set(filters) - set(known))
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Parameter für die Run-Menge: {', '.join(unknown)}. "
+                   f"Vorhanden: {', '.join(known) or 'keine (Runs leer?)'}",
+        )
+    items, total = lookup_results_across_runs(engine, run_id_list, filters, tolerance, limit)
+    return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=0))
 
 
 @router.get('/results', response_model=ApiResponse)

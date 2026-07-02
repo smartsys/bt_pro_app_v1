@@ -59,6 +59,20 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
                                                               #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
   python3 toolbox.py run-favorites-reset --testset-run 6      # Favoriten einer Run-Menge zuruecksetzen; ohne Flag beide Sterne, sonst --doc (rot) und/oder --user (gelb)
                                                               #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
+  python3 toolbox.py run-favorites-list --testset-run 6       # markierte Favoriten-Results ausgeben (reiner Read); Selektoren/Flags wie run-favorites-reset
+  python3 toolbox.py result-lookup --run 1812 --params "vwma_length=20,atr_mult=2.5"    # Result(s) per Parameter-Werten nachschlagen (Subset, serverseitig)
+                                                              #   [--tolerance 1] = Nachbarschafts-Modus (±t je Parameter), [--limit 20]
+                                                              #   [--summary] = Plateau-Score (Median/Mittel/Streuung/Anteil profitabel) statt Trefferliste
+  python3 toolbox.py result-query --run 1812 --where "sharpe_ratio>=1.5,total_trades>=100"  # kombinierte Metrik-Filter (nur >= und <=, UND-verknüpft)
+                                                              #   [--sort <metrik>] [--direction asc|desc] [--limit 20]; Metriken: total_return_pct,
+                                                              #   win_rate_pct, sharpe_ratio, profit_factor, max_drawdown_pct, total_trades
+  python3 toolbox.py kreuztest --from-run 10 --to-run 11      # Bestwerte (rote Doku-Favoriten) aus Run A in Run B nachschlagen, Vergleichstabelle
+                                                              #   [--user] = gelbe Sterne zusätzlich, [--tolerance <t>] wie result-lookup
+  python3 toolbox.py kreuztest --from-testset-run 2 --to-testset-run 3  # ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (Walk-Forward)
+  python3 toolbox.py combo-trace --testset-run 3 --params "vwma_length=2,…"  # eine Kombination über eine Run-Menge verfolgen (1:N); Selektoren wie
+                                                              #   run-bestwerte (--run | --strategy [--version] | --iteration | --testset-run)
+  --json (bei result-list, run-top-results, run-best, run-favorites-list, result-lookup,
+          result-query, kreuztest, combo-trace): rohe Items als JSON statt Markdown — für Folge-Analysen
   python3 toolbox.py playground-indicators                    # Gruppen-Übersicht (Name + Anzahl), kein voller Dump
   python3 toolbox.py playground-indicators --group talib      # nur diese Gruppe, kompakt: id/inputs/params/outputs
   python3 toolbox.py playground-indicators --search ema       # case-insensitiv über id/name, --group kombinierbar
@@ -132,6 +146,7 @@ Unterstützte Bereiche:
 import json
 import os
 import re
+import statistics
 import sys
 import urllib.parse
 import urllib.request
@@ -534,6 +549,23 @@ def _parse_flags(tokens: list) -> dict:
     return flags
 
 
+def _maybe_json(flags: dict, payload) -> bool:
+    """Gibt bei --json das rohe Payload als JSON aus und meldet True (Verb ist fertig).
+
+    Maschinenlesbarer Ausgabe-Modus für Folge-Analysen — statt die formatierten
+    Markdown-Zeilen zurückzuparsen, bekommt der Aufrufer die Items direkt.
+    """
+    if not flags.get("json"):
+        return False
+    print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+    return True
+
+
+def _strip_json_flag(args: list) -> tuple:
+    """Zieht --json aus positionalen Argument-Listen heraus -> (args_ohne_flag, json_an)."""
+    return [a for a in args if a != "--json"], "--json" in args
+
+
 def _require(flags: dict, key: str, verb: str):
     """Holt einen Pflicht-Flag-Wert oder wirft ValueError."""
     val = flags.get(key)
@@ -608,6 +640,8 @@ def result_list(args: list) -> int:
     if f.get("timeframe"):
         params["timeframe"] = f["timeframe"]
     items = fetch(f"/api/backtest/results?{urllib.parse.urlencode(params)}")["data"]["items"]
+    if _maybe_json(f, {"total": len(items), "items": items}):
+        return 0
     print(f"## Results ({len(items)})")
     for r in items:
         print(f"- result:{r['id']} run:{r.get('run_id')} {r.get('symbol')} — "
@@ -801,8 +835,9 @@ def run_parameter_ranking(args: list) -> int:
 
 
 def run_top_results(args: list) -> int:
+    args, json_out = _strip_json_flag(args)
     if not args:
-        raise ValueError("run-top-results braucht <run_id> [metric] [limit] [direction]")
+        raise ValueError("run-top-results braucht <run_id> [metric] [limit] [direction] [--json]")
     run_id = int(args[0])
     metric = args[1] if len(args) > 1 else "sharpe_ratio"
     limit = args[2] if len(args) > 2 else "20"
@@ -810,6 +845,8 @@ def run_top_results(args: list) -> int:
     qs = urllib.parse.urlencode({"metric": metric, "limit": limit, "direction": direction})
     d = fetch(f"/api/backtest/runs/{run_id}/analyse/top-results?{qs}")
     results = d.get("results") or []
+    if _maybe_json({"json": json_out}, {"total": len(results), "items": results}):
+        return 0
     print(f"## Top-Results Run {run_id} — {d.get('metric_label', metric)} {direction} ({len(results)})")
     for r in results:
         params = r.get("actual_params") or {}
@@ -843,8 +880,9 @@ def run_best(args: list) -> int:
     Filter (total_trades_min) + Sortierung laufen serverseitig über
     /api/backtest/results/dt. Default-Floor 30 Trades.
     """
+    args, json_out = _strip_json_flag(args)
     if len(args) < 2:
-        raise ValueError("run-best braucht <run_id> <metrik> [min_trades=30] [limit=1]")
+        raise ValueError("run-best braucht <run_id> <metrik> [min_trades=30] [limit=1] [--json]")
     run_id = int(args[0])
     metric = args[1]
     if metric not in _DT_SORT_IDX:
@@ -859,6 +897,8 @@ def run_best(args: list) -> int:
     dd = fetch(f"/api/backtest/results/dt?{qs}")
     rows = dd.get("data") or []
     n = dd.get("recordsFiltered")
+    if _maybe_json({"json": json_out}, {"total": n, "items": rows}):
+        return 0
     print(f"## Best Run {run_id} — {_METRIC_LABEL[metric]} desc, min {min_trades} Trades "
           f"({n} Results >= {min_trades} Trades), Top {limit}")
     for r in rows:
@@ -869,6 +909,330 @@ def run_best(args: list) -> int:
               f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
         if pstr:
             print(f"  - {pstr}")
+    print()
+    return 0
+
+
+def result_query(args: list) -> int:
+    """Results eines Runs mit kombinierten Metrik-Filtern abfragen.
+
+    Flags: --run <id> --where "sharpe_ratio>=1.5,total_trades>=100,max_drawdown_pct>=-40"
+           [--sort <metrik>] [--direction asc|desc] [--limit <n=20>] [--json]
+    Bedingungen nur >= und <=, UND-verknüpft — sie werden 1:1 auf die
+    serverseitigen _min/_max-Filter des dt-Endpunkts abgebildet. Erlaubte
+    Metriken: die Keys aus _DT_SORT_IDX (total_return_pct, win_rate_pct,
+    sharpe_ratio, profit_factor, max_drawdown_pct, total_trades).
+    """
+    f = _parse_flags(args)
+    run_id = int(_require(f, "run", "result-query"))
+    raw = _require(f, "where", "result-query")
+    sort = f.get("sort", "total_return_pct")
+    if sort not in _DT_SORT_IDX:
+        raise ValueError(f"Unbekannte Sortier-Metrik {sort!r}. Erlaubt: {', '.join(_DT_SORT_IDX)}")
+    direction = f.get("direction", "desc")
+    if direction not in ("asc", "desc"):
+        raise ValueError("--direction erlaubt nur asc|desc")
+    limit = int(f.get("limit", 20))
+
+    params = {
+        "run_id": run_id,
+        "order[0][column]": _DT_SORT_IDX[sort], "order[0][dir]": direction,
+        "start": 0, "length": limit, "draw": 1,
+    }
+    conds = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"^(\w+)\s*(>=|<=)\s*(-?\d+(?:\.\d+)?)$", part)
+        if not m:
+            raise ValueError(f"--where erwartet <metrik>>=<wert> oder <metrik><=<wert>, bekommen: {part!r}")
+        metric, op, val = m.groups()
+        if metric not in _DT_SORT_IDX:
+            raise ValueError(f"Unbekannte Metrik {metric!r}. Erlaubt: {', '.join(_DT_SORT_IDX)}")
+        params[f"{metric}_{'min' if op == '>=' else 'max'}"] = val
+        conds.append(part)
+    if not conds:
+        raise ValueError("--where ist leer")
+
+    dd = fetch(f"/api/backtest/results/dt?{urllib.parse.urlencode(params)}")
+    rows = dd.get("data") or []
+    n = dd.get("recordsFiltered")
+    if _maybe_json(f, {"total": n, "items": rows}):
+        return 0
+    print(f"## Result-Query Run {run_id} — {' UND '.join(conds)} — Sortierung {sort} {direction} ({n} Treffer, Top {limit})")
+    if not rows:
+        print("- (keine Treffer)")
+    for r in rows:
+        print(f"- {_fmt_result_line(r)}")
+    print()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Result-Lookup per Parameter-Werten (result-lookup) + Kreuz-Test (kreuztest).
+# Serverseitig über GET /api/backtest/runs/{id}/results/lookup — exakter Lookup
+# einer Kombination oder Nachbarschafts-Modus (±tolerance je Parameter,
+# Plateau-Prüfung). kreuztest schlägt die markierten Bestwerte aus Run A in
+# Run B nach und stellt die Metriken gegenüber.
+# ---------------------------------------------------------------------------
+
+def _parse_params_flag(raw: str) -> dict:
+    """Zerlegt --params "key=wert,key2=wert2" in ein Dict (Werte verbatim als Strings)."""
+    wanted: dict = {}
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError(f"--params erwartet key=wert-Paare (Komma-getrennt), bekommen: {part!r}")
+        k, v = part.split("=", 1)
+        wanted[k.strip()] = v.strip()
+    if not wanted:
+        raise ValueError("--params ist leer")
+    return wanted
+
+
+def _lookup(run_id: int, params: dict, tolerance=None, limit=None) -> dict:
+    """Ruft die Lookup-Route auf und gibt deren data-Block (items/total) zurück."""
+    qp = dict(params)
+    if tolerance is not None:
+        qp["tolerance"] = tolerance
+    if limit is not None:
+        qp["limit"] = limit
+    return fetch(f"/api/backtest/runs/{run_id}/results/lookup?{urllib.parse.urlencode(qp)}")["data"]
+
+
+def _neighborhood_summary(items: list) -> dict:
+    """Verdichtet eine Nachbarschafts-Treffermenge zum Plateau-Score.
+
+    Beantwortet „Plateau oder Nadel?" in wenigen Kennzahlen statt N Zeilen:
+    Median/Mittel/Streuung des Total Return, Anteil profitabel, Bester/Schlechtester.
+    """
+    rets = [(r["total_return_pct"], r["id"]) for r in items
+            if isinstance(r.get("total_return_pct"), (int, float))]
+    if not rets:
+        return {"n": len(items), "n_mit_return": 0}
+    values = [v for v, _ in rets]
+    best = max(rets)
+    worst = min(rets)
+    return {
+        "n": len(items),
+        "n_mit_return": len(values),
+        "anteil_profitabel_pct": round(100.0 * sum(1 for v in values if v > 0) / len(values), 1),
+        "return_median": round(statistics.median(values), 2),
+        "return_mittel": round(statistics.fmean(values), 2),
+        "return_streuung": round(statistics.stdev(values), 2) if len(values) > 1 else 0.0,
+        "return_bester": {"result_id": best[1], "total_return_pct": round(best[0], 2)},
+        "return_schlechtester": {"result_id": worst[1], "total_return_pct": round(worst[0], 2)},
+    }
+
+
+def result_lookup(args: list) -> int:
+    """Results eines Runs per Parameter-Werten nachschlagen (serverseitig).
+
+    Flags: --run <id> --params "key=wert,key2=wert2" [--tolerance <t>] [--limit <n=20>]
+           [--summary] [--json]
+    Ohne --tolerance exakter Lookup der einen Kombination; mit --tolerance
+    alle Results, deren Parameter je ±t um die Zielwerte liegen (Plateau-
+    Prüfung). Subset: nur die angegebenen Keys müssen passen. Unbekannte
+    Parameter-Namen meldet der Server mit den vorhandenen Namen des Runs.
+    --summary verdichtet die Nachbarschaft zum Plateau-Score (holt dafür
+    die volle Treffermenge, --limit spielt dann keine Rolle).
+    """
+    f = _parse_flags(args)
+    run_id = int(_require(f, "run", "result-lookup"))
+    wanted = _parse_params_flag(_require(f, "params", "result-lookup"))
+    pstr = ", ".join(f"{k}={v}" for k, v in wanted.items())
+    tol = f" · Toleranz ±{f['tolerance']}" if f.get("tolerance") else ""
+
+    if f.get("summary"):
+        d = _lookup(run_id, wanted, tolerance=f.get("tolerance"), limit=100000)
+        items = d.get("items") or []
+        summ = _neighborhood_summary(items)
+        if _maybe_json(f, summ):
+            return 0
+        print(f"## Plateau-Score Run {run_id} — {pstr}{tol}")
+        if not items:
+            print("- (keine Treffer)\n")
+            return 0
+        print(f"- Nachbarschaft: {summ['n']} Results · {summ['anteil_profitabel_pct']}% profitabel")
+        print(f"- Total Return: Median {num(summ['return_median'])}% · Mittel {num(summ['return_mittel'])}% · "
+              f"Streuung {num(summ['return_streuung'])}")
+        print(f"- Bester: result:{summ['return_bester']['result_id']} ({num(summ['return_bester']['total_return_pct'])}%) · "
+              f"Schlechtester: result:{summ['return_schlechtester']['result_id']} "
+              f"({num(summ['return_schlechtester']['total_return_pct'])}%)")
+        print()
+        return 0
+
+    out_limit = int(f.get("limit", 20))
+    d = _lookup(run_id, wanted, tolerance=f.get("tolerance"), limit=out_limit)
+    items = d.get("items") or []
+    total = d.get("total") or 0
+    if _maybe_json(f, {"total": total, "items": items}):
+        return 0
+
+    print(f"## Result-Lookup Run {run_id} — {pstr}{tol} ({total} Treffer)")
+    if not items:
+        print("- (keine Treffer)")
+    for r in items:
+        print(f"- {_fmt_result_line(r)}")
+    if total > len(items):
+        print(f"- … {total - len(items)} weitere Treffer (--limit erhöhen)")
+    print()
+    return 0
+
+
+def _favorite_results(run_id: int, kinds: list) -> list:
+    """Markierte Favoriten-Results eines Runs (dedupliziert über die Sterne-Arten)."""
+    favorites: list = []
+    seen: set = set()
+    for kind in kinds:
+        col_idx, field, _suffix, _label = _FAV_KINDS[kind]
+        rows, _ = _dt_query(run_id, col_idx, length=200)
+        for r in rows:
+            if r.get(field) and r["id"] not in seen:
+                seen.add(r["id"])
+                favorites.append(r)
+    return favorites
+
+
+def _kreuztest_rows(run_a: int, run_b: int, kinds: list, tolerance) -> list:
+    """Vergleichszeilen eines Run-Paars: je Favorit aus A das Gegenstück aus B (oder None)."""
+    rows = []
+    for a in sorted(_favorite_results(run_a, kinds), key=lambda x: x["id"]):
+        num_params = {k: v for k, v in (a.get("actual_params") or {}).items()
+                      if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        b = None
+        if num_params:
+            items = _lookup(run_b, num_params, tolerance=tolerance, limit=1).get("items") or []
+            b = items[0] if items else None
+        rows.append({"params": num_params, "a": a, "b": b})
+    return rows
+
+
+def _print_kreuztest_table(rows: list) -> None:
+    """Markdown-Vergleichstabelle für die Zeilen eines Run-Paars."""
+    print("| Params | Result A→B | Ret % | Sharpe | PF | WinR % | Trades |")
+    print("|---|---|---|---|---|---|---|")
+    for row in rows:
+        a, b = row["a"], row["b"]
+
+        def pair(key: str) -> str:
+            return f"{num(a.get(key))} → {num(b.get(key)) if b else '—'}"
+
+        pstr = ", ".join(f"{k}={v}" for k, v in row["params"].items()) or "(keine numerischen Params)"
+        ab = f"{a['id']} → {b['id'] if b else 'nicht gefunden'}"
+        print(f"| {pstr} | {ab} | {pair('total_return_pct')} | {pair('sharpe_ratio')} | "
+              f"{pair('profit_factor')} | {pair('win_rate_pct')} | "
+              f"{a.get('total_trades')} → {b.get('total_trades') if b else '—'} |")
+
+
+def kreuztest(args: list) -> int:
+    """Markierte Bestwerte aus Run/Testset-Lauf A in B nachschlagen (Vergleichstabelle).
+
+    Flags: --from-run <A> --to-run <B>                        (Einzel-Paar)
+       oder --from-testset-run <A> --to-testset-run <B>       (ganze Fenster/Testsets,
+            Runs werden per Symbol+Timeframe gepaart — BTC-Run zu BTC-Run usw.)
+       dazu [--user] [--tolerance <t>] [--json]
+    Quelle sind die roten Doku-Favoriten (Bestwerte) der A-Seite; --user nimmt
+    zusätzlich die gelben User-Sterne. Je Kombination wird das Result mit
+    denselben Parameterwerten auf der B-Seite nachgeschlagen (nur numerische
+    Parameter; run-gebundene Keys wie symbol bleiben außen vor). Mit
+    --tolerance zählt bei mehreren Nachbarschafts-Treffern der beste
+    Total Return.
+    """
+    f = _parse_flags(args)
+    kinds = ["doc"] + (["user"] if f.get("user") else [])
+    tolerance = f.get("tolerance")
+    label = "rote Doku-Favoriten" + (" + gelbe User-Sterne" if f.get("user") else "")
+    tol = f" · Toleranz ±{tolerance}" if tolerance else ""
+
+    # Paar-Auflösung: Einzel-Paar oder Testset-Lauf gegen Testset-Lauf.
+    unmatched: list = []
+    if f.get("from-testset-run") or f.get("to-testset-run"):
+        ts_a = int(_require(f, "from-testset-run", "kreuztest"))
+        ts_b = int(_require(f, "to-testset-run", "kreuztest"))
+        runs_a = fetch(f"/api/backtest/runs?testset_run_id={ts_a}&limit=10000")["data"]["items"]
+        runs_b = fetch(f"/api/backtest/runs?testset_run_id={ts_b}&limit=10000")["data"]["items"]
+        by_key_b = {(r.get("symbol"), r.get("timeframe")): r for r in runs_b}
+        pairs = []
+        for ra in sorted(runs_a, key=lambda x: x["id"]):
+            key = (ra.get("symbol"), ra.get("timeframe"))
+            rb = by_key_b.pop(key, None)
+            if rb is None:
+                unmatched.append(f"run:{ra['id']} ({key[0]} {key[1]}) ohne Gegenstück in testset-run:{ts_b}")
+            else:
+                pairs.append((ra["id"], rb["id"], f"{key[0]} {key[1]}"))
+        unmatched += [f"run:{r['id']} ({k[0]} {k[1]}) ohne Gegenstück in testset-run:{ts_a}"
+                      for k, r in by_key_b.items()]
+        scope = f"testset-run:{ts_a} → testset-run:{ts_b}"
+    else:
+        run_a = int(_require(f, "from-run", "kreuztest"))
+        run_b = int(_require(f, "to-run", "kreuztest"))
+        pairs = [(run_a, run_b, "")]
+        scope = f"run:{run_a} → run:{run_b}"
+
+    results = [{"run_a": a, "run_b": b, "match": m, "rows": _kreuztest_rows(a, b, kinds, tolerance)}
+               for a, b, m in pairs]
+    if _maybe_json(f, {"scope": scope, "pairs": results, "unmatched": unmatched}):
+        return 0
+
+    print(f"## Kreuz-Test {scope} — {label}{tol} ({len(pairs)} Paar(e))")
+    for entry in results:
+        suffix = f" ({entry['match']})" if entry["match"] else ""
+        print(f"\n### run:{entry['run_a']} → run:{entry['run_b']}{suffix} — {len(entry['rows'])} Kombination(en)")
+        if not entry["rows"]:
+            print("- (keine markierten Results auf der A-Seite)")
+            continue
+        _print_kreuztest_table(entry["rows"])
+    for line in unmatched:
+        print(f"- OHNE PAAR: {line}")
+    print()
+    return 0
+
+
+def combo_trace(args: list) -> int:
+    """Eine Parameterkombination über eine Run-Menge verfolgen (1:N-Kreuz-Test).
+
+    Flags: --params "key=wert,key2=wert2" + Selektor wie run-bestwerte
+           (--run <id> | --strategy <slug> [--version <n>] | --iteration <id> |
+            --testset-run <id>)   [--tolerance <t>] [--limit <n=200>] [--json]
+    Schlägt die Kombination in jedem Run des Scopes nach (serverseitig über
+    /api/backtest/results/lookup) und listet je Treffer Run-Kontext
+    (Symbol/Timeframe) plus Kennzahlen. Runs ohne Treffer werden ausgewiesen.
+    """
+    f = _parse_flags(args)
+    wanted = _parse_params_flag(_require(f, "params", "combo-trace"))
+    runs, scope = _resolve_runs(f, "combo-trace")
+    if not runs:
+        print(f"## Kombinations-Verfolgung — {scope}\n- (keine Runs)\n")
+        return 0
+    run_ids = sorted(r["id"] for r in runs)
+
+    qp = dict(wanted)
+    qp["run_ids"] = ",".join(str(i) for i in run_ids)
+    if f.get("tolerance"):
+        qp["tolerance"] = f["tolerance"]
+    qp["limit"] = f.get("limit", 200)
+    d = fetch(f"/api/backtest/results/lookup?{urllib.parse.urlencode(qp)}")["data"]
+    items = d.get("items") or []
+    total = d.get("total") or 0
+    if _maybe_json(f, {"scope": scope, "run_ids": run_ids, "total": total, "items": items}):
+        return 0
+
+    pstr = ", ".join(f"{k}={v}" for k, v in wanted.items())
+    tol = f" · Toleranz ±{f['tolerance']}" if f.get("tolerance") else ""
+    print(f"## Kombinations-Verfolgung — {scope} ({len(run_ids)} Run(s)) — {pstr}{tol} ({total} Treffer)")
+    hit_runs = set()
+    for r in items:
+        hit_runs.add(r["run_id"])
+        print(f"- run:{r['run_id']} {r.get('symbol')} {r.get('timeframe')} — {_fmt_result_line(r)}")
+    if total > len(items):
+        print(f"- … {total - len(items)} weitere Treffer (--limit erhöhen)")
+    missing = [i for i in run_ids if i not in hit_runs]
+    if missing:
+        print(f"- OHNE TREFFER: {', '.join(f'run:{i}' for i in missing)}")
     print()
     return 0
 
@@ -1112,6 +1476,48 @@ def run_favorites_reset(args: list) -> int:
             print(f"- run:{rid} · {label}: {len(marked)} entfernt ({ids})")
 
     print(f"\n**{removed_total} Favoriten-Markierungen entfernt.**\n")
+    return 0
+
+
+def run_favorites_list(args: list) -> int:
+    """Aktuell markierte Favoriten-Results einer Run-Menge ausgeben (reiner Read).
+
+    Flags wie run-favorites-reset: --run <id> | --strategy <slug> [--version <n>] |
+           --iteration <id> | --testset-run <id>   [--doc] [--user]
+    Ohne --doc/--user werden BEIDE Favoriten-Arten gelistet. Nutzt denselben
+    dt-Abruf wie der Reset (Favoriten zuerst sortiert), ändert aber nichts.
+    """
+    f = _parse_flags(args)
+    kinds = [k for k in ("doc", "user") if f.get(k)] or ["doc", "user"]
+    runs, scope = _resolve_runs(f, "run-favorites-list")
+
+    # Erst einsammeln (auch für --json), dann ausgeben.
+    collected: list = []
+    for run in sorted(runs, key=lambda x: x["id"]):
+        rid = run["id"]
+        for kind in kinds:
+            col_idx, field, _suffix, label = _FAV_KINDS[kind]
+            # Favoriten sortieren zuerst -> length deckt jede realistische Favoriten-Zahl je Run ab
+            rows, _ = _dt_query(rid, col_idx, length=200)
+            marked = [r for r in rows if r.get(field)]
+            collected.append({"run_id": rid, "kind": kind, "label": label, "results": marked})
+    if _maybe_json(f, {"scope": scope, "groups": collected}):
+        return 0
+
+    kind_labels = ", ".join(_FAV_KINDS[k][3] for k in kinds)
+    print(f"## Favoriten — {scope} ({len(runs)} Run(s)) — {kind_labels}")
+    if not runs:
+        print("- (keine Runs)\n")
+        return 0
+
+    found_total = 0
+    for group in collected:
+        found_total += len(group["results"])
+        print(f"- run:{group['run_id']} · {group['label']}: {len(group['results'])}")
+        for r in group["results"]:
+            print(f"  - {_fmt_result_line(r)}")
+
+    print(f"\n**{found_total} Favoriten-Markierungen gefunden.**\n")
     return 0
 
 
@@ -1496,6 +1902,11 @@ SINGLE_VERBS = {
     "run-best": run_best,
     "run-bestwerte": run_bestwerte,
     "run-favorites-reset": run_favorites_reset,
+    "run-favorites-list": run_favorites_list,
+    "result-lookup": result_lookup,
+    "result-query": result_query,
+    "kreuztest": kreuztest,
+    "combo-trace": combo_trace,
     "concept-create": concept_create,
     "iteration-create": iteration_create,
     "indicator-config-create": indicator_config_create,

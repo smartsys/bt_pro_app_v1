@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.32] - 02.07.2026
+
+### Added
+- Result-Lookup per Parameter-Werten (API) und Auswerte-Verben für die Strategie-Toolbox (Favoriten-Liste, Metrik-Query, Kreuz-Test, Kombinations-Verfolgung, Plateau-Score, JSON-Ausgabe)
+  - Neue API-Route GET /api/backtest/runs/{run_id}/results/lookup: Parameter-Werte als Query-Filter, EXISTS-Subqueries gegen backtest_result_params (Index idx_bpa_result_param); tolerance=0 = exakter Lookup mit Epsilon gegen arange-Float-Artefakte, tolerance>0 = Nachbarschafts-Modus (±Toleranz je Parameter, Plateau-Prüfung); unbekannte Parameter-Namen und nicht-numerische Werte geben 400 mit den vorhandenen Namen des Runs
+  - Neue API-Route GET /api/backtest/results/lookup: derselbe Lookup über eine explizite Run-Menge (run_ids), Ergebnis mit Run-Kontext (run_id, symbol, timeframe), sortiert nach run_id
+  - Query-Logik testbar in repository.py: lookup_result_rows_by_params, lookup_results_across_runs, get_run_param_names, get_scope_param_names, gemeinsamer Baustein _param_exists_conditions
+  - Toolbox-Verb run-favorites-list: markierte Favoriten-Results einer Run-Menge ausgeben (reiner Read), Selektoren/Flags wie run-favorites-reset
+  - Toolbox-Verb result-lookup: Results per Parameter-Werten nachschlagen (--tolerance fuer Nachbarschaft, --summary verdichtet zum Plateau-Score: Median/Mittel/Streuung des Total Return, Anteil profitabel, Bester/Schlechtester)
+  - Toolbox-Verb result-query: kombinierte Metrik-Filter (--where "sharpe_ratio>=1.5,total_trades>=100", nur >=/<=, UND-verknuepft) ueber die vorhandenen serverseitigen _min/_max-Filter des dt-Endpunkts
+  - Toolbox-Verb kreuztest: rote Doku-Favoriten (Bestwerte) aus Run A in Run B nachschlagen, Vergleichstabelle der Metriken; --from-testset-run/--to-testset-run paart ganze Testset-Laeufe per Symbol+Timeframe (Walk-Forward-Auslesung), Runs ohne Gegenstueck werden ausgewiesen
+  - Toolbox-Verb combo-trace: eine Parameterkombination ueber eine Run-Menge verfolgen (1:N), Selektoren wie run-bestwerte, Runs ohne Treffer werden ausgewiesen
+  - --json-Flag fuer acht Lese-/Auswerte-Verben (result-list, run-top-results, run-best, run-favorites-list, result-lookup, result-query, kreuztest, combo-trace): rohe Items als JSON statt Markdown
+  - 11 Tests fuer die Lookup-Query-Logik gegen die PostgreSQL-Test-DB (exakt, Float-Artefakte, Subset, Toleranz, Run-Isolation, Limit/Total, Across-Runs, Scope-Parameter-Namen)
+  - Doku nachgezogen: Werkzeug-Tabelle im Handbuch, Toolbox-Hilfetext, Routen-Index in api_backtest.py; To-Do-Dokument unter documentation/todo/ als lebendes Lueckenverzeichnis
+
+### Files
+- services/api/routes/api_backtest.py
+- user_data/utils/database/repository.py
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- tests/test_result_lookup_by_params.py
+- documentation/project/handbuch.md
+- documentation/todo/todo.md
+
+
+
 ## [1.30.31] - 02.07.2026
 
 ### Fixed

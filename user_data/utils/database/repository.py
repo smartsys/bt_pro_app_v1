@@ -14,9 +14,11 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import Engine
 
 from user_data.utils.database.db import get_engine
 from user_data.utils.database.models import (
@@ -965,3 +967,147 @@ def save_strategy_results(
     print(f"[DB] BacktestRun {run_id} gespeichert, {n_combinations} Kombinationen (Gesamt: {_time.time() - _t_start:.1f}s)")
 
     return n_combinations
+
+
+# ---------------------------------------------------------------------------
+# GEÄNDERT: Result-Lookup per Parameter-Werten für die Route
+# GET /api/backtest/runs/{run_id}/results/lookup (exakt + Nachbarschafts-Modus).
+# Liegt hier statt in api_backtest.py, damit die Query-Logik ohne die
+# Container-Abhängigkeiten der Route (rq/redis) testbar ist.
+# ---------------------------------------------------------------------------
+
+def get_run_param_names(engine: Engine, run_id: int) -> List[str]:
+    """Parameter-Namen eines Runs (aus einem beliebigen Result des Runs), sortiert."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT DISTINCT param_name FROM backtest_result_params
+            WHERE result_id = (SELECT id FROM backtest_results WHERE run_id = :run_id LIMIT 1)
+            ORDER BY param_name
+        """), {'run_id': run_id}).fetchall()
+    return [r.param_name for r in rows]
+
+
+def _param_exists_conditions(filters: Dict[str, float], tolerance: float, binds: dict) -> List[str]:
+    """EXISTS-Bedingungen je Parameter gegen backtest_result_params (Index idx_bpa_result_param).
+
+    tolerance=0 ist der exakte Lookup — ein winziges Epsilon fängt dabei
+    Float-Artefakte der arange-Raster ab. Befüllt binds in-place.
+    """
+    conditions = []
+    for i, (name, value) in enumerate(filters.items()):
+        eps = 1e-9 * max(1.0, abs(value))
+        binds[f'name{i}'] = name
+        binds[f'lo{i}'] = value - tolerance - eps
+        binds[f'hi{i}'] = value + tolerance + eps
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM backtest_result_params p{i} "
+            f"WHERE p{i}.result_id = r.id AND p{i}.param_name = :name{i} "
+            f"AND p{i}.param_value BETWEEN :lo{i} AND :hi{i})"
+        )
+    return conditions
+
+
+def lookup_result_rows_by_params(engine: Engine, run_id: int, filters: Dict[str, float],
+                                 tolerance: float, limit: int) -> Tuple[List[dict], int]:
+    """Results eines Runs, deren Parameter je ±tolerance um die Zielwerte liegen.
+
+    Gibt (items, total) zurück; total wird nur bei vollem Limit separat gezählt.
+    """
+    binds: dict = {'run_id': run_id, 'lim': limit}
+    conditions = _param_exists_conditions(filters, tolerance, binds)
+    where = f"r.run_id = :run_id AND {' AND '.join(conditions)}"
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, run_id, actual_params_json, total_return_pct, sharpe_ratio,
+                   sortino_ratio, max_drawdown_pct, win_rate_pct, profit_factor,
+                   total_trades, end_value
+            FROM backtest_results r
+            WHERE {where}
+            ORDER BY total_return_pct DESC NULLS LAST
+            LIMIT :lim
+        """), binds).fetchall()
+        total = len(rows)
+        if total == limit:
+            total = conn.execute(
+                text(f"SELECT COUNT(*) FROM backtest_results r WHERE {where}"), binds
+            ).scalar()
+    items = [
+        {
+            'id': r.id,
+            'run_id': r.run_id,
+            'actual_params': r.actual_params_json,
+            'total_return_pct': r.total_return_pct,
+            'sharpe_ratio': r.sharpe_ratio,
+            'sortino_ratio': r.sortino_ratio,
+            'max_drawdown_pct': r.max_drawdown_pct,
+            'win_rate_pct': r.win_rate_pct,
+            'profit_factor': r.profit_factor,
+            'total_trades': r.total_trades,
+            'end_value': r.end_value,
+        }
+        for r in rows
+    ]
+    return items, total
+
+
+def get_scope_param_names(engine: Engine, run_ids: List[int]) -> List[str]:
+    """Parameter-Namen einer Run-Menge (aus je einem Result pro Run), sortiert."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT DISTINCT param_name FROM backtest_result_params
+            WHERE result_id IN (
+                SELECT MIN(id) FROM backtest_results
+                WHERE run_id = ANY(:run_ids) GROUP BY run_id
+            )
+            ORDER BY param_name
+        """), {'run_ids': list(run_ids)}).fetchall()
+    return [r.param_name for r in rows]
+
+
+def lookup_results_across_runs(engine: Engine, run_ids: List[int], filters: Dict[str, float],
+                               tolerance: float, limit: int) -> Tuple[List[dict], int]:
+    """Kombinations-Verfolgung: Results mit passenden Parametern über mehrere Runs.
+
+    Wie lookup_result_rows_by_params, aber über eine Run-Menge, mit Run-Kontext
+    (Symbol/Timeframe) im Ergebnis, sortiert nach run_id und Total Return.
+    Gibt (items, total) zurück; total wird nur bei vollem Limit separat gezählt.
+    """
+    binds: dict = {'run_ids': list(run_ids), 'lim': limit}
+    conditions = _param_exists_conditions(filters, tolerance, binds)
+    where = f"r.run_id = ANY(:run_ids) AND {' AND '.join(conditions)}"
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT r.id, r.run_id, br.symbol, br.timeframe, r.actual_params_json,
+                   r.total_return_pct, r.sharpe_ratio, r.sortino_ratio,
+                   r.max_drawdown_pct, r.win_rate_pct, r.profit_factor,
+                   r.total_trades, r.end_value
+            FROM backtest_results r
+            JOIN backtest_runs br ON br.id = r.run_id
+            WHERE {where}
+            ORDER BY r.run_id, r.total_return_pct DESC NULLS LAST
+            LIMIT :lim
+        """), binds).fetchall()
+        total = len(rows)
+        if total == limit:
+            total = conn.execute(
+                text(f"SELECT COUNT(*) FROM backtest_results r WHERE {where}"), binds
+            ).scalar()
+    items = [
+        {
+            'id': r.id,
+            'run_id': r.run_id,
+            'symbol': r.symbol,
+            'timeframe': r.timeframe,
+            'actual_params': r.actual_params_json,
+            'total_return_pct': r.total_return_pct,
+            'sharpe_ratio': r.sharpe_ratio,
+            'sortino_ratio': r.sortino_ratio,
+            'max_drawdown_pct': r.max_drawdown_pct,
+            'win_rate_pct': r.win_rate_pct,
+            'profit_factor': r.profit_factor,
+            'total_trades': r.total_trades,
+            'end_value': r.end_value,
+        }
+        for r in rows
+    ]
+    return items, total
