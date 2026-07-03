@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.35] - 03.07.2026
+
+### Added
+- Schrittweiter Nachbarschafts-Modus (--tolerance-steps) für Result-Lookup, Kreuztest und Combo-Trace
+  - Neues Flag --tolerance-steps <N> an result-lookup, kreuztest und combo-trace (Toolbox); spannt die Nachbarschaft je Parameter in N Raster-Schritten statt einer skalaren Distanz. Loest die Plateau-Pruefung fuer Laeufe mit ungleichen Schrittweiten je Achse.
+  - Server: get_run_param_steps leitet die Schrittweite je Parameter aus dem kleinsten positiven Abstand der distinct-Werte des Runs ab (eingefrorene Achse mit nur einem Wert -> Schritt 0 -> exakter Match). Bei Mehr-Run-Lookups wird die Schrittweite je Run einzeln abgeleitet (Raster koennen differieren) und die Zweige werden OR-verknuepft.
+  - Neuer Query-Param tolerance_steps an GET /api/backtest/runs/{run_id}/results/lookup und GET /api/backtest/results/lookup; tolerance und tolerance_steps schliessen sich aus (400).
+  - --tolerance (skalar) bleibt unveraendert rueckwaertskompatibel; Float-Epsilon gegen arange-Artefakte beibehalten.
+  - Tests: tests/test_result_lookup_by_params.py um 7 Faelle ergaenzt (Schrittweiten-Ableitung, echte plus/minus 1-Schritt-Nachbarschaft bei ungleichen Rastern, Kontrast zur skalaren Toleranz, eingefrorene Achse, arange-Float-Schritte, N-Skalierung, per-Run-Raster) - 18 gruen.
+
+### Files
+- user_data/utils/database/repository.py
+- services/api/routes/api_backtest.py
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- tests/test_result_lookup_by_params.py
+
+
+
 ## [1.30.34] - 03.07.2026
 
 ### Changed

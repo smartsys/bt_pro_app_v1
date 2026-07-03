@@ -426,7 +426,7 @@ def get_results(run_id: int, limit: int = Query(10000), offset: int = Query(0)) 
 # Query-Logik liegt in repository.py (lookup_result_rows_by_params), damit sie
 # ohne die Container-Abhängigkeiten dieser Route (rq/redis) testbar ist.
 # Query-Keys der Lookup-Route, die KEINE Parameter-Filter sind.
-_LOOKUP_RESERVED_KEYS = {'tolerance', 'limit'}
+_LOOKUP_RESERVED_KEYS = {'tolerance', 'tolerance_steps', 'limit'}
 
 
 @router.get('/runs/{run_id}/results/lookup', response_model=ApiResponse)
@@ -434,17 +434,25 @@ def lookup_results_by_params(
     run_id: int,
     request: Request,
     tolerance: float = Query(0.0, ge=0),
+    tolerance_steps: Optional[int] = Query(None, ge=1),
     limit: int = Query(100, ge=1),
 ) -> ApiResponse:
     """Result-Lookup per Parameter-Werten innerhalb eines Runs.
 
-    Alle Query-Parameter außer tolerance/limit werden als Parameter-Filter
-    gelesen (z.B. ?vwma_length=6&vwma_below_pct=10). tolerance=0 (Default) =
-    exakter Lookup der einen Kombination; tolerance>0 = Nachbarschafts-Modus:
-    alle Results, deren Parameter je ±tolerance um die Zielwerte liegen
-    (Plateau-Prüfung). Unbekannte Parameter-Namen und nicht-numerische Werte
+    Alle Query-Parameter außer tolerance/tolerance_steps/limit werden als
+    Parameter-Filter gelesen (z.B. ?vwma_length=6&vwma_below_pct=10). Ohne
+    Toleranz = exakter Lookup der einen Kombination. tolerance>0 =
+    Nachbarschafts-Modus mit skalarer Fenster-Breite je Parameter.
+    tolerance_steps=N = schrittweiter Nachbarschafts-Modus: je Parameter ±N
+    Raster-Schritte (Schrittweite aus den distinct-Werten des Runs abgeleitet)
+    — bildet eine echte ±N-Schritt-Nachbarschaft auch bei ungleichen
+    Schrittweiten je Achse (Plateau-Prüfung). tolerance und tolerance_steps
+    schließen sich aus. Unbekannte Parameter-Namen und nicht-numerische Werte
     geben 400 mit den vorhandenen Namen des Runs.
     """
+    if tolerance_steps is not None and tolerance > 0:
+        raise HTTPException(status_code=400,
+                            detail="tolerance und tolerance_steps schließen sich aus — nur eins angeben")
     filters: Dict[str, float] = {}
     for key, raw in request.query_params.items():
         if key in _LOOKUP_RESERVED_KEYS:
@@ -467,13 +475,14 @@ def lookup_results_by_params(
             detail=f"Unbekannte Parameter für Run {run_id}: {', '.join(unknown)}. "
                    f"Vorhanden: {', '.join(known) or 'keine (Run leer?)'}",
         )
-    items, total = lookup_result_rows_by_params(engine, run_id, filters, tolerance, limit)
+    items, total = lookup_result_rows_by_params(engine, run_id, filters, tolerance, limit,
+                                                tolerance_steps=tolerance_steps)
     return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=0))
 
 
 # GEÄNDERT: Kombinations-Verfolgung — Lookup über MEHRERE Runs (combo-trace).
 # Query-Keys der Across-Runs-Route, die KEINE Parameter-Filter sind.
-_TRACE_RESERVED_KEYS = {'run_ids', 'tolerance', 'limit'}
+_TRACE_RESERVED_KEYS = {'run_ids', 'tolerance', 'tolerance_steps', 'limit'}
 
 
 @router.get('/results/lookup', response_model=ApiResponse)
@@ -481,6 +490,7 @@ def lookup_results_across_runs_route(
     request: Request,
     run_ids: str = Query(..., description='Komma-getrennte Run-IDs, z.B. 10,11,12'),
     tolerance: float = Query(0.0, ge=0),
+    tolerance_steps: Optional[int] = Query(None, ge=1),
     limit: int = Query(200, ge=1),
 ) -> ApiResponse:
     """Kombinations-Verfolgung: Result-Lookup per Parameter-Werten über mehrere Runs.
@@ -488,8 +498,13 @@ def lookup_results_across_runs_route(
     Wie /runs/{run_id}/results/lookup, aber mit expliziter Run-Menge (run_ids)
     statt einem festen Run — der Aufrufer löst den Scope (Iteration, Strategie,
     Testset-Lauf) selbst zu Run-IDs auf. Ergebnis enthält Run-Kontext
-    (run_id, symbol, timeframe) und ist nach run_id sortiert.
+    (run_id, symbol, timeframe) und ist nach run_id sortiert. tolerance_steps=N
+    leitet die Schrittweite je Run einzeln ab (Raster können differieren).
+    tolerance und tolerance_steps schließen sich aus.
     """
+    if tolerance_steps is not None and tolerance > 0:
+        raise HTTPException(status_code=400,
+                            detail="tolerance und tolerance_steps schließen sich aus — nur eins angeben")
     try:
         run_id_list = [int(part) for part in run_ids.split(',') if part.strip()]
     except ValueError:
@@ -520,7 +535,8 @@ def lookup_results_across_runs_route(
             detail=f"Unbekannte Parameter für die Run-Menge: {', '.join(unknown)}. "
                    f"Vorhanden: {', '.join(known) or 'keine (Runs leer?)'}",
         )
-    items, total = lookup_results_across_runs(engine, run_id_list, filters, tolerance, limit)
+    items, total = lookup_results_across_runs(engine, run_id_list, filters, tolerance, limit,
+                                              tolerance_steps=tolerance_steps)
     return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=0))
 
 

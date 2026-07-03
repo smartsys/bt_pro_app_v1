@@ -61,13 +61,13 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
                                                               #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
   python3 toolbox.py run-favorites-list --testset-run 6       # markierte Favoriten-Results ausgeben (reiner Read); Selektoren/Flags wie run-favorites-reset
   python3 toolbox.py result-lookup --run 1812 --params "vwma_length=20,atr_mult=2.5"    # Result(s) per Parameter-Werten nachschlagen (Subset, serverseitig)
-                                                              #   [--tolerance 1] = Nachbarschafts-Modus (±t je Parameter), [--limit 20]
+                                                              #   [--tolerance 1] = skalare Nachbarschaft (±t je Parameter) | [--tolerance-steps 1] = ±N Raster-Schritte je Achse, [--limit 20]
                                                               #   [--summary] = Plateau-Score (Median/Mittel/Streuung/Anteil profitabel) statt Trefferliste
   python3 toolbox.py result-query --run 1812 --where "sharpe_ratio>=1.5,total_trades>=100"  # kombinierte Metrik-Filter (nur >= und <=, UND-verknüpft)
                                                               #   [--sort <metrik>] [--direction asc|desc] [--limit 20]; Metriken: total_return_pct,
                                                               #   win_rate_pct, sharpe_ratio, profit_factor, max_drawdown_pct, total_trades
   python3 toolbox.py kreuztest --from-run 10 --to-run 11      # Bestwerte (rote Doku-Favoriten) aus Run A in Run B nachschlagen, Vergleichstabelle
-                                                              #   [--user] = gelbe Sterne zusätzlich, [--tolerance <t>] wie result-lookup
+                                                              #   [--user] = gelbe Sterne zusätzlich, [--tolerance <t> | --tolerance-steps <N>] wie result-lookup
   python3 toolbox.py kreuztest --from-testset-run 2 --to-testset-run 3  # ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (Walk-Forward)
   python3 toolbox.py combo-trace --testset-run 3 --params "vwma_length=2,…"  # eine Kombination über eine Run-Menge verfolgen (1:N); Selektoren wie
                                                               #   run-bestwerte (--run | --strategy [--version] | --iteration | --testset-run)
@@ -1000,14 +1000,39 @@ def _parse_params_flag(raw: str) -> dict:
     return wanted
 
 
-def _lookup(run_id: int, params: dict, tolerance=None, limit=None) -> dict:
+def _lookup(run_id: int, params: dict, tolerance=None, limit=None, tolerance_steps=None) -> dict:
     """Ruft die Lookup-Route auf und gibt deren data-Block (items/total) zurück."""
     qp = dict(params)
     if tolerance is not None:
         qp["tolerance"] = tolerance
+    if tolerance_steps is not None:
+        qp["tolerance_steps"] = tolerance_steps
     if limit is not None:
         qp["limit"] = limit
     return fetch(f"/api/backtest/runs/{run_id}/results/lookup?{urllib.parse.urlencode(qp)}")["data"]
+
+
+def _tolerance_kwargs(f: dict) -> dict:
+    """Liest --tolerance / --tolerance-steps in _lookup-kwargs (schließen sich aus)."""
+    tol = f.get("tolerance")
+    steps = f.get("tolerance-steps")
+    if tol and steps:
+        raise ValueError("--tolerance und --tolerance-steps schließen sich aus — nur eins angeben")
+    kwargs: dict = {}
+    if tol:
+        kwargs["tolerance"] = tol
+    if steps:
+        kwargs["tolerance_steps"] = steps
+    return kwargs
+
+
+def _tolerance_label(f: dict) -> str:
+    """Einheitlicher Toleranz-Zusatz für die Markdown-Überschriften."""
+    if f.get("tolerance-steps"):
+        return f" · Toleranz ±{f['tolerance-steps']} Schritt(e)"
+    if f.get("tolerance"):
+        return f" · Toleranz ±{f['tolerance']}"
+    return ""
 
 
 def _neighborhood_summary(items: list) -> dict:
@@ -1038,23 +1063,26 @@ def _neighborhood_summary(items: list) -> dict:
 def result_lookup(args: list) -> int:
     """Results eines Runs per Parameter-Werten nachschlagen (serverseitig).
 
-    Flags: --run <id> --params "key=wert,key2=wert2" [--tolerance <t>] [--limit <n=20>]
-           [--summary] [--json]
-    Ohne --tolerance exakter Lookup der einen Kombination; mit --tolerance
-    alle Results, deren Parameter je ±t um die Zielwerte liegen (Plateau-
-    Prüfung). Subset: nur die angegebenen Keys müssen passen. Unbekannte
-    Parameter-Namen meldet der Server mit den vorhandenen Namen des Runs.
-    --summary verdichtet die Nachbarschaft zum Plateau-Score (holt dafür
-    die volle Treffermenge, --limit spielt dann keine Rolle).
+    Flags: --run <id> --params "key=wert,key2=wert2"
+           [--tolerance <t> | --tolerance-steps <N>] [--limit <n=20>] [--summary] [--json]
+    Ohne Toleranz exakter Lookup der einen Kombination; mit --tolerance alle
+    Results, deren Parameter je ±t (skalar) um die Zielwerte liegen; mit
+    --tolerance-steps N je Parameter ±N Raster-Schritte (Schrittweite aus dem
+    Run abgeleitet — bildet die echte ±N-Schritt-Nachbarschaft auch bei
+    ungleichen Schrittweiten je Achse). Subset: nur die angegebenen Keys müssen
+    passen. Unbekannte Parameter-Namen meldet der Server mit den vorhandenen
+    Namen des Runs. --summary verdichtet die Nachbarschaft zum Plateau-Score
+    (holt dafür die volle Treffermenge, --limit spielt dann keine Rolle).
     """
     f = _parse_flags(args)
     run_id = int(_require(f, "run", "result-lookup"))
     wanted = _parse_params_flag(_require(f, "params", "result-lookup"))
     pstr = ", ".join(f"{k}={v}" for k, v in wanted.items())
-    tol = f" · Toleranz ±{f['tolerance']}" if f.get("tolerance") else ""
+    tkw = _tolerance_kwargs(f)
+    tol = _tolerance_label(f)
 
     if f.get("summary"):
-        d = _lookup(run_id, wanted, tolerance=f.get("tolerance"), limit=100000)
+        d = _lookup(run_id, wanted, limit=100000, **tkw)
         items = d.get("items") or []
         summ = _neighborhood_summary(items)
         if _maybe_json(f, summ):
@@ -1073,7 +1101,7 @@ def result_lookup(args: list) -> int:
         return 0
 
     out_limit = int(f.get("limit", 20))
-    d = _lookup(run_id, wanted, tolerance=f.get("tolerance"), limit=out_limit)
+    d = _lookup(run_id, wanted, limit=out_limit, **tkw)
     items = d.get("items") or []
     total = d.get("total") or 0
     if _maybe_json(f, {"total": total, "items": items}):
@@ -1104,7 +1132,7 @@ def _favorite_results(run_id: int, kinds: list) -> list:
     return favorites
 
 
-def _kreuztest_rows(run_a: int, run_b: int, kinds: list, tolerance) -> list:
+def _kreuztest_rows(run_a: int, run_b: int, kinds: list, tol_kwargs: dict) -> list:
     """Vergleichszeilen eines Run-Paars: je Favorit aus A das Gegenstück aus B (oder None)."""
     rows = []
     for a in sorted(_favorite_results(run_a, kinds), key=lambda x: x["id"]):
@@ -1112,7 +1140,7 @@ def _kreuztest_rows(run_a: int, run_b: int, kinds: list, tolerance) -> list:
                       if isinstance(v, (int, float)) and not isinstance(v, bool)}
         b = None
         if num_params:
-            items = _lookup(run_b, num_params, tolerance=tolerance, limit=1).get("items") or []
+            items = _lookup(run_b, num_params, limit=1, **tol_kwargs).get("items") or []
             b = items[0] if items else None
         rows.append({"params": num_params, "a": a, "b": b})
     return rows
@@ -1141,19 +1169,19 @@ def kreuztest(args: list) -> int:
     Flags: --from-run <A> --to-run <B>                        (Einzel-Paar)
        oder --from-testset-run <A> --to-testset-run <B>       (ganze Fenster/Testsets,
             Runs werden per Symbol+Timeframe gepaart — BTC-Run zu BTC-Run usw.)
-       dazu [--user] [--tolerance <t>] [--json]
+       dazu [--user] [--tolerance <t> | --tolerance-steps <N>] [--json]
     Quelle sind die roten Doku-Favoriten (Bestwerte) der A-Seite; --user nimmt
     zusätzlich die gelben User-Sterne. Je Kombination wird das Result mit
     denselben Parameterwerten auf der B-Seite nachgeschlagen (nur numerische
     Parameter; run-gebundene Keys wie symbol bleiben außen vor). Mit
-    --tolerance zählt bei mehreren Nachbarschafts-Treffern der beste
-    Total Return.
+    --tolerance (skalar) oder --tolerance-steps (±N Raster-Schritte je
+    Parameter) zählt bei mehreren Nachbarschafts-Treffern der beste Total Return.
     """
     f = _parse_flags(args)
     kinds = ["doc"] + (["user"] if f.get("user") else [])
-    tolerance = f.get("tolerance")
+    tol_kwargs = _tolerance_kwargs(f)
     label = "rote Doku-Favoriten" + (" + gelbe User-Sterne" if f.get("user") else "")
-    tol = f" · Toleranz ±{tolerance}" if tolerance else ""
+    tol = _tolerance_label(f)
 
     # Paar-Auflösung: Einzel-Paar oder Testset-Lauf gegen Testset-Lauf.
     unmatched: list = []
@@ -1180,7 +1208,7 @@ def kreuztest(args: list) -> int:
         pairs = [(run_a, run_b, "")]
         scope = f"run:{run_a} → run:{run_b}"
 
-    results = [{"run_a": a, "run_b": b, "match": m, "rows": _kreuztest_rows(a, b, kinds, tolerance)}
+    results = [{"run_a": a, "run_b": b, "match": m, "rows": _kreuztest_rows(a, b, kinds, tol_kwargs)}
                for a, b, m in pairs]
     if _maybe_json(f, {"scope": scope, "pairs": results, "unmatched": unmatched}):
         return 0
@@ -1204,13 +1232,16 @@ def combo_trace(args: list) -> int:
 
     Flags: --params "key=wert,key2=wert2" + Selektor wie run-bestwerte
            (--run <id> | --strategy <slug> [--version <n>] | --iteration <id> |
-            --testset-run <id>)   [--tolerance <t>] [--limit <n=200>] [--json]
+            --testset-run <id>)   [--tolerance <t> | --tolerance-steps <N>] [--limit <n=200>] [--json]
     Schlägt die Kombination in jedem Run des Scopes nach (serverseitig über
     /api/backtest/results/lookup) und listet je Treffer Run-Kontext
     (Symbol/Timeframe) plus Kennzahlen. Runs ohne Treffer werden ausgewiesen.
+    Im Schritt-Modus (--tolerance-steps) wird die Schrittweite je Run einzeln
+    abgeleitet (Raster können differieren).
     """
     f = _parse_flags(args)
     wanted = _parse_params_flag(_require(f, "params", "combo-trace"))
+    tkw = _tolerance_kwargs(f)
     runs, scope = _resolve_runs(f, "combo-trace")
     if not runs:
         print(f"## Kombinations-Verfolgung — {scope}\n- (keine Runs)\n")
@@ -1219,8 +1250,10 @@ def combo_trace(args: list) -> int:
 
     qp = dict(wanted)
     qp["run_ids"] = ",".join(str(i) for i in run_ids)
-    if f.get("tolerance"):
-        qp["tolerance"] = f["tolerance"]
+    if "tolerance" in tkw:
+        qp["tolerance"] = tkw["tolerance"]
+    if "tolerance_steps" in tkw:
+        qp["tolerance_steps"] = tkw["tolerance_steps"]
     qp["limit"] = f.get("limit", 200)
     d = fetch(f"/api/backtest/results/lookup?{urllib.parse.urlencode(qp)}")["data"]
     items = d.get("items") or []
@@ -1229,7 +1262,7 @@ def combo_trace(args: list) -> int:
         return 0
 
     pstr = ", ".join(f"{k}={v}" for k, v in wanted.items())
-    tol = f" · Toleranz ±{f['tolerance']}" if f.get("tolerance") else ""
+    tol = _tolerance_label(f)
     print(f"## Kombinations-Verfolgung — {scope} ({len(run_ids)} Run(s)) — {pstr}{tol} ({total} Treffer)")
     hit_runs = set()
     for r in items:

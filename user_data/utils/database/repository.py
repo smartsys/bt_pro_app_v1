@@ -987,34 +987,82 @@ def get_run_param_names(engine: Engine, run_id: int) -> List[str]:
     return [r.param_name for r in rows]
 
 
-def _param_exists_conditions(filters: Dict[str, float], tolerance: float, binds: dict) -> List[str]:
+def _param_exists_conditions(filters: Dict[str, float], tolerances: Dict[str, float],
+                             binds: dict, suffix: str = "") -> List[str]:
     """EXISTS-Bedingungen je Parameter gegen backtest_result_params (Index idx_bpa_result_param).
 
-    tolerance=0 ist der exakte Lookup — ein winziges Epsilon fängt dabei
-    Float-Artefakte der arange-Raster ab. Befüllt binds in-place.
+    tolerances liefert je Parameter die halbe Fenster-Breite (0 = exakter Lookup);
+    ein winziges Epsilon fängt zusätzlich Float-Artefakte der arange-Raster ab.
+    Der Suffix hält Bind-Namen und Tabellen-Alias eindeutig, wenn die Bedingungen
+    mehrfach (z.B. je Run mit eigener Toleranz) in dieselbe Query eingebaut werden.
+    Befüllt binds in-place.
     """
     conditions = []
     for i, (name, value) in enumerate(filters.items()):
+        tol = tolerances.get(name, 0.0)
         eps = 1e-9 * max(1.0, abs(value))
-        binds[f'name{i}'] = name
-        binds[f'lo{i}'] = value - tolerance - eps
-        binds[f'hi{i}'] = value + tolerance + eps
+        key = f"{i}{suffix}"
+        binds[f'name{key}'] = name
+        binds[f'lo{key}'] = value - tol - eps
+        binds[f'hi{key}'] = value + tol + eps
         conditions.append(
-            f"EXISTS (SELECT 1 FROM backtest_result_params p{i} "
-            f"WHERE p{i}.result_id = r.id AND p{i}.param_name = :name{i} "
-            f"AND p{i}.param_value BETWEEN :lo{i} AND :hi{i})"
+            f"EXISTS (SELECT 1 FROM backtest_result_params p{key} "
+            f"WHERE p{key}.result_id = r.id AND p{key}.param_name = :name{key} "
+            f"AND p{key}.param_value BETWEEN :lo{key} AND :hi{key})"
         )
     return conditions
 
 
-def lookup_result_rows_by_params(engine: Engine, run_id: int, filters: Dict[str, float],
-                                 tolerance: float, limit: int) -> Tuple[List[dict], int]:
-    """Results eines Runs, deren Parameter je ±tolerance um die Zielwerte liegen.
+def get_run_param_steps(engine: Engine, run_id: int, param_names: List[str]) -> Dict[str, float]:
+    """Schrittweite je Parameter = kleinster positiver Abstand der sortierten distinct-Werte des Runs.
 
+    Grundlage für den schrittweiten Nachbarschafts-Modus (tolerance_steps): damit
+    lässt sich eine echte ±N-Schritt-Nachbarschaft auch bei ungleichen
+    Schrittweiten je Achse bilden (z.B. ema_fast Schritt 5, ema_slow Schritt 25).
+    Parameter mit nur einem distinct-Wert (eingefrorene Achse) bekommen Schritt
+    0.0 und matchen damit wie tolerance=0 exakt.
+    """
+    steps: Dict[str, float] = {}
+    with engine.connect() as conn:
+        for name in param_names:
+            rows = conn.execute(text("""
+                SELECT DISTINCT p.param_value AS v
+                FROM backtest_result_params p
+                JOIN backtest_results r ON r.id = p.result_id
+                WHERE r.run_id = :run_id AND p.param_name = :name
+                ORDER BY v
+            """), {'run_id': run_id, 'name': name}).fetchall()
+            values = [r.v for r in rows]
+            gaps = [b - a for a, b in zip(values, values[1:]) if b - a > 1e-12]
+            steps[name] = min(gaps) if gaps else 0.0
+    return steps
+
+
+def _resolve_tolerances(engine: Engine, run_id: int, filters: Dict[str, float],
+                        tolerance: float, tolerance_steps) -> Dict[str, float]:
+    """Baut die Toleranz je Parameter — schrittweit (aus distinct-Werten) oder skalar.
+
+    Ist tolerance_steps gesetzt, wird die Schrittweite je Achse aus dem Run
+    abgeleitet und mit N multipliziert; sonst gilt die skalare tolerance für alle.
+    """
+    if tolerance_steps is not None:
+        step_map = get_run_param_steps(engine, run_id, list(filters.keys()))
+        return {name: tolerance_steps * step_map.get(name, 0.0) for name in filters}
+    return {name: (tolerance or 0.0) for name in filters}
+
+
+def lookup_result_rows_by_params(engine: Engine, run_id: int, filters: Dict[str, float],
+                                 tolerance: float, limit: int,
+                                 tolerance_steps=None) -> Tuple[List[dict], int]:
+    """Results eines Runs, deren Parameter je Nachbarschaft um die Zielwerte liegen.
+
+    Nachbarschaft ist entweder skalar (±tolerance je Parameter) oder schrittweit
+    (±tolerance_steps Raster-Schritte je Parameter, aus dem Run abgeleitet).
     Gibt (items, total) zurück; total wird nur bei vollem Limit separat gezählt.
     """
     binds: dict = {'run_id': run_id, 'lim': limit}
-    conditions = _param_exists_conditions(filters, tolerance, binds)
+    tolerances = _resolve_tolerances(engine, run_id, filters, tolerance, tolerance_steps)
+    conditions = _param_exists_conditions(filters, tolerances, binds)
     where = f"r.run_id = :run_id AND {' AND '.join(conditions)}"
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
@@ -1065,16 +1113,30 @@ def get_scope_param_names(engine: Engine, run_ids: List[int]) -> List[str]:
 
 
 def lookup_results_across_runs(engine: Engine, run_ids: List[int], filters: Dict[str, float],
-                               tolerance: float, limit: int) -> Tuple[List[dict], int]:
+                               tolerance: float, limit: int,
+                               tolerance_steps=None) -> Tuple[List[dict], int]:
     """Kombinations-Verfolgung: Results mit passenden Parametern über mehrere Runs.
 
     Wie lookup_result_rows_by_params, aber über eine Run-Menge, mit Run-Kontext
     (Symbol/Timeframe) im Ergebnis, sortiert nach run_id und Total Return.
+    Im Schritt-Modus wird die Schrittweite je Run einzeln abgeleitet (Raster
+    können differieren) und die Zweige werden OR-verknüpft.
     Gibt (items, total) zurück; total wird nur bei vollem Limit separat gezählt.
     """
-    binds: dict = {'run_ids': list(run_ids), 'lim': limit}
-    conditions = _param_exists_conditions(filters, tolerance, binds)
-    where = f"r.run_id = ANY(:run_ids) AND {' AND '.join(conditions)}"
+    binds: dict = {'lim': limit}
+    if tolerance_steps is not None:
+        branches = []
+        for j, rid in enumerate(run_ids):
+            tolerances = _resolve_tolerances(engine, rid, filters, None, tolerance_steps)
+            conds = _param_exists_conditions(filters, tolerances, binds, suffix=f"_r{j}")
+            binds[f'rid{j}'] = rid
+            branches.append(f"(r.run_id = :rid{j} AND {' AND '.join(conds)})")
+        where = "(" + " OR ".join(branches) + ")"
+    else:
+        binds['run_ids'] = list(run_ids)
+        tolerances = {name: (tolerance or 0.0) for name in filters}
+        conditions = _param_exists_conditions(filters, tolerances, binds)
+        where = f"r.run_id = ANY(:run_ids) AND {' AND '.join(conditions)}"
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
             SELECT r.id, r.run_id, br.symbol, br.timeframe, r.actual_params_json,
