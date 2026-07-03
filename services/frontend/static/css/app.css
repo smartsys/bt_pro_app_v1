@@ -1162,8 +1162,8 @@ tr.dt-hasChild td.dt-control::before {
   padding-bottom: 0.0625rem;
 }
 .cp-stops-fields .cp-param-field {
-  width: 58px;
-  min-width: 58px;
+  width: 90px;
+  min-width: 90px;
 }
 /* Statischer "Stops"-Name in der verschiebbaren Stops-Zeile (Optik wie der Indikator-Name) */
 .cp-stops-name {

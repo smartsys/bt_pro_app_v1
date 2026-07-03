@@ -467,6 +467,23 @@
   // Dient dem Schnellbacktest als Änderungs-Check: nur bei abweichendem Stand vor dem Lauf neu laden.
   let cpLoadedOhlcKey = null;
 
+  // GEÄNDERT: Nachkommastellen der Preisachse an die Groessenordnung koppeln.
+  // Bei Preisen unter 1 Euro (z.B. FETUSDT ~0,02) reichen 2 Stellen nicht — dann 4 Stellen.
+  // Wird aus dem zuletzt geladenen OHLC-Stand abgeleitet und sowohl auf die Candle-Serie
+  // als auch auf die Indikator-Linien angewendet, damit die Achse konsistent formatiert.
+  let cpPricePrecision = 2;
+
+  function cpComputePricePrecision() {
+    const oh = state.ohlcv;
+    if (!oh || !oh.length) { cpPricePrecision = 2; return; }
+    const ref = oh[oh.length - 1].close;
+    cpPricePrecision = (ref != null && ref < 1) ? 4 : 2;
+  }
+
+  function cpPriceFormat() {
+    return { type: 'price', precision: cpPricePrecision, minMove: cpPricePrecision === 4 ? 0.0001 : 0.01 };
+  }
+
   function resampleCandles(candles, targetSec) {
     const result = []; let group = [], bucket = null;
     for (const c of candles) {
@@ -766,6 +783,9 @@
       if (cpRestoreLayout) { visualTf = cpRestoreLayout.visualTf; renderTfButtons(); }
       else setDefaultVisualTf();
       const initTargetSec = visualTf ? CHART_TF_SEC[visualTf] : null;
+      // GEÄNDERT: Preis-Nachkommastellen aus der Groessenordnung ableiten und anwenden
+      cpComputePricePrecision();
+      state.candleSeries.applyOptions({ priceFormat: cpPriceFormat() });
       state.candleSeries.setData(initTargetSec ? resampleCandles(state.ohlcv, initTargetSec) : state.ohlcv);
       state.chart.timeScale().applyOptions({ timeVisible: !(visualTf === '1d' || visualTf === '1w') });
       // Gespeicherten Candles-Toggle-Status anwenden
@@ -1417,7 +1437,7 @@
     return `rgba(${r}, ${g}, ${b}, ${o})`;
   }
   function indLineOptions(ind) {
-    return { color: indLineColor(ind), lineWidth: ind.lineWidth || 1, lineStyle: indLineStyleVal(ind.lineStyle), title: ind.display_name };
+    return { color: indLineColor(ind), lineWidth: ind.lineWidth || 1, lineStyle: indLineStyleVal(ind.lineStyle), title: ind.display_name, priceFormat: cpPriceFormat() };
   }
 
   // GEÄNDERT: Touch-Punkte als nummerierte Marker über der Kerze. Jeder Indikator-Output, dessen

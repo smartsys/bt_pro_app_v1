@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.38] - 03.07.2026
+
+### Changed
+- Chart-Playground: Preisachse mit vier Nachkommastellen bei Preisen unter 1 Euro und breitere Stops-Wertfelder
+  - Preis-Nachkommastellen der Candle-Serie und Indikator-Linien an die Groessenordnung gekoppelt: Referenzpreis (letzter Close) unter 1 wird mit Precision 4 (minMove 0.0001) formatiert, sonst weiterhin 2 Stellen
+  - Stops-Wertfelder (tp/sl/tsl/td) von 58px auf 90px verbreitert, damit Werte wie 0.017 nicht mehr abgeschnitten werden; Indikator-Param-Felder bleiben bei 58px
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/static/css/app.css
+
+
+
 ## [1.30.37] - 03.07.2026
 
 ### Changed
