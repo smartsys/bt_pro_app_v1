@@ -460,6 +460,9 @@
   }
   const CHART_TF_LIST = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w'];
   let visualTf = null;  // null = Basis-TF
+  // GEÄNDERT: Gespeichertes Anzeige-Layout beim Setup-Load (Anzeige-TF + Zoom-Bereich). null = Default 1D+Fit.
+  // Setzt applySetupConfig; loadChart/runBacktestLite ueberspringen den Fit-Default und stellen den Stand her.
+  let cpRestoreLayout = null;
   // GEÄNDERT: Signatur des zuletzt in den Chart geladenen OHLC-Stands (Exchange/Symbol/tf/Start/End).
   // Dient dem Schnellbacktest als Änderungs-Check: nur bei abweichendem Stand vor dem Lauf neu laden.
   let cpLoadedOhlcKey = null;
@@ -567,6 +570,15 @@
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (!state.chart) return;
       try { state.chart.timeScale().fitContent(); cpUpdateFitButtonState(); } catch (e) {}
+    }));
+  }
+
+  // GEÄNDERT: Gespeicherten Zoom-Bereich verzoegert wiederherstellen (gleiche Layout-Begruendung wie cpFitChartDeferred).
+  function cpRestoreRangeDeferred(range) {
+    if (!state.chart || !range) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!state.chart) return;
+      try { state.chart.timeScale().setVisibleLogicalRange(range); cpUpdateFitButtonState(); } catch (e) {}
     }));
   }
 
@@ -750,8 +762,9 @@
       // GEÄNDERT: OHLC-Stand merken, damit der Schnellbacktest erkennt, ob seither tf/Symbol/Zeitraum geändert wurde.
       cpLoadedOhlcKey = cpOhlcKey();
       createMainChart();
-      // GEÄNDERT: Standard-Anzeige-TF beim Laden auf 1D (Fit) setzen, sofern Basis-TF feiner als 1D ist
-      setDefaultVisualTf();
+      // GEÄNDERT: Beim Setup-Load gespeicherten Anzeige-TF wiederherstellen, sonst Default 1D (sofern Basis feiner)
+      if (cpRestoreLayout) { visualTf = cpRestoreLayout.visualTf; renderTfButtons(); }
+      else setDefaultVisualTf();
       const initTargetSec = visualTf ? CHART_TF_SEC[visualTf] : null;
       state.candleSeries.setData(initTargetSec ? resampleCandles(state.ohlcv, initTargetSec) : state.ohlcv);
       state.chart.timeScale().applyOptions({ timeVisible: !(visualTf === '1d' || visualTf === '1w') });
@@ -759,12 +772,14 @@
       if (!document.getElementById('cpToggleCandles').checked) {
         state.candleSeries.applyOptions({ upColor: 'transparent', downColor: 'transparent', wickUpColor: 'transparent', wickDownColor: 'transparent', borderVisible: false });
       }
-      state.chart.timeScale().fitContent();
+      // GEÄNDERT: Beim Restore NICHT fitten — sonst ueberschreibt der Fit den gespeicherten Zoom
+      if (!cpRestoreLayout) state.chart.timeScale().fitContent();
       cpUpdateFitButtonState();
       setStatus('OHLCV geladen: ' + state.ohlcv.length + ' Candles', 'ok');
       if (state.indicators.length > 0) await applyIndicators();
       // GEÄNDERT: Finalen Fit nach dem Layout nachziehen, damit der Chart beim Laden garantiert auf "Fit" steht.
-      cpFitChartDeferred();
+      // Beim Setup-Restore wird der Fit uebersprungen; der Zoom-Bereich stellt runBacktestLite nach dem Equity-Overlay her.
+      if (!cpRestoreLayout) cpFitChartDeferred();
     } catch (e) {
       setStatus('Fehler: ' + e.message, 'err');
     } finally {
@@ -1600,8 +1615,11 @@
     try {
       const body = {
         symbol: sy, exchange: ex, timeframe: tf,
-        start: document.getElementById('cpStart').value || null,
-        end: document.getElementById('cpEnd').value || null,
+        // GEÄNDERT: Indikatoren über den OHLC-Vorlauf rechnen (OHLC Start/End), nicht erst ab
+        // dem Rechenfenster (Start/End). Sonst fehlt der Warm-up und die Indikatoren erscheinen
+        // verzögert. Spiegelt loadChart und den echten Spec-Runner (lädt ab ohlc_start).
+        start: document.getElementById('cpOhlcStart').value || document.getElementById('cpStart').value || null,
+        end: document.getElementById('cpOhlcEnd').value || document.getElementById('cpEnd').value || null,
         indicators: state.indicators.map(i => ({ id: i.id, name: i.name, client_id: i.client_id, params: i.params, inputs: i.inputs || {}, timeframe: i.timeframe || null })),
       };
       const r = await fetch('/api/chart-playground/compute', {
@@ -2495,8 +2513,16 @@
         cpCurrentTrades = d.trades_data;
         cpApplyMarkerFilter();
       }
-      // GEÄNDERT: Im Lade-Pfad nach dem Equity-Overlay final fitten (siehe cpFitChartDeferred).
-      if (fitAfter) cpFitChartDeferred();
+      // GEÄNDERT: Beim Setup-Restore den gespeicherten Zoom-Bereich nach dem Equity-Overlay herstellen
+      // (statt zu fitten); danach Restore-Modus beenden. Sonst im Lade-Pfad final fitten.
+      if (cpRestoreLayout) {
+        const restoreRange = cpRestoreLayout.range;
+        cpRestoreLayout = null;
+        if (restoreRange) cpRestoreRangeDeferred(restoreRange);
+        else cpUpdateFitButtonState();
+      } else if (fitAfter) {
+        cpFitChartDeferred();
+      }
     } catch (e) {
       clearTimeout(timeoutId);
       if (e.name === 'AbortError') {
@@ -2506,6 +2532,8 @@
       }
     } finally {
       btn.disabled = false; btn.textContent = 'Schnellbacktest';
+      // GEÄNDERT: Restore-Modus in jedem Fall beenden, damit ein fehlgeschlagener Lauf ihn nicht in den naechsten loadChart traegt
+      cpRestoreLayout = null;
     }
   }
 
@@ -2620,6 +2648,10 @@
     strategy_config_json.concept_slug = document.getElementById('cpConceptSlug').value || null;
     const ui_state_json = {
       show_candles: document.getElementById('cpToggleCandles').checked,
+      // GEÄNDERT: Anzeige-Layout mitspeichern — Anzeige-TF (visualTf, null = Basis-TF) und sichtbarer
+      // Zoom-Bereich, damit ein geladenes Setup den gespeicherten Chart-Ausschnitt wiederherstellt statt 1D+Fit.
+      visual_tf: visualTf,
+      visual_range: (state.chart && state.candleSeries) ? state.chart.timeScale().getVisibleLogicalRange() : null,
       // GEÄNDERT: Anzeige-Toggles aus der Einstellungs-Card mitspeichern
       show_equity: document.getElementById('cpToggleEquity').checked,
       show_long: document.getElementById('cpToggleLong').checked,
@@ -2647,6 +2679,13 @@
     const strat = (data && data.strategy_config_json) || {};
     const ui = (data && data.ui_state_json) || {};
     const uiInds = ui.indicators || {};
+
+    // GEÄNDERT: Gespeichertes Anzeige-Layout (Anzeige-TF + Zoom-Bereich) in den Restore-Modus uebernehmen.
+    // Nur wenn visual_tf im Setup vorhanden ist — Alt-Setups und der Result-Ladepfad (ohne den Key)
+    // behalten damit den Default 1D+Fit. loadChart/runBacktestLite werten cpRestoreLayout aus.
+    cpRestoreLayout = (ui.visual_tf !== undefined)
+      ? { visualTf: ui.visual_tf, range: ui.visual_range || null }
+      : null;
 
     // Konzept-Dropdown auf gespeichertes Konzept setzen und Iterationen nachladen
     if (strat.concept_slug !== undefined) {

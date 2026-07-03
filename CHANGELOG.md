@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.37] - 03.07.2026
+
+### Changed
+- Chart-Playground: Anzeige-Timeframe und Zoom-Bereich werden im Setup gespeichert und beim Setup-Laden wiederhergestellt statt hart auf 1D+Fit zu setzen
+  - collectSetupConfig speichert visual_tf (Anzeige-TF, null = Basis-TF) und visual_range (sichtbarer Zoom-Bereich) in ui_state_json
+  - applySetupConfig aktiviert einen Restore-Modus (cpRestoreLayout), sobald visual_tf im Setup vorhanden ist
+  - loadChart ueberspringt beim Restore setDefaultVisualTf und fitContent und setzt den gespeicherten Anzeige-TF; runBacktestLite stellt nach dem Equity-Overlay den gespeicherten Zoom-Bereich her statt zu fitten
+  - Alt-Setups ohne visual_tf und der Result-Ladepfad behalten unveraendert das Verhalten 1D+Fit
+  - Offen/unverifiziert: separater Fit-Button-Reset beim Result-Laden noch nicht abschliessend geprueft; Alt-Setups muessen zum Wirksamwerden neu gespeichert werden
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.36] - 03.07.2026
 
 ### Fixed
