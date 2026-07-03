@@ -37,6 +37,8 @@ from user_data.utils.database.models import (
     StrategyConcept, StrategyIteration,
     TestSet, TestSetRun,
 )
+# GEÄNDERT: ToDo 10 — Key->Label-Mapping der Bestwert-Kriterien (Single Source, serverseitig)
+from services.api.utils.best_criteria_labels import criteria_keys_to_labels
 # GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
 from user_data.utils.database.repository import (
     create_backtest_run, _count_combinations, _build_resolved_config,
@@ -607,13 +609,15 @@ _DT_COLUMNS = [
     'is_favorite',  # Index 1: gelber Stern
     # GEÄNDERT: Doku-Favorit-Spalte (roter Stern) direkt nach gelbem Stern
     'is_doc_favorite',  # Index 2: roter Stern
+    # GEÄNDERT: ToDo 10 — Bestwert-Kriterium-Badges zwischen Stern und ID (nicht sortierbar)
+    None,  # Index 3: best_criteria (Badges)
     # GEÄNDERT: Strategie-Spalte in Konzept + Iteration aufgeteilt; Konzept sortiert nach
     # Concept-Name, Iteration nach numerischer Iterations-Version
-    'id', 'run_id', '__concept__', '__iteration__', 'symbol', 'timeframe',  # Index 3-8
-    None, None,  # Index 9-10: Start/Ende (Sortierung via Run)
-    'tp_stop', 'sl_stop', 'sharpe_ratio', 'sortino_ratio', 'max_drawdown_pct',  # Index 11-15
-    'total_trades', 'win_rate_pct', 'profit_factor', 'total_return_pct',  # Index 16-19
-    'end_value', None, None  # Index 20-22
+    'id', 'run_id', '__concept__', '__iteration__', 'symbol', 'timeframe',  # Index 4-9
+    None, None,  # Index 10-11: Start/Ende (Sortierung via Run)
+    'tp_stop', 'sl_stop', 'sharpe_ratio', 'sortino_ratio', 'max_drawdown_pct',  # Index 12-16
+    'total_trades', 'win_rate_pct', 'profit_factor', 'total_return_pct',  # Index 17-20
+    'end_value', None, None  # Index 21-23
 ]
 
 # GEÄNDERT: Numerische Min/Max-Feld-Filter für die Results-Tabelle.
@@ -637,7 +641,9 @@ def get_results_datatable(request: Request) -> dict:
     length = int(params.get('length', 25))
     search_value = params.get('search[value]', '').strip()
 
-    order_col_idx = int(params.get('order[0][column]', 15))
+    # GEÄNDERT: ToDo 10 — Default-Sortierspalte um +1 verschoben (neue Badge-Spalte an Index 3);
+    # 16 = max_drawdown_pct (wie zuvor 15)
+    order_col_idx = int(params.get('order[0][column]', 16))
     order_dir = params.get('order[0][dir]', 'desc')
 
     # GEÄNDERT: Strategie-Filter in Konzept + Iteration getrennt (jeweils per ID);
@@ -828,6 +834,9 @@ def get_results_datatable(request: Request) -> dict:
                 'is_favorite': bool(result.is_favorite),
                 # GEÄNDERT: Doku-Favorit-Flag in Response mitliefern
                 'is_doc_favorite': bool(result.is_doc_favorite),
+                # GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als fertige Klartext-Labels
+                # (Frontend/Toolbox rendern nur; Key->Label-Mapping bleibt serverseitig)
+                'best_criteria': criteria_keys_to_labels(result.best_criteria_json),
                 'metrics_level': result.metrics_level,
                 'strategy_family': run.strategy_family,
                 'strategy_name': run.strategy_name,
@@ -1509,15 +1518,65 @@ def toggle_favorite(result_id: int) -> JSONResponse:
 # GEÄNDERT: Doku-Favorit-Toggle (roter Stern, unabhängig vom gelben Favorit)
 @router.post('/results/{result_id}/doc_favorite')
 def toggle_doc_favorite(result_id: int) -> JSONResponse:
-    """Doku-Favorit-Status eines Results umschalten (Toggle)."""
+    """Doku-Favorit-Status eines Results umschalten (Toggle).
+
+    Manueller Weg (Frontend-Stern): setzt keine Bestwert-Kriterien. Beim Ausschalten
+    werden vorhandene best_criteria_json mit-geleert — Flag und Kriterien sind gekoppelt,
+    kein verwaistes Label ohne Stern.
+    """
     session = get_session()
     try:
         result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
         if not result:
             raise HTTPException(status_code=404, detail="Result nicht gefunden")
         result.is_doc_favorite = 0 if result.is_doc_favorite else 1
+        # Kopplung: beim Ausschalten die gewonnenen Kriterien mit-leeren
+        if not result.is_doc_favorite:
+            result.best_criteria_json = None
         session.commit()
         return JSONResponse({'status': 'ok', 'id': result_id, 'is_doc_favorite': bool(result.is_doc_favorite)})
+    finally:
+        session.close()
+
+
+# GEÄNDERT: ToDo 10 — idempotentes Setzen von rotem Stern + gewonnenen Bestwert-Kriterien.
+# Anders als der Toggle schaltet dieser Weg den Stern nie AUS und schreibt die Kriterium-Keys
+# auch dann, wenn der Stern bereits gesetzt ist (run-bestwerte markiert idempotent). Genutzt
+# von der Toolbox (run-bestwerte); der manuelle Frontend-Stern bleibt der reine Toggle oben.
+@router.post('/results/{result_id}/doc_favorite/mark')
+def mark_doc_favorite_criteria(result_id: int, body: dict = Body(default=None)) -> JSONResponse:
+    """Setzt den roten Stern und die gewonnenen Bestwert-Kriterien (idempotent).
+
+    Body: {"criteria": ["max_return", "sharpe_band", ...]} — Liste stabiler Keys aus
+    best_criteria_labels.VALID_CRITERIA_KEYS. Unbekannte Keys -> 400. Der Stern wird
+    gesetzt (nie ausgeschaltet), die Kriterien werden geschrieben/ersetzt.
+    """
+    from services.api.utils.best_criteria_labels import VALID_CRITERIA_KEYS
+
+    payload = body or {}
+    criteria = payload.get('criteria') or []
+    if not isinstance(criteria, list):
+        return JSONResponse({'status': 'error', 'error': 'criteria muss eine Liste von Keys sein'}, status_code=400)
+    unknown = [k for k in criteria if k not in VALID_CRITERIA_KEYS]
+    if unknown:
+        return JSONResponse(
+            {'status': 'error', 'error': f'Unbekannte Kriterium-Keys: {unknown}. Erlaubt: {sorted(VALID_CRITERIA_KEYS)}'},
+            status_code=400,
+        )
+    session = get_session()
+    try:
+        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Result nicht gefunden")
+        result.is_doc_favorite = 1
+        # Keys deduplizieren, kanonische Reihenfolge egal (Anzeige mappt selbst)
+        result.best_criteria_json = list(dict.fromkeys(criteria)) if criteria else None
+        session.commit()
+        return JSONResponse({
+            'status': 'ok', 'id': result_id,
+            'is_doc_favorite': True,
+            'best_criteria': result.best_criteria_json,
+        })
     finally:
         session.close()
 

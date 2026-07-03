@@ -212,7 +212,15 @@ Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-res
 ### Vollständige Referenz (Detail-Flags, alle Routen)
 
 - **Syntax/Flags je Aktion** (inkl. aller Anlege-, Listen-, Lösch- und sonstigen Aktionen und Defaults): `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py --help`
-Keine eigenen Curl-Calls "zur Sicherheit". Zeigt das Skript ein Feld nicht, fehlt es im Briefing — dann das Skript erweitern statt Workaround.
+Keine eigenen Curl-Calls "zur Sicherheit". Zeigt das Skript ein Feld/Verb nicht, das du brauchst, fehlt es im Briefing — **nicht per Roh-API umgehen, sondern die Lücke in `documentation/todo/todo-toolbox.md` eintragen** (unter `## Offen`, nächste freie Nummer).
+
+**Eintrags-Qualität (Pflicht):** Der Eintrag muss **für sich allein verständlich** sein — ein frischer Chat ohne den heutigen Gesprächskontext muss ihn nachvollziehen und umsetzen können. Also nicht der knappe Einzeiler, der nur im Moment Sinn ergibt („Feld X fehlt"), sondern:
+- **Ziel** — was soll gehen, das heute nicht geht.
+- **Hintergrund / Warum blockiert** — **am Code belegt** (Datei:Zeile, Route, Schema), nicht behauptet. Bei falscher Ortsangabe verläuft sich der frische Chat (z.B. Server- vs. Toolbox-Logik verwechseln) — deshalb die Stelle vorher per grep/Read prüfen.
+- **Umsetzungsidee** — ein bis zwei konkrete Wege (Verb/Flag/Route), keine fertige Lösung nötig.
+- **Akzeptanzkriterium** — woran „fertig" erkennbar ist, verifizierbar.
+
+Momentaufnahmen (konkrete IDs, Datenstände) als solche markieren („Stand <Datum>, vor Umsetzung prüfen"), nicht als Dauerzustand — sie veralten.
 
 ### Pfad-B-spezifische Fehlerbilder
 

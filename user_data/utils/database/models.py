@@ -370,6 +370,12 @@ class BacktestResult(Base):
     # GEÄNDERT: Doku-Favoriten-Markierung (roter Stern — unabhängig vom gelben Favorit)
     is_doc_favorite = Column(Integer, nullable=False, default=0)
 
+    # GEÄNDERT: Bestwert-Kriterien, die dieses Result beim run-bestwerte-Lauf gewonnen hat.
+    # Liste stabiler Keys (z.B. ["max_return", "sharpe_band"]), NICHT die Klartext-Labels.
+    # Wird im Moment des roten Sterns festgehalten (Bänder sind run-relativ und nach dem
+    # Löschen der übrigen Run-Results nicht mehr herleitbar). NULL = kein Bestwert / Alt-Result.
+    best_criteria_json = Column(JSON, nullable=True)
+
     # GEÄNDERT: Ticket 10 — FK auf strategy_iterations
     iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=True)
     iteration = relationship('StrategyIteration', foreign_keys=[iteration_id])

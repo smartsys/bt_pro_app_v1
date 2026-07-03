@@ -9,6 +9,7 @@ POST           /api/config/backtest/{id}/copy
 Indicator-Configs (CRUD + Kopieren):
 GET/POST       /api/config/indicator
 GET/PUT/DELETE /api/config/indicator/{id}
+PATCH          /api/config/indicator/{id}                    (Teil-Update, nur gesetzte Felder)
 POST           /api/config/indicator/{id}/copy
 POST           /api/config/indicator/{id}/generate-labels   (Name+Beschreibung nach Notation)
 
@@ -335,6 +336,24 @@ class IndicatorConfigIn(BaseModel):
     is_default: int = 0
 
 
+class IndicatorConfigPatch(BaseModel):
+    """Teil-Update-Schema für Indicator-Config (PATCH).
+
+    Alle Felder optional. Es werden ausschließlich die im Request-Body TATSÄCHLICH
+    übermittelten Felder geschrieben (über model_dump(exclude_unset=True)) — im
+    Gegensatz zum Voll-Replace von PUT bleiben nicht mitgeschickte Felder (z.B.
+    config_json mit dem gesamten Parameter-Raster) unangetastet. Damit lässt sich
+    z.B. eine bestehende Config nachträglich einem Konzept/einer Iteration zuweisen
+    oder nur Name/Beschreibung setzen, ohne den Rest zu verlieren.
+    """
+    name: Optional[str] = None
+    description: Optional[str] = None
+    strategy_concept_id: Optional[int] = None
+    strategy_iteration_id: Optional[int] = None
+    config_json: Optional[dict] = None
+    is_default: Optional[int] = None
+
+
 class IndicatorConfigFromResultIn(BaseModel):
     """Eingabe-Schema für das Einfrieren einer IndicatorConfig aus einem Result.
 
@@ -579,6 +598,47 @@ def update_indicator_config(config_id: int, data: IndicatorConfigIn):
         config.strategy_iteration_id = data.strategy_iteration_id
         config.config_json = data.config_json
         config.is_default = data.is_default
+        config.updated_at = datetime.now()
+
+        session.commit()
+        session.refresh(config)
+        concept_map, iteration_map = _load_concept_iteration_maps(session)
+        item = IndicatorConfigOut.model_validate(config).model_dump(mode='json')
+        _enrich_indicator_config_dict(item, concept_map, iteration_map)
+        return {'data': item, 'error': None}
+    finally:
+        session.close()
+
+
+@router.patch('/indicator/{config_id}')
+def patch_indicator_config(config_id: int, data: IndicatorConfigPatch):
+    """Bestehende Indicator-Config partiell aktualisieren (nur gesetzte Felder).
+
+    Anders als PUT (Voll-Replace) werden nur die im Body übermittelten Felder
+    geschrieben. Nicht mitgeschickte Felder bleiben bit-genau erhalten — insbesondere
+    config_json inkl. arange-Raster und _stops. Anwendungsfall: nachträgliche
+    Konzept-/Iterations-Verknüpfung oder gezieltes Setzen von Name/Beschreibung.
+    """
+    session = get_session()
+    try:
+        config = session.query(IndicatorConfig).filter(IndicatorConfig.id == config_id).first()
+        if not config:
+            return JSONResponse({'data': None, 'error': 'Config nicht gefunden'}, status_code=404)
+
+        # Nur tatsächlich übermittelte Felder (exclude_unset) — kein stiller Overwrite
+        # mit Default-None auf nicht mitgeschickte Felder.
+        changes = data.model_dump(exclude_unset=True)
+        if not changes:
+            return JSONResponse({'data': None, 'error': 'Keine Felder zum Aktualisieren übergeben'}, status_code=400)
+
+        # is_default bleibt exklusiv: wird es auf truthy gesetzt, alle anderen zurücksetzen
+        if changes.get('is_default'):
+            session.query(IndicatorConfig).filter(
+                IndicatorConfig.id != config_id
+            ).update({IndicatorConfig.is_default: 0})
+
+        for field, value in changes.items():
+            setattr(config, field, value)
         config.updated_at = datetime.now()
 
         session.commit()

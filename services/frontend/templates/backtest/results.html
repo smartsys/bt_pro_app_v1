@@ -138,6 +138,8 @@
             <th class="w-1 text-center px-1" title="Favorit">F</th>
             {# GEÄNDERT: Doku-Favorit-Spalte (roter Stern) #}
             <th class="w-1 text-center px-1" title="Doku-Favorit">D</th>
+            {# GEÄNDERT: ToDo 10 — Bestwert-Kriterium-Badges zwischen Stern und ID #}
+            <th class="w-1 text-nowrap px-1" title="Gewonnenes Bestwert-Kriterium">Bestwert</th>
             <th class="text-nowrap">ID</th>
             <th class="text-nowrap">Run</th>
             <th class="text-nowrap">Konzept</th>
@@ -374,6 +376,19 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       },
       {
+        // GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als kompakte Badges. Der Server
+        // liefert fertige Klartext-Labels (best_criteria), das Frontend rendert nur.
+        data: "best_criteria",
+        orderable: false,
+        className: "text-nowrap px-1",
+        render: function(data) {
+          if (!data || !data.length) return '';
+          return data.map(function(label) {
+            return '<span class="badge bg-red-lt text-red me-1" title="Bestwert-Kriterium">' + label + '</span>';
+          }).join('');
+        }
+      },
+      {
         data: "id",
         render: function(data) {
           return data;
@@ -536,7 +551,8 @@ document.addEventListener("DOMContentLoaded", function() {
     pageLength: 25,
     dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
     lengthMenu: [[10, 25, 50, 100, 250], [10, 25, 50, 100, 250]],
-    order: [[3, "desc"]],
+    {# GEÄNDERT: ToDo 10 — Default-Sort auf ID (jetzt Index 4 durch neue Bestwert-Spalte an 3) #}
+    order: [[4, "desc"]],
     language: {
       search: "Suche:",
       processing: "Lade...",

@@ -87,6 +87,12 @@ durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
         --file = das config_json (Parameter-Raster, arange je Indikator).
         Ohne --name: Standard-Titel (und Beschreibung) nach Notation über den Server (preview-labels).
         Mit --name: individueller Name, verbatim. --description überschreibt die Auto-Beschreibung.
+  python3 toolbox.py indicator-config-set --id 4 [--concept 2 --iteration 2 --name "..." --description "..."]
+        Teil-Update (PATCH): schreibt NUR die gesetzten Felder; config_json/_stops bleiben unangetastet.
+        Kernfall: bestehende Config nachträglich einem Konzept/einer Iteration zuweisen.
+  python3 toolbox.py indicator-config-labels --id 4 [--name-suffix "..." --desc-suffix "..." --save]
+        Standard-Notation erzeugen (preview-labels), optional Zusatz anhängen (`<Notation> — <Zusatz>`),
+        mit --save via PATCH nur Name/Beschreibung zurückschreiben. Ohne --save nur Vorschau.
   python3 toolbox.py backtest-config-create --file backtest.json
         --file = der volle Body (Pflicht: name, start, end, ohlc_start, ohlc_end; Defaults: symbol BTCUSDT, exchange binance, timeframe 4h, size 100, size_type value, init_cash 100, fees 0.001).
   python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
@@ -862,8 +868,9 @@ def run_top_results(args: list) -> int:
 
 # Spalten-Index im /results/dt-Endpoint (Sortier-Parameter order[0][column])
 _DT_SORT_IDX = {
-    "sharpe_ratio": 13, "max_drawdown_pct": 15, "total_trades": 16,
-    "win_rate_pct": 17, "profit_factor": 18, "total_return_pct": 19,
+    # GEAENDERT: ToDo 10 — alle Indizes +1 (neue Bestwert-Badge-Spalte an Index 3 im /results/dt)
+    "sharpe_ratio": 14, "max_drawdown_pct": 16, "total_trades": 17,
+    "win_rate_pct": 18, "profit_factor": 19, "total_return_pct": 20,
 }
 _METRIC_LABEL = {
     "total_return_pct": "Total Return", "win_rate_pct": "Win Rate",
@@ -1301,6 +1308,12 @@ def _band_best_return(run_id: int, metric_key: str, filter_param: str, fraction:
     return (band_rows[0] if band_rows else None), info
 
 
+# Stabile Bestwert-Keys in kanonischer Reihenfolge — parallel zu den vier Einträgen von
+# _bestwerte_for_run. Single Source des Klartext-Labels ist der Server
+# (services/api/utils/best_criteria_labels.py); hier stehen NUR die Keys.
+_BESTWERTE_KEYS = ["max_return", "winrate_band", "sharpe_band", "pf_min30"]
+
+
 def _bestwerte_for_run(run_id: int) -> list:
     """Die vier kanonischen Bestwerte eines Runs als Liste (label, result|None, info).
 
@@ -1333,7 +1346,10 @@ def _fmt_result_line(r: dict) -> str:
     line = (f"result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
             f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
             f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
-    return line + (f"  ·  {pstr}" if pstr else "")
+    # GEAENDERT: ToDo 10 — gewonnene Bestwert-Kriterien (fertige Labels vom Server) anhaengen
+    crit = r.get("best_criteria")
+    crit_str = f"  ·  Bestwert: {', '.join(crit)}" if crit else ""
+    return line + (f"  ·  {pstr}" if pstr else "") + crit_str
 
 
 def _resolve_runs(f: dict, verb: str) -> tuple:
@@ -1403,7 +1419,13 @@ def run_bestwerte(args: list) -> int:
                 tn += f" (testset-run:{run['testset_run_id']})"
             meta.append(tn)
         print(f"\n### run:{rid}{(' · ' + ' · '.join(meta)) if meta else ''}")
-        for label, res, info in _bestwerte_for_run(rid):
+        # GEAENDERT: ToDo 10 — pro Sieger-Result die gewonnenen Kriterium-Keys sammeln
+        # (ein Result kann mehrere Kriterien gleichzeitig gewinnen) und den roten Stern
+        # samt Keys idempotent ueber den mark-Endpunkt setzen (kein Toggle, ueberschreibt
+        # die Keys auch bei bereits gesetztem Stern).
+        run_keys: dict = {}       # res_id -> [keys] (geordnet, dedup)
+        was_starred: dict = {}    # res_id -> war vor diesem Lauf schon roter Favorit?
+        for idx, (label, res, info) in enumerate(_bestwerte_for_run(rid)):
             suffix = f" — {info}" if info else ""
             if not res:
                 print(f"- **{label}**{suffix}: kein Result")
@@ -1411,14 +1433,19 @@ def run_bestwerte(args: list) -> int:
             print(f"- **{label}**{suffix}")
             print(f"  - {_fmt_result_line(res)}")
             res_id = res["id"]
-            if res_id in now_on or res.get("is_doc_favorite"):
-                now_on.add(res_id)
-                print("  - roter Stern: bereits gesetzt")
-            else:
-                post(f"/api/backtest/results/{res_id}/doc_favorite")
-                now_on.add(res_id)
+            key = _BESTWERTE_KEYS[idx]
+            keys = run_keys.setdefault(res_id, [])
+            if key not in keys:
+                keys.append(key)
+            was_starred[res_id] = bool(res.get("is_doc_favorite"))
+        # Markieren: pro Result einmal, mit allen gewonnenen Keys
+        for res_id, keys in run_keys.items():
+            post(f"/api/backtest/results/{res_id}/doc_favorite/mark", {"criteria": keys})
+            now_on.add(res_id)
+            if not was_starred.get(res_id):
                 newly.add(res_id)
-                print("  - roter Stern: gesetzt")
+            state = "gesetzt" if not was_starred.get(res_id) else "aktualisiert"
+            print(f"- result:{res_id} — roter Stern {state} (Kriterien: {', '.join(keys)})")
 
     already = len(now_on) - len(newly)
     print(f"\n**{len(now_on)} Results sind rote Doku-Favoriten** — {len(newly)} neu gesetzt, {already} bereits zuvor markiert.")
@@ -1607,6 +1634,78 @@ def indicator_config_create(args: list) -> int:
         body["description"] = description
     d = post("/api/config/indicator", body)["data"]
     print(f"## Erstellt: Indicator-Config **{d['id']}** ({d.get('name')})\n")
+    return 0
+
+
+def indicator_config_set(args: list) -> int:
+    """Bestehende Indicator-Config gezielt aktualisieren (nur die gesetzten Felder).
+
+    Flags: --id <n> (oder erstes Positional) und mindestens eines von
+      --concept <n> · --iteration <n> · --name "..." · --description "..."
+    Nutzt PATCH /api/config/indicator/{id} (Teil-Update): config_json, _stops und
+    alle nicht übergebenen Felder bleiben bit-genau unangetastet. Kernfall:
+    nachträgliche Konzept-/Iterations-Verknüpfung einer Config.
+    """
+    f = _parse_flags(args)
+    pos = f.get("_positional", [])
+    cid = f.get("id") or (pos[0] if pos else None)
+    if not cid:
+        raise ValueError("indicator-config-set: ID fehlt (--id <n> oder erstes Argument)")
+    body: dict = {}
+    if f.get("concept"):
+        body["strategy_concept_id"] = int(f["concept"])
+    if f.get("iteration"):
+        body["strategy_iteration_id"] = int(f["iteration"])
+    if f.get("name") and f.get("name") is not True:
+        body["name"] = f["name"]
+    if f.get("description") and f.get("description") is not True:
+        body["description"] = f["description"]
+    if not body:
+        raise ValueError("indicator-config-set: mindestens ein Feld nötig (--concept | --iteration | --name | --description)")
+    d = request("PATCH", f"/api/config/indicator/{int(cid)}", body)["data"]
+    print(f"## indicator-config-set: OK — Config {d['id']} aktualisiert "
+          f"(Concept {d.get('strategy_concept_id')} · Iter {d.get('strategy_iteration_id')} · {d.get('name')})\n")
+    return 0
+
+
+def indicator_config_labels(args: list) -> int:
+    """Standard-Notation einer Config erzeugen, optional um Zusatz erweitern, optional speichern.
+
+    Flags: --id <n> (oder erstes Positional)
+           [--name-suffix "..."] [--desc-suffix "..."]  individueller Teil, angehängt als
+                                                          `<Notation> — <Zusatz>`
+           [--save]                                       Ergebnis via PATCH zurückschreiben
+    Bildet den Frontend-Flow nach: „Beschreibung generieren" ruft dieselbe zustandslose
+    Route (/api/config/indicator/preview-labels, einzige Notations-Wahrheit), hängt den
+    KI-gelieferten Zusatz an und speichert getrennt. Ohne --save wird nur angezeigt.
+    """
+    f = _parse_flags(args)
+    pos = f.get("_positional", [])
+    cid = f.get("id") or (pos[0] if pos else None)
+    if not cid:
+        raise ValueError("indicator-config-labels: ID fehlt (--id <n> oder erstes Argument)")
+    d = fetch(f"/api/config/indicator/{int(cid)}")["data"]
+    labels = _preview_labels(d.get("config_json") or {},
+                             d.get("strategy_concept_id"), d.get("strategy_iteration_id"))
+    name = labels.get("name") or ""
+    description = labels.get("description") or ""
+    name_suffix = f.get("name-suffix")
+    desc_suffix = f.get("desc-suffix")
+    if name_suffix and name_suffix is not True:
+        name = f"{name} — {name_suffix}"
+    if desc_suffix and desc_suffix is not True:
+        description = f"{description} — {desc_suffix}"
+
+    print(f"## indicator-config-labels — Config {int(cid)}")
+    print(f"- Name: {name}")
+    print(f"- Beschreibung: {description}")
+    if f.get("save"):
+        upd = request("PATCH", f"/api/config/indicator/{int(cid)}",
+                      {"name": name, "description": description})["data"]
+        print(f"- gespeichert (PATCH): Config {upd['id']}")
+    else:
+        print("- nur Vorschau (kein --save) — mit --save zurückschreiben")
+    print()
     return 0
 
 
@@ -1910,6 +2009,8 @@ SINGLE_VERBS = {
     "concept-create": concept_create,
     "iteration-create": iteration_create,
     "indicator-config-create": indicator_config_create,
+    "indicator-config-set": indicator_config_set,
+    "indicator-config-labels": indicator_config_labels,
     "backtest-config-create": backtest_config_create,
     "testset-create": testset_create,
     "backtest-run-start": backtest_run_start,

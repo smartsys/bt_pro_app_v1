@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.33] - 03.07.2026
+
+### Added
+- Toolbox-Lücken: nachträgliche Indicator-Config-Verknüpfung, Label-Generierung mit Zusatz und persistiertes Bestwert-Kriterium am Doku-Favoriten
+  - PATCH /api/config/indicator/{id}: partieller Update-Endpoint (Schema IndicatorConfigPatch), schreibt nur uebermittelte Felder (exclude_unset) - config_json/_stops/Rest bleiben bit-genau
+  - Toolbox-Verb indicator-config-set: bestehende Config nachtraeglich einem Konzept/einer Iteration zuweisen (oder Name/Beschreibung setzen) ohne vollen Body
+  - Toolbox-Verb indicator-config-labels: Standard-Notation via preview-labels erzeugen, individuellen Zusatz als '<Notation> - <Zusatz>' anhaengen, mit --save nur Name/Beschreibung zurueckschreiben
+  - DB-Spalte backtest_results.best_criteria_json (JSON, nullable) + Alembic-Migration 0014: haelt fest, welche der vier Bestwert-Kriterien ein Doku-Favorit gewonnen hat (stabile Keys, run-relativ nach Result-Loeschung sonst nicht mehr herleitbar)
+  - Serverseitiges Key->Label-Mapping best_criteria_labels.py als Single Source; Results-API liefert fertige Labels im dt-Feld best_criteria
+  - Endpoint POST /api/backtest/results/{id}/doc_favorite/mark: setzt roten Stern + Kriterium-Keys idempotent; Toggle-Off leert die Keys gekoppelt mit
+  - run-bestwerte sammelt Mehrfach-Sieger-Keys und markiert per mark-Endpoint; run-favorites-list/kreuztest weisen die Kriterien aus der persistierten Spalte aus
+  - Frontend: neue kompakte Badge-Spalte 'Bestwert' zwischen Stern- und ID-Spalte in der Results-Tabelle; dt-Spaltenindizes server- und toolboxseitig konsistent verschoben
+  - Tests: test_indicator_config_patch, test_best_criteria_labels, test_doc_favorite_criteria (14 neu, gruen)
+
+### Files
+- services/api/routes/api_config.py
+- services/api/routes/api_backtest.py
+- services/api/utils/best_criteria_labels.py
+- user_data/utils/database/models.py
+- alembic/versions/0014_result_best_criteria.py
+- services/frontend/templates/backtest/results.html
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- tests/test_indicator_config_patch.py
+- tests/test_best_criteria_labels.py
+- tests/test_doc_favorite_criteria.py
+- documentation/todo/todo-toolbox.md
+
+
+
 ## [1.30.32] - 02.07.2026
 
 ### Added
