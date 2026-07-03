@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.34] - 03.07.2026
+
+### Changed
+- Bestwert-Spalte in der Results-Tabelle verschlankt, sortierbar gemacht und dokumentiert; TP/SL sortierbar
+  - Bestwert-Kriterium in der Results-Tabelle als schlichter, zentrierter Fliesstext aus internen Einzelbuchstaben (T/W/S/P), leerzeichengetrennt - kein Badge, keine Farbe; Langform je Buchstabe im Hover-Tooltip. Server liefert je Kriterium {short, long} (criteria_keys_to_badges)
+  - Bestwert-Spalte sortierbar gemacht (Server sortiert best_criteria_json als Text; kein Kriterium via NULLIF+nullslast ans Ende)
+  - TP/SL sortierbar gemacht - die per-Result aufgeloesten Stops liegen im Snapshot-JSON (full_config_snapshot_json); Sortierung per json_extract_path_text + Float-Cast, orderable:false im Frontend entfernt
+  - Datenfehler behoben: best_criteria_json auf JSON(none_as_null=True) gestellt, damit 'kein Kriterium' als echtes SQL-NULL statt JSON-null gespeichert wird (korrektes nullslast)
+  - Doku nachgezogen: SKILL.md (indicator-config-set/-labels, Bestwert-Persistenz), handbuch.md (Verb-Katalog + run-bestwerte), multiparameter-lauf.md (Persistenz + T/W/S/P-Spalte)
+
+### Files
+- services/api/routes/api_backtest.py
+- services/api/utils/best_criteria_labels.py
+- user_data/utils/database/models.py
+- services/frontend/templates/backtest/results.html
+- tests/test_best_criteria_labels.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- documentation/project/handbuch.md
+- documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md
+- documentation/todo/todo-toolbox.md
+
+
+
 ## [1.30.33] - 03.07.2026
 
 ### Added

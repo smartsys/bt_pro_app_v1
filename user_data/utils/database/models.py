@@ -374,7 +374,9 @@ class BacktestResult(Base):
     # Liste stabiler Keys (z.B. ["max_return", "sharpe_band"]), NICHT die Klartext-Labels.
     # Wird im Moment des roten Sterns festgehalten (Bänder sind run-relativ und nach dem
     # Löschen der übrigen Run-Results nicht mehr herleitbar). NULL = kein Bestwert / Alt-Result.
-    best_criteria_json = Column(JSON, nullable=True)
+    # none_as_null=True: Python None wird als echtes SQL-NULL gespeichert (nicht als JSON-null),
+    # damit "kein Kriterium" beim Sortieren korrekt ans Ende (nullslast) faellt.
+    best_criteria_json = Column(JSON(none_as_null=True), nullable=True)
 
     # GEÄNDERT: Ticket 10 — FK auf strategy_iterations
     iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=True)

@@ -138,8 +138,8 @@
             <th class="w-1 text-center px-1" title="Favorit">F</th>
             {# GEÄNDERT: Doku-Favorit-Spalte (roter Stern) #}
             <th class="w-1 text-center px-1" title="Doku-Favorit">D</th>
-            {# GEÄNDERT: ToDo 10 — Bestwert-Kriterium-Badges zwischen Stern und ID #}
-            <th class="w-1 text-nowrap px-1" title="Gewonnenes Bestwert-Kriterium">Bestwert</th>
+            {# GEÄNDERT: ToDo 10 — Bestwert-Kriterium (Einzelbuchstaben) zwischen Stern und ID, zentriert #}
+            <th class="w-1 text-nowrap px-1 text-center" title="Gewonnenes Bestwert-Kriterium (Hover je Buchstabe)">Bestwert</th>
             <th class="text-nowrap">ID</th>
             <th class="text-nowrap">Run</th>
             <th class="text-nowrap">Konzept</th>
@@ -376,16 +376,16 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       },
       {
-        // GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als kompakte Badges. Der Server
-        // liefert fertige Klartext-Labels (best_criteria), das Frontend rendert nur.
+        // GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als schlichter Fließtext aus internen
+        // Einzelbuchstaben (kein Badge, keine Farbe), zentriert, durch Leerzeichen getrennt. Der
+        // Server liefert Objekte {short, long}; die Langform steht je Buchstabe im Hover-Tooltip.
         data: "best_criteria",
-        orderable: false,
-        className: "text-nowrap px-1",
+        className: "text-nowrap px-1 text-muted text-center",
         render: function(data) {
           if (!data || !data.length) return '';
-          return data.map(function(label) {
-            return '<span class="badge bg-red-lt text-red me-1" title="Bestwert-Kriterium">' + label + '</span>';
-          }).join('');
+          return data.map(function(c) {
+            return '<span title="' + c.long + '">' + c.short + '</span>';
+          }).join(' ');
         }
       },
       {
@@ -501,13 +501,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       },
       {
+        // GEÄNDERT: TP sortierbar (Server sortiert über den Snapshot-JSON-Pfad)
         data: "tp_stop",
-        orderable: false,
         render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
       },
       {
+        // GEÄNDERT: SL sortierbar (Server sortiert über den Snapshot-JSON-Pfad)
         data: "sl_stop",
-        orderable: false,
         render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
       },
       { data: "sharpe_ratio", render: function(d) { return fmtColor(d); } },

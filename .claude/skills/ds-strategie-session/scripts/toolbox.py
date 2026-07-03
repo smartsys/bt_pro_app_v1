@@ -1346,9 +1346,11 @@ def _fmt_result_line(r: dict) -> str:
     line = (f"result:{r['id']} — Ret {num(r.get('total_return_pct'))}% / WinR {num(r.get('win_rate_pct'))}% / "
             f"Sharpe {num(r.get('sharpe_ratio'))} / DD {num(r.get('max_drawdown_pct'))}% / "
             f"PF {num(r.get('profit_factor'))} / {r.get('total_trades')} Trades")
-    # GEAENDERT: ToDo 10 — gewonnene Bestwert-Kriterien (fertige Labels vom Server) anhaengen
-    crit = r.get("best_criteria")
-    crit_str = f"  ·  Bestwert: {', '.join(crit)}" if crit else ""
+    # GEAENDERT: ToDo 10 — gewonnene Bestwert-Kriterien anhaengen. Der Server liefert
+    # Badge-Objekte {short, long}; fuer die Text-Ausgabe die Langform verwenden.
+    crit = r.get("best_criteria") or []
+    labels = [c.get("long") if isinstance(c, dict) else c for c in crit]
+    crit_str = f"  ·  Bestwert: {', '.join(labels)}" if labels else ""
     return line + (f"  ·  {pstr}" if pstr else "") + crit_str
 
 

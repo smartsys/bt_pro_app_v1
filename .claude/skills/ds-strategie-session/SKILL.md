@@ -171,9 +171,11 @@ toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --it
 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973  # 1 Run pro Config; Leaderboard nur bei leaderboard_enabled
 toolbox.py run-list --strategy teststrategie --version 1  # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
 toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body)
+toolbox.py indicator-config-set --id 4 --concept 2 --iteration 2  # Teil-Update (PATCH): nur gesetzte Felder, config_json/_stops bleiben
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
-toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nach Notation setzen (schreibt zurück)
+toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nach Notation setzen (überschreibt beide)
+toolbox.py indicator-config-labels --id 2018 --desc-suffix "Gate-Sweep BNB" --save  # Notation + Zusatz, nur Name/Beschreibung
 ```
 
 - Neue IDs / Ergebnis stehen in der Ausgabe (`-> **<id>**`) — **wortwörtlich** zurückgeben.
@@ -181,7 +183,8 @@ toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nac
 - **`concept-create` / erste `iteration-create` = neue Strategie:** vorher `workflows/neue-strategie.md` lesen (siehe Doku-Index oben). Das `spec_json` der Iteration enthält **nur** `indicators` (flach, **ohne** `_stops`) + `rules`; Stops gehören in die IndicatorConfig (`_stops`), Portfolio in die BacktestConfig. Nicht direkt aus einem Setup-Body ableiten, ohne diese Trennung zu prüfen.
 - `create-indicator-config`: Segment-Label (z.B. Return/Sharpe/PF) optional via `:` oder `/`; nur `result` als Quelle. Optional — der Sweep-Run liegt ohnehin in der DB (siehe „Auswertung — die vier Bestwerte").
 - Kopien/IndicatorConfigs bekommen Namenszusatz bzw. Konvention; **Originale bleiben unangetastet**.
-- **Indicator-Config-Labels nicht selbst basteln:** Nach dem Anlegen/Ändern einer Indicator-Config `indicator-config-generate-labels <id>` aufrufen — der Server setzt Name und Beschreibung nach fester Notation (Single Source, identisch zu den Frontend-Buttons). Notation:
+- **Nachträgliche Verknüpfung:** Eine bestehende Indicator-Config einem Konzept/einer Iteration zuweisen (oder gezielt Name/Beschreibung setzen) über `indicator-config-set --id <n> [--concept … --iteration … --name … --description …]` — Teil-Update, `config_json`/`_stops` bleiben bit-genau. NICHT `indicator-config-update` (das ist ein voller Replace und braucht den kompletten Body).
+- **Indicator-Config-Labels nicht selbst basteln:** Für die reine Standard-Notation `indicator-config-generate-labels <id>` (überschreibt Name+Beschreibung komplett). Soll ein **individueller Zusatz** an die Notation (`<Notation> — <Zusatz>`), stattdessen `indicator-config-labels --id <n> [--name-suffix … --desc-suffix …] --save` — holt die Notation zustandslos, hängt den Zusatz an und schreibt nur Name/Beschreibung zurück (ohne `--save` nur Vorschau). Beide nutzen dieselbe Server-Notation (Single Source, identisch zu den Frontend-Buttons):
   - **Name:** `<Konzept>-<Iteration> - <Kombinationen> Kombi. <tp>/<sl>` (z. B. `Teststrategie-2 - 65.637 Kombi. 5/15`). Ohne verknüpftes Konzept entfällt der Kopf samt Trenner; ohne Iteration nur die Nummer. tp/sl als Zahl ohne `%`.
   - **Beschreibung:** Stops `TP, SL, TSL (th/stop), delta_format, TD, time_delta_format` — Stop nur wenn gesetzt, `delta_format` nur bei gesetztem `tsl_th`, `time_delta_format` nur bei gesetztem `td_stop`, `null` weggelassen (z. B. `TP 5%, SL 15%, TD 8, rows`). Ohne Stops leer.
 - `iteration-delete`/`concept-delete` ohne `--force` → Backend meldet **409 mit Blocker-Zählern**: nachfragen, nicht blind forcen.
@@ -197,6 +200,8 @@ toolbox.py run-bestwerte --testset-run 3     # STANDARD: alle Runs eines Testset
 toolbox.py run-bestwerte --iteration 2       # Sonderfall: alle Runs einer Iteration (Strategie+Version)
 toolbox.py run-bestwerte --run 1812          # Sonderfall: nur ein einzelner Run
 ```
+
+Welches Kriterium ein Result gewonnen hat, wird **am Result persistiert** (`best_criteria_json`) — ein Result kann mehrere gleichzeitig gewinnen. In der Results-Tabelle steht es als Kürzel-Spalte „Bestwert" (`T` Max Total Return · `W` Win-Rate-Band · `S` Sharpe-Band · `P` Profitfaktor ≥30 Trades, Langform im Hover); `run-favorites-list` und `kreuztest` weisen es aus der Spalte aus. Beim Zurücksetzen (`run-favorites-reset`) wird es mit dem roten Stern gekoppelt geleert. Nötig, weil die Bänder run-relativ sind und nach dem Löschen der übrigen Run-Results nicht mehr herleitbar wären.
 
 Die vier Kriterien (Detail + Raster-Format: `documentation/knowledge/strategy-development/workflows/multiparameter-lauf.md`) — jede Metrik hat eine eigene Regel, nicht vereinheitlichen:
 

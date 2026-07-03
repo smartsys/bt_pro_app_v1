@@ -206,7 +206,7 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 | `run-parameter-ranking <run_id> [metrik]` | Rangliste der Parameter-Kombinationen eines Runs nach einer Metrik. |
 | `run-top-results <run_id> [metrik] [limit] [richtung]` | Die besten N Results eines Runs nach einer Metrik. |
 | `run-best <run_id> <metrik> [min_trades] [limit]` | Bester Metrik-Wert eines Runs mit Mindest-Trade-Zahl. |
-| `run-bestwerte --run <id>` | Zieht die vier festen Bestwerte eines Runs und markiert sie als roten Doku-Favorit (idempotent). |
+| `run-bestwerte --run <id>` | Zieht die vier festen Bestwerte eines Runs und markiert sie als roten Doku-Favorit (idempotent). Das gewonnene Kriterium wird am Result persistiert (`best_criteria_json`) und in der Results-Tabelle als Kürzel-Spalte „Bestwert" angezeigt (T/W/S/P, Langform im Hover). |
 | `run-favorites-reset --run <id> [--doc] [--user]` | Setzt die Favoriten einer Run-Menge zurück (ohne Flag beide Sterne; `--doc` rot/Doku, `--user` gelb/persönlich). Selektoren wie `run-bestwerte`. |
 | `run-favorites-list --run <id> [--doc] [--user]` | Gibt die markierten Favoriten-Results einer Run-Menge mit Kennzahlen und Parametern aus (reiner Read). Selektoren/Flags wie `run-favorites-reset`. |
 | `result-lookup --run <id> --params "k=w,…" [--tolerance <t>] [--limit <n>] [--summary]` | Schlägt Results per Parameter-Werten nach (Subset, serverseitig). Ohne Toleranz exakter Lookup der einen Kombination; mit `--tolerance` alle Results je ±t um die Zielwerte. `--summary` verdichtet die Nachbarschaft zum Plateau-Score (Median/Mittel/Streuung, Anteil profitabel, Bester/Schlechtester). |
@@ -267,11 +267,13 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 | `concept-update --id <n> --file body.json` | Überschreibt ein Konzept mit dem vollen PUT-Body. |
 | `iteration-update --id <n> --file body.json` | Überschreibt eine Iteration mit dem vollen PUT-Body. |
 | `backtest-config-update --id <n> --file body.json` | Überschreibt eine Backtest-Config. |
-| `indicator-config-update --id <n> --file body.json` | Überschreibt eine Indicator-Config. |
+| `indicator-config-update --id <n> --file body.json` | Überschreibt eine Indicator-Config (voller PUT-Body). |
+| `indicator-config-set --id <n> [--concept <id> --iteration <id> --name … --description …]` | Teil-Update (PATCH): schreibt NUR die gesetzten Felder; `config_json`/`_stops` bleiben unangetastet. Kernfall: bestehende Config nachträglich einem Konzept/einer Iteration zuweisen. |
 | `strategy-config-update --id <n> --file body.json` | Überschreibt eine Strategy-Config (Legacy). |
 | `testset-update --id <n> --file body.json` | Überschreibt ein Testset. |
 | `playground-setup-update --id <n> --file body.json` | Überschreibt ein Playground-Setup. |
-| `indicator-config-generate-labels <id>` | Setzt Name und Beschreibung einer Indicator-Config serverseitig nach fester Notation. |
+| `indicator-config-generate-labels <id>` | Setzt Name und Beschreibung einer Indicator-Config serverseitig nach fester Notation (überschreibt beide komplett). |
+| `indicator-config-labels --id <n> [--name-suffix … --desc-suffix … --save]` | Erzeugt die Standard-Notation (wie der Frontend-Button), hängt optional einen individuellen Zusatz an (`<Notation> — <Zusatz>`) und schreibt mit `--save` nur Name/Beschreibung zurück. Ohne `--save` nur Vorschau. |
 
 ### Löschen
 

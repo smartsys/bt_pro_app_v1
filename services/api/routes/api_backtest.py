@@ -22,7 +22,7 @@ from rq import Queue
 from rq.job import Job as RqJob
 from rq.registry import StartedJobRegistry
 from rq.command import send_stop_job_command
-from sqlalchemy import func, cast, String, text
+from sqlalchemy import func, cast, String, Float, Text, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from services.api.recompute import recompute_single_result
@@ -37,8 +37,8 @@ from user_data.utils.database.models import (
     StrategyConcept, StrategyIteration,
     TestSet, TestSetRun,
 )
-# GEÄNDERT: ToDo 10 — Key->Label-Mapping der Bestwert-Kriterien (Single Source, serverseitig)
-from services.api.utils.best_criteria_labels import criteria_keys_to_labels
+# GEÄNDERT: ToDo 10 — Key->Kürzel+Label-Mapping der Bestwert-Kriterien (Single Source, serverseitig)
+from services.api.utils.best_criteria_labels import criteria_keys_to_badges
 # GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
 from user_data.utils.database.repository import (
     create_backtest_run, _count_combinations, _build_resolved_config,
@@ -609,8 +609,8 @@ _DT_COLUMNS = [
     'is_favorite',  # Index 1: gelber Stern
     # GEÄNDERT: Doku-Favorit-Spalte (roter Stern) direkt nach gelbem Stern
     'is_doc_favorite',  # Index 2: roter Stern
-    # GEÄNDERT: ToDo 10 — Bestwert-Kriterium-Badges zwischen Stern und ID (nicht sortierbar)
-    None,  # Index 3: best_criteria (Badges)
+    # GEÄNDERT: ToDo 10 — Bestwert-Kriterium zwischen Stern und ID; sortierbar (JSON-Text)
+    'best_criteria_json',  # Index 3: best_criteria
     # GEÄNDERT: Strategie-Spalte in Konzept + Iteration aufgeteilt; Konzept sortiert nach
     # Concept-Name, Iteration nach numerischer Iterations-Version
     'id', 'run_id', '__concept__', '__iteration__', 'symbol', 'timeframe',  # Index 4-9
@@ -788,7 +788,22 @@ def get_results_datatable(request: Request) -> dict:
             if col_name in ('strategy_name', 'symbol', 'timeframe'):
                 sort_col = getattr(BacktestRun, col_name)
             elif col_name in ('tp_stop', 'sl_stop'):
-                sort_col = None
+                # GEÄNDERT: TP/SL sortierbar gemacht — die per-Result aufgelösten Stops liegen im
+                # Snapshot-JSON (full_config_snapshot_json['backtest_config']); per
+                # json_extract_path_text als Text ziehen und als Float sortieren. Alt-Results ohne
+                # Snapshot -> NULL -> ans Ende (nullslast unten).
+                sort_col = cast(
+                    func.json_extract_path_text(
+                        BacktestResult.full_config_snapshot_json, 'backtest_config', col_name
+                    ),
+                    Float,
+                )
+            elif col_name == 'best_criteria_json':
+                # GEÄNDERT: Bestwert-Spalte sortierbar — die JSON-Liste der Kriterium-Keys als Text
+                # sortieren (Results mit Kriterien gruppiert, ohne Kriterium ans Ende). NULLIF fängt
+                # Bestandszeilen ab, die frueher als JSON-null (Text "null") statt SQL-NULL gespeichert
+                # wurden, damit auch sie via nullslast ans Ende fallen.
+                sort_col = func.nullif(cast(BacktestResult.best_criteria_json, Text), 'null')
             else:
                 sort_col = getattr(BacktestResult, col_name, None)
             if sort_col is not None:
@@ -834,9 +849,9 @@ def get_results_datatable(request: Request) -> dict:
                 'is_favorite': bool(result.is_favorite),
                 # GEÄNDERT: Doku-Favorit-Flag in Response mitliefern
                 'is_doc_favorite': bool(result.is_doc_favorite),
-                # GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als fertige Klartext-Labels
-                # (Frontend/Toolbox rendern nur; Key->Label-Mapping bleibt serverseitig)
-                'best_criteria': criteria_keys_to_labels(result.best_criteria_json),
+                # GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als Badge-Objekte {short, long}
+                # (Frontend rendert Kürzel + Hover-Tooltip; Mapping bleibt serverseitig)
+                'best_criteria': criteria_keys_to_badges(result.best_criteria_json),
                 'metrics_level': result.metrics_level,
                 'strategy_family': run.strategy_family,
                 'strategy_name': run.strategy_name,
