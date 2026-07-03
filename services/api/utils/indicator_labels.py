@@ -18,10 +18,19 @@ Beschreibung:
   ``tsl_th``; ``time_delta_format`` nur bei gesetztem ``td_stop``; ``null`` wird
   weggelassen. TP/SL/TSL als Prozent (×100 mit ``%``), TD als ganze Zahl.
   Ohne gesetzte Stops bleibt die Beschreibung leer.
+
+Sweep-Stops (Liste oder arange-Dict) erscheinen in der Beschreibung als
+kompakter Bereich mit Anzahl ``min-max (n)`` — z. B. ``TD 1-999 (35)`` oder
+``TP 10-40% (13)``. Im Namen (tp/sl) nur ``min-max`` ohne ``(n)``, weil die
+Gesamt-Kombizahl dort schon im ``Kombi.``-Teil steht.
 """
 from typing import Optional
 
-from user_data.strategies.generic.indicator_factory import count_total_combos
+from user_data.strategies.generic.indicator_factory import (
+    count_total_combos,
+    expand_stop_values,
+    is_stop_sweep,
+)
 
 
 def _clean_num(value: float) -> str:
@@ -41,8 +50,15 @@ def _is_set(value) -> bool:
     return value is not None
 
 
-def _is_range(value) -> bool:
-    return isinstance(value, dict) and all(k in value for k in ("start", "stop", "step"))
+def _sweep_bounds(value, stop_key: str) -> tuple:
+    """Expandiert eine Sweep-Achse (Liste oder arange-Dict) zu (min, max, count).
+
+    Nutzt den kanonischen Expander ``expand_stop_values`` (Single Source, dieselbe
+    Mechanik wie der Motor), damit es keinen zweiten Sweep-Parser gibt. So werden
+    Liste und arange-Dict identisch als Bereich dargestellt.
+    """
+    values = expand_stop_values(value, stop_key)
+    return min(values), max(values), len(values)
 
 
 def build_indicator_config_name(
@@ -55,15 +71,20 @@ def build_indicator_config_name(
     is_percent = stops.get("delta_format") == "percent"
     total = count_total_combos(config_json)
 
-    def fmt_stop(v) -> str:
+    def fmt_stop(v, key) -> str:
+        def one(x) -> str:
+            return _clean_num(x * 100 if is_percent else x)
         if v is None:
             return ""
-        if _is_range(v):
-            return fmt_stop(v["start"]) + "-" + fmt_stop(v["stop"])
-        return _clean_num(v * 100 if is_percent else v)
+        # Sweep (Liste oder arange-Dict) als "min-max" — die Kombi-Zahl steht
+        # bereits im "Kombi."-Teil, daher hier ohne (n)-Anhang.
+        if is_stop_sweep(v):
+            lo, hi, _ = _sweep_bounds(v, key)
+            return one(lo) + "-" + one(hi)
+        return one(v)
 
-    tp = fmt_stop(stops.get("tp_stop"))
-    sl = fmt_stop(stops.get("sl_stop"))
+    tp = fmt_stop(stops.get("tp_stop"), "tp_stop")
+    sl = fmt_stop(stops.get("sl_stop"), "sl_stop")
 
     head = ""
     if concept_name:
@@ -80,28 +101,30 @@ def build_indicator_config_description(stops: dict) -> str:
     if not stops:
         return ""
 
-    # Range (arange-Dict) als "start-stop" auflösen — gesweepte Stops erscheinen als Bereich.
-    def pct(v) -> str:
-        if _is_range(v):
-            return pct(v["start"]) + "-" + pct(v["stop"])
+    # Sweep (Liste oder arange-Dict) als "min-max (n)" auflösen; Skalar unverändert.
+    def pct(v, key) -> str:
+        if is_stop_sweep(v):
+            lo, hi, n = _sweep_bounds(v, key)
+            return _clean_num(lo * 100) + "-" + _clean_num(hi * 100) + f"% ({n})"
         return _clean_num(v * 100) + "%"
 
-    def td(v) -> str:
-        if _is_range(v):
-            return td(v["start"]) + "-" + td(v["stop"])
+    def td(v, key) -> str:
+        if is_stop_sweep(v):
+            lo, hi, n = _sweep_bounds(v, key)
+            return _clean_num(lo) + "-" + _clean_num(hi) + f" ({n})"
         return _clean_num(v)
 
     parts = []
     if _is_set(stops.get("tp_stop")):
-        parts.append("TP " + pct(stops["tp_stop"]))
+        parts.append("TP " + pct(stops["tp_stop"], "tp_stop"))
     if _is_set(stops.get("sl_stop")):
-        parts.append("SL " + pct(stops["sl_stop"]))
+        parts.append("SL " + pct(stops["sl_stop"], "sl_stop"))
 
     tsl_parts = []
     if _is_set(stops.get("tsl_th")):
-        tsl_parts.append(pct(stops["tsl_th"]))
+        tsl_parts.append(pct(stops["tsl_th"], "tsl_th"))
     if _is_set(stops.get("tsl_stop")):
-        tsl_parts.append(pct(stops["tsl_stop"]))
+        tsl_parts.append(pct(stops["tsl_stop"], "tsl_stop"))
     if tsl_parts:
         parts.append("TSL " + "/".join(tsl_parts))
 
@@ -111,7 +134,7 @@ def build_indicator_config_description(stops: dict) -> str:
 
     # TD als ganze Zahl; time_delta_format gehört zu TD
     if _is_set(stops.get("td_stop")):
-        parts.append("TD " + td(stops["td_stop"]))
+        parts.append("TD " + td(stops["td_stop"], "td_stop"))
         if stops.get("time_delta_format"):
             parts.append(stops["time_delta_format"])
 

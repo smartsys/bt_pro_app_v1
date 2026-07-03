@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.36] - 03.07.2026
+
+### Fixed
+- Label-Notation crasht nicht mehr bei Stop-Sweeps (preview-labels/generate-labels)
+  - Die Notations-Routen POST /api/config/indicator/preview-labels und /{id}/generate-labels warfen HTTP 500 (TypeError: float() argument must be a string or a real number, not 'list'), sobald ein _stops-Wert eine Sweep-Liste statt eines Skalars war (seit Ticket 47 gueltig).
+  - Ursache: Der Label-Builder kannte nur Skalar und arange-Dict; eine Sweep-Liste fiel in den drei Formatierern auf _clean_num durch und rief float() auf einer Liste auf.
+  - Fix: Sweep-Erkennung ueber die kanonischen Motor-Detektoren is_stop_sweep + expand_stop_values (Single Source, kein zweiter Parser). Liste und arange-Dict werden nun identisch als kompakter Bereich min-max (n) dargestellt, z. B. TD 1-999 (35) oder TP 10-40% (13); im Namen tp/sl als min-max ohne (n), da die Kombizahl schon im Kombi.-Teil steht. Skalar-Verhalten unveraendert.
+  - Neue Unit-Tests in tests/test_indicator_labels.py (Skalar/Liste/arange fuer TP-SL-TD) inklusive Akzeptanzfall der TD-Sweep-Config.
+
+### Files
+- services/api/utils/indicator_labels.py
+- tests/test_indicator_labels.py
+
+
+
 ## [1.30.35] - 03.07.2026
 
 ### Added
