@@ -30,8 +30,34 @@
 <div class="card">
   <div class="card-header">
     <h3 class="card-title">Alle Configs (<span id="configs-total">...</span>)</h3>
-    <div class="card-actions d-flex align-items-center gap-2">
-      <div class="dt-search-input" style="width: 260px;">
+    <div class="card-actions d-flex align-items-center flex-wrap gap-2">
+      <!-- Filter: Timeframe (Dropdown, aus den geladenen Daten befüllt) -->
+      <select id="filter-tf" class="form-select form-select-sm" style="width:110px" title="Nach Timeframe filtern">
+        <option value="">TF (alle)</option>
+      </select>
+      <!-- Filter: Symbol (Dropdown, aus den geladenen Daten befüllt) -->
+      <select id="filter-symbol" class="form-select form-select-sm" style="width:140px" title="Nach Symbol filtern">
+        <option value="">Symbol (alle)</option>
+      </select>
+      <!-- Filter: OHLC-Abdeckungsfenster [von; bis] — angezeigt werden Configs mit
+           ohlc_start >= von UND ohlc_end <= bis (zwischen oder gleich dem Datum) -->
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-secondary small text-nowrap">OHLC ab</span>
+        <input type="date" id="filter-ohlc-start" class="form-control form-control-sm" style="width:150px" title="OHLC Start ab diesem Datum (ohlc_start >= Datum)">
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-secondary small text-nowrap">bis</span>
+        <input type="date" id="filter-ohlc-end" class="form-control form-control-sm" style="width:150px" title="OHLC End bis zu diesem Datum (ohlc_end <= Datum)">
+      </div>
+      <!-- Filter: Qualität Min/Max (Prozent) -->
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-secondary small text-nowrap">Qual. %</span>
+        <input type="number" id="filter-quality-min" class="form-control form-control-sm" style="width:80px" placeholder="min" min="0" max="100" step="0.1" title="Qualität min. (Prozent)">
+        <input type="number" id="filter-quality-max" class="form-control form-control-sm" style="width:80px" placeholder="max" min="0" max="100" step="0.1" title="Qualität max. (Prozent)">
+      </div>
+      <!-- Filter zurücksetzen -->
+      <button type="button" id="filter-reset" class="btn btn-sm btn-outline-secondary" title="Alle Filter zurücksetzen">Zurücksetzen</button>
+      <div class="dt-search-input" style="width: 220px;">
         <span class="dt-search-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
         </span>
@@ -180,6 +206,45 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
+  // Nur die Zehntel-Stelle (YYYY-MM-DD) für den Datumsvergleich verwenden — die
+  // Rohwerte könnten eine Uhrzeit tragen, was den lexikografischen Vergleich verfälscht.
+  function datePart(s) { return s ? ('' + s).substring(0, 10) : ''; }
+
+  // Aktueller Filterzustand (leer/null = kein Filter auf dieser Achse).
+  var filterState = { tf: '', symbol: '', ohlcStart: '', ohlcEnd: '', qMin: null, qMax: null };
+
+  // Eigener DataTables-Filter: TF/Symbol exakt, OHLC-Abdeckungsfenster, Qualität Min/Max.
+  // Läuft zusätzlich (UND) zur Volltextsuche.
+  DataTable.ext.search.push(function(settings, searchData, dataIndex, rowData) {
+    if (!settings.nTable || settings.nTable.id !== 'configs-table') return true;
+    if (!rowData) return true;
+    if (filterState.tf && rowData.timeframe !== filterState.tf) return false;
+    if (filterState.symbol && rowData.symbol !== filterState.symbol) return false;
+    if (filterState.ohlcStart && datePart(rowData.ohlc_start) < filterState.ohlcStart) return false;
+    if (filterState.ohlcEnd && datePart(rowData.ohlc_end) > filterState.ohlcEnd) return false;
+    if (filterState.qMin !== null || filterState.qMax !== null) {
+      var q = configQuality[rowData.id];
+      if (q === null || q === undefined) return false;
+      if (filterState.qMin !== null && q < filterState.qMin) return false;
+      if (filterState.qMax !== null && q > filterState.qMax) return false;
+    }
+    return true;
+  });
+
+  // Dropdown mit sortierten, eindeutigen Werten füllen und dabei die aktuelle Auswahl behalten.
+  function fillSelect(selectEl, values, placeholder) {
+    var current = selectEl.value;
+    var uniq = Array.from(new Set(values.filter(Boolean))).sort();
+    selectEl.innerHTML = '<option value="">' + placeholder + '</option>';
+    uniq.forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    // Auswahl wiederherstellen, sofern der Wert noch existiert
+    selectEl.value = uniq.indexOf(current) !== -1 ? current : '';
+  }
+
   var table;
   function initTable() {
     table = new DataTable("#configs-table", {
@@ -187,6 +252,11 @@ document.addEventListener("DOMContentLoaded", function() {
       url: "/api/config/backtest",
       dataSrc: function(json) {
         document.getElementById("configs-total").textContent = json.data.length;
+        // Filter-Dropdowns aus den geladenen Configs befüllen
+        fillSelect(document.getElementById('filter-tf'),
+                   json.data.map(function(r) { return r.timeframe; }), 'TF (alle)');
+        fillSelect(document.getElementById('filter-symbol'),
+                   json.data.map(function(r) { return r.symbol; }), 'Symbol (alle)');
         return json.data;
       }
     },
@@ -265,6 +335,37 @@ document.addEventListener("DOMContentLoaded", function() {
     var searchInput = document.getElementById("configs-search");
     searchInput.addEventListener("input", function() {
       table.search(this.value).draw();
+    });
+
+    // Filter-Controls verdrahten: Zustand aktualisieren, dann neu zeichnen (Custom-Filter greift)
+    var tfSel = document.getElementById("filter-tf");
+    var symSel = document.getElementById("filter-symbol");
+    var ohlcStartInp = document.getElementById("filter-ohlc-start");
+    var ohlcEndInp = document.getElementById("filter-ohlc-end");
+    var qMinInp = document.getElementById("filter-quality-min");
+    var qMaxInp = document.getElementById("filter-quality-max");
+
+    // Leerer/ungültiger Zahlwert -> null (kein Filter); Komma als Dezimaltrenner erlaubt
+    function parseNum(v) {
+      if (v === null || v === undefined || v === '') return null;
+      var n = parseFloat(('' + v).replace(',', '.'));
+      return isNaN(n) ? null : n;
+    }
+
+    tfSel.addEventListener("change", function() { filterState.tf = this.value; table.draw(); });
+    symSel.addEventListener("change", function() { filterState.symbol = this.value; table.draw(); });
+    ohlcStartInp.addEventListener("change", function() { filterState.ohlcStart = this.value; table.draw(); });
+    ohlcEndInp.addEventListener("change", function() { filterState.ohlcEnd = this.value; table.draw(); });
+    qMinInp.addEventListener("input", function() { filterState.qMin = parseNum(this.value); table.draw(); });
+    qMaxInp.addEventListener("input", function() { filterState.qMax = parseNum(this.value); table.draw(); });
+
+    // Alle Filter zurücksetzen
+    document.getElementById("filter-reset").addEventListener("click", function() {
+      filterState = { tf: '', symbol: '', ohlcStart: '', ohlcEnd: '', qMin: null, qMax: null };
+      tfSel.value = ''; symSel.value = '';
+      ohlcStartInp.value = ''; ohlcEndInp.value = '';
+      qMinInp.value = ''; qMaxInp.value = '';
+      table.draw();
     });
   });
 

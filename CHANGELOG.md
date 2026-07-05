@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.47] - 05.07.2026
+
+### Added
+- Backtest-Config-Liste: Filter für Timeframe, Symbol, OHLC-Zeitfenster und Qualität
+  - Timeframe- und Symbol-Dropdowns, automatisch aus den geladenen Configs befüllt (exakter Treffer)
+  - OHLC-Abdeckungsfenster (ab/bis): zeigt Configs mit ohlc_start >= ab UND ohlc_end <= bis
+  - Qualitäts-Filter Min/Max (Prozent); Configs ohne Qualitätswert werden bei gesetztem Min/Max ausgeblendet
+  - Zurücksetzen-Button leert alle Filter
+  - Alle Filter greifen zusätzlich (UND) zur Volltextsuche über einen DataTable.ext.search-Custom-Filter
+
+### Files
+- services/frontend/templates/config/backtest_configs.html
+
+
+
 ## [1.30.46] - 05.07.2026
 
 ### Fixed
