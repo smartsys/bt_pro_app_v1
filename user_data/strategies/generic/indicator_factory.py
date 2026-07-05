@@ -524,6 +524,46 @@ def _collect_varying_axes(indicators_json: dict) -> list[tuple[str, str, list]]:
     return varying
 
 
+def describe_indicator_params(indicators_json: dict) -> list:
+    """Listet je aktivem Indikator seine Parameter-Achsen (Skalar oder Range) als Werte-Listen.
+
+    Wie ``_collect_varying_axes``, aber OHNE den Filter auf variierende Achsen — auch feste
+    Skalar-Parameter werden aufgeführt. Inputs (OHLC/Chains) und Meta-Keys bleiben außen vor.
+    Basis für die lesbare Indikator-Auflistung in der Config-Beschreibung.
+
+    Args:
+        indicators_json: Indikator-Spec (mit optionalem '_stops').
+
+    Returns:
+        Liste von (ind_id, [(param_name, values), ...]) in topologischer Reihenfolge;
+        Indikatoren ohne Parameter werden ausgelassen.
+    """
+    result: list[tuple[str, list]] = []
+    order = _topological_order(indicators_json)
+    for ind_id in order:
+        entry = indicators_json[ind_id]
+        if not isinstance(entry, dict):
+            continue
+        if entry.get('enabled', True) is False:
+            continue
+        try:
+            factory = resolve_indicator_factory(entry['indicator'])
+            factory_input_names = set(getattr(factory, 'input_names', ()) or ())
+        except Exception:
+            factory_input_names = set()
+        params = []
+        for key, value in entry.items():
+            if key in _META_KEYS or key in factory_input_names:
+                continue
+            # String-Werte sind Quellen/Chains (Fallback, falls Factory nicht auflösbar), keine Parameter.
+            if isinstance(value, str):
+                continue
+            params.append((key, _expand_range(value, ind_id, key)))
+        if params:
+            result.append((ind_id, params))
+    return result
+
+
 def describe_combos(indicators_json: dict) -> dict:
     """Kombinationszahl + Achsen-Aufschlüsselung — einzige Wahrheit, was der Motor läuft.
 

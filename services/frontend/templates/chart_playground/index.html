@@ -10,6 +10,14 @@
   .subplot-chart { width: 100%; height: 160px; border-top: 1px solid rgba(128,128,128,0.25); }
   /* GEÄNDERT: Ticket 46 — Short-Blöcke optisch als Short-Position kennzeichnen */
   .cp-rule-block--short { border-left: 3px solid #d63939 !important; background: rgba(214, 57, 57, 0.08); }
+  /* GEÄNDERT: Indikator-Konfig-Dropdown — Zeile zeigt nur den Namen; Beschreibung als schwebender Tooltip (verschiebt nichts) */
+  #cpIndCfgTip {
+    display: none; position: fixed; z-index: 1080; max-width: 28rem;
+    padding: 0.5rem 0.75rem; border-radius: 6px;
+    background: #1a2234; color: #e8ecf3; font-size: 0.875rem; line-height: 1.4;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12);
+    pointer-events: none; white-space: normal;
+  }
 </style>
 {% endblock %}
 
@@ -39,8 +47,10 @@
         <!-- GEAENDERT: natives select durch Custom-Dropdown ersetzt (zweite Spalte: Beschreibung); Wert lebt im hidden input cpIndCfgSelect -->
         <div class="dropdown w-100" id="cpIndCfgDropdown" style="position:relative">
           <button type="button" class="form-select w-100 text-start text-truncate" id="cpIndCfgButton">-- Indikator --</button>
-          <div class="dropdown-menu p-0" id="cpIndCfgMenu" style="position:absolute;top:100%;left:0;min-width:100%;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
+          <div class="dropdown-menu p-0" id="cpIndCfgMenu" style="position:absolute;top:100%;left:0;min-width:34rem;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
           <input type="hidden" id="cpIndCfgSelect">
+          <!-- GEÄNDERT: schwebender Tooltip für die Beschreibung der gehoverten Zeile -->
+          <div id="cpIndCfgTip"></div>
         </div>
       </div>
       <div style="flex:1;min-width:120px">
@@ -3777,21 +3787,14 @@
     clear.textContent = '-- Indikator --';
     menu.appendChild(clear);
 
+    // GEÄNDERT: Zeile zeigt nur den Namen; die Beschreibung liegt in dataset.desc und erscheint als schwebender Tooltip beim Hover
     function addItem(c) {
       const item = document.createElement('button');
       item.type = 'button';
-      item.className = 'dropdown-item d-flex gap-3 align-items-start';
+      item.className = 'dropdown-item fw-bold';
       item.dataset.id = c.id;
-      const nameCol = document.createElement('span');
-      nameCol.className = 'fw-bold text-nowrap';
-      nameCol.style.flex = '0 0 15rem';
-      nameCol.textContent = c.name;
-      const descCol = document.createElement('span');
-      descCol.className = 'text-secondary small';
-      descCol.style.whiteSpace = 'normal';  // Bootstrap-nowrap des dropdown-item aufheben -> volle Beschreibung umbricht
-      descCol.textContent = c.description || '';
-      item.appendChild(nameCol);
-      item.appendChild(descCol);
+      item.dataset.desc = (c.description || '').trim();
+      item.textContent = c.name;
       menu.appendChild(item);
     }
     function addGroup(label, items) {
@@ -3843,14 +3846,40 @@
     const hidden = document.getElementById('cpIndCfgSelect');
     hidden.value = item.dataset.id || '';
     document.getElementById('cpIndCfgMenu').classList.remove('show');
+    hideIndCfgTip();
     updateIndCfgButton();
     hidden.dispatchEvent(new Event('change'));
   });
-  // GEÄNDERT: Klick außerhalb schließt das Menü
+  // GEÄNDERT: Klick außerhalb schließt das Menü (und versteckt den Tooltip)
   document.addEventListener('click', (e) => {
     const dd = document.getElementById('cpIndCfgDropdown');
-    if (dd && !dd.contains(e.target)) document.getElementById('cpIndCfgMenu').classList.remove('show');
+    if (dd && !dd.contains(e.target)) { document.getElementById('cpIndCfgMenu').classList.remove('show'); hideIndCfgTip(); }
   });
+
+  // GEÄNDERT: schwebender Beschreibungs-Tooltip — erscheint rechts neben der gehoverten Zeile, verschiebt nichts
+  function showIndCfgTip(item) {
+    const tip = document.getElementById('cpIndCfgTip');
+    const desc = item.dataset.desc || '';
+    if (!desc) { hideIndCfgTip(); return; }
+    tip.textContent = desc;
+    tip.style.display = 'block';
+    const r = item.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    let left = r.right + 8;
+    if (left + tw > window.innerWidth - 8) left = r.left - tw - 8;  // links andocken, wenn rechts kein Platz
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = r.top + 'px';
+  }
+  function hideIndCfgTip() { document.getElementById('cpIndCfgTip').style.display = 'none'; }
+
+  const cpIndCfgMenuEl = document.getElementById('cpIndCfgMenu');
+  cpIndCfgMenuEl.addEventListener('mouseover', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (item && item.dataset.id) showIndCfgTip(item); else hideIndCfgTip();
+  });
+  cpIndCfgMenuEl.addEventListener('mouseleave', hideIndCfgTip);
+  cpIndCfgMenuEl.addEventListener('scroll', hideIndCfgTip);
 
   // GEÄNDERT: Indikator-Konfiguration wählen → Indikatoren in Playground laden
   document.getElementById('cpIndCfgSelect').addEventListener('change', async (e) => {

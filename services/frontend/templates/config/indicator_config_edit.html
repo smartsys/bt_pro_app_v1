@@ -371,21 +371,29 @@ document.addEventListener("DOMContentLoaded", function() {
     return data.data;  // { name, description }
   }
 
-  /* Titel generieren — nur das Namensfeld setzen */
+  /* Titel generieren — nur den festen Teil neu bauen, den manuellen " : <Freitext>" erhalten.
+     Der Generator liefert nur Kennung + Stops; ein vorhandener Freitext hinter " : " bleibt stehen. */
   document.getElementById("btn-gen-title").addEventListener("click", async function() {
     try {
       var labels = await _fetchPreviewLabels();
-      document.getElementById("cfg-name").value = labels.name;
+      var nameEl = document.getElementById("cfg-name");
+      var sepIdx = nameEl.value.indexOf(" : ");
+      var freetext = sepIdx >= 0 ? nameEl.value.slice(sepIdx) : "";  // " : <Freitext>"
+      nameEl.value = labels.name + freetext;
     } catch(e) {
       alert('Fehler beim Titel generieren: ' + e.message);
     }
   });
 
-  /* Beschreibung generieren — nur das Beschreibungsfeld setzen */
+  /* Beschreibung generieren — Indikator-Auflistung neu bauen, den manuellen " | <Freitext>" erhalten.
+     Der Generator liefert nur die Indikatoren + Werte/Wertebereiche; ein Freitext hinter " | " bleibt stehen. */
   document.getElementById("btn-gen-desc").addEventListener("click", async function() {
     try {
       var labels = await _fetchPreviewLabels();
-      document.getElementById("cfg-description").value = labels.description;
+      var descEl = document.getElementById("cfg-description");
+      var sepIdx = descEl.value.indexOf(" | ");
+      var freetext = sepIdx >= 0 ? descEl.value.slice(sepIdx) : "";  // " | <Freitext>"
+      descEl.value = labels.description + freetext;
     } catch(e) {
       alert('Fehler beim Beschreibung generieren: ' + e.message);
     }

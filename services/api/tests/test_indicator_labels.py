@@ -42,76 +42,69 @@ def config_2018():
 # --- Name ---
 
 def test_name_konzept_und_iteration(config_2018):
-    # 33 * 17 * 13 * 9 = 65637 Kombinationen
-    assert build_indicator_config_name(config_2018, "Teststrategie", 2) == "Teststrategie-2 - 65.637 Kombi. 5/15"
+    # 33 * 17 * 13 * 9 = 65637 Kombinationen; Stops wandern in den Titel
+    assert build_indicator_config_name(config_2018, "Teststrategie", 2) == "Teststrategie-2-(65.637) TP 5% SL 15% TD 8, rows"
 
 
 def test_name_konzept_ohne_iteration(config_2018):
-    assert build_indicator_config_name(config_2018, "Teststrategie", None) == "Teststrategie - 65.637 Kombi. 5/15"
+    assert build_indicator_config_name(config_2018, "Teststrategie", None) == "Teststrategie-(65.637) TP 5% SL 15% TD 8, rows"
 
 
-def test_name_ohne_konzept_kein_fuehrender_trenner(config_2018):
-    assert build_indicator_config_name(config_2018, None, None) == "65.637 Kombi. 5/15"
+def test_name_ohne_konzept_nur_kombinationen(config_2018):
+    assert build_indicator_config_name(config_2018, None, None) == "(65.637) TP 5% SL 15% TD 8, rows"
 
 
 def test_name_konzept_schreibweise_verbatim(config_2018):
     # Konzept-Name wird 1:1 übernommen, nicht klein-/großgewandelt
-    assert build_indicator_config_name(config_2018, "EmaAdx", 7).startswith("EmaAdx-7")
+    assert build_indicator_config_name(config_2018, "EmaAdx", 7).startswith("EmaAdx-7-(")
 
 
-# --- Beschreibung ---
-
-def test_description_config_2018(config_2018):
-    # kein percent (tsl_th null), rows weil td_stop gesetzt
-    assert build_indicator_config_description(config_2018["_stops"]) == "TP 5%, SL 15%, TD 8, rows"
-
-
-def test_description_alles_gesetzt():
-    stops = {
-        "tp_stop": 0.30, "sl_stop": 0.15, "tsl_th": 0.10, "tsl_stop": 0.05,
-        "td_stop": 8, "delta_format": "percent", "time_delta_format": "rows",
+def test_name_stops_notation_mit_tsl_und_sweep():
+    # TP als Sweep (Zähler), TSL mit delta_format, TD mit time_delta_format
+    config = {
+        "ind": {"indicator": "custom:x", "length": 5},
+        "_stops": {
+            "tp_stop": {"step": 0.1, "stop": 0.41, "type": "arange", "dtype": "float64", "start": 0.1},
+            "sl_stop": 0.05,
+            "tsl_th": 0.02, "tsl_stop": 0.01,
+            "td_stop": 8,
+            "delta_format": "percent", "time_delta_format": "rows",
+        },
     }
-    assert build_indicator_config_description(stops) == "TP 30%, SL 15%, TSL 10%/5%, percent, TD 8, rows"
+    name = build_indicator_config_name(config, "VWMA", 26)
+    assert name.startswith("VWMA-26-(")
+    assert name.endswith("TP 10-40% (4) SL 5% TSL 2%/1%, percent TD 8, rows")
 
 
-def test_description_nur_tsl_stop_kein_delta_format():
-    stops = {"tp_stop": None, "sl_stop": None, "tsl_th": None, "tsl_stop": 0.05,
-             "td_stop": None, "delta_format": "percent", "time_delta_format": "rows"}
-    assert build_indicator_config_description(stops) == "TSL 5%"
+# --- Beschreibung (Indikatoren mit Werten/Wertebereichen) ---
+
+def test_description_config_2018_indikatoren(config_2018):
+    # Topologisch: fast_sma vor teststrategie (teststrategie.source chained von fast_sma);
+    # Inputs (source/volume) und Stops bleiben außen vor, Ranges als min-max (n)
+    assert build_indicator_config_description(config_2018) == (
+        "fast_sma: length 2-14 (13), multiplier 1-9 (9); "
+        "teststrategie: length 2-18 (33), below_pct 1-17 (17)"
+    )
 
 
-def test_description_nur_tsl_th_zeigt_delta_format():
-    stops = {"tsl_th": 0.10, "delta_format": "percent"}
-    assert build_indicator_config_description(stops) == "TSL 10%, percent"
+def test_description_skalar_indikator():
+    # Feste Skalar-Parameter werden als Wert aufgeführt (keine Range)
+    config = {"fast_sma": {"tf": "4h", "length": 12, "source": "close",
+                           "indicator": "custom:dwsFastSMA", "multiplier": 9}}
+    assert build_indicator_config_description(config) == "fast_sma: length 12, multiplier 9"
 
 
-def test_description_nur_td_zeigt_time_delta_format():
-    stops = {"td_stop": 12, "time_delta_format": "index"}
-    assert build_indicator_config_description(stops) == "TD 12, index"
-
-
-def test_description_alle_stops_null_leer():
-    stops = {"tp_stop": None, "sl_stop": None, "tsl_th": None, "tsl_stop": None,
-             "td_stop": None, "delta_format": "percent", "time_delta_format": "rows"}
-    assert build_indicator_config_description(stops) == ""
-
-
-def test_description_leerer_stops_block():
+def test_description_leer_ohne_indikatoren():
     assert build_indicator_config_description({}) == ""
 
 
-def test_description_sl_range_als_prozentbereich():
-    # Gesweepter SL als arange-Dict: als Prozentbereich "start%-stop%" auflösen (nicht crashen)
-    stops = {"sl_stop": {"step": 0.05, "stop": 0.21, "type": "arange", "dtype": "float", "start": 0.1},
-             "delta_format": "percent"}
-    assert build_indicator_config_description(stops) == "SL 10%-21%"
-
-
-def test_description_td_range_als_bereich():
-    # Gesweepter TD (ganze Zahlen) als Bereich, ohne Prozent
-    stops = {"td_stop": {"step": 1, "stop": 12, "type": "arange", "dtype": "int", "start": 8},
-             "time_delta_format": "rows"}
-    assert build_indicator_config_description(stops) == "TD 8-12, rows"
+def test_description_deaktivierter_indikator_ausgelassen():
+    # enabled=False fliegt aus der Auflistung
+    config = {
+        "fast_sma": {"indicator": "custom:dwsFastSMA", "length": 12, "multiplier": 9},
+        "off_ind": {"indicator": "custom:dwsFastSMA", "length": 5, "multiplier": 2, "enabled": False},
+    }
+    assert build_indicator_config_description(config) == "fast_sma: length 12, multiplier 9"
 
 
 # --- Kombiniert ---
@@ -119,6 +112,7 @@ def test_description_td_range_als_bereich():
 def test_build_labels_kombiniert(config_2018):
     labels = build_indicator_config_labels(config_2018, "Teststrategie", 2)
     assert labels == {
-        "name": "Teststrategie-2 - 65.637 Kombi. 5/15",
-        "description": "TP 5%, SL 15%, TD 8, rows",
+        "name": "Teststrategie-2-(65.637) TP 5% SL 15% TD 8, rows",
+        "description": ("fast_sma: length 2-14 (13), multiplier 1-9 (9); "
+                        "teststrategie: length 2-18 (33), below_pct 1-17 (17)"),
     }

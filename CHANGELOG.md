@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.40] - 05.07.2026
+
+### Changed
+- Indikator-Konfiguration: Name/Beschreibung neu generiert, Dropdown-Beschreibung als schwebender Tooltip
+  - Config-Name ist jetzt selbsttragend: <Konzept>-<Iteration>-(<Kombinationen>) <Stops> mit allen Stops (TP/SL/TSL/TD, Format-Wort per Komma, Sweep als min-max (n)); optionaler manueller Freitext hinter ' : '
+  - Config-Beschreibung listet jetzt die Indikatoren mit ihren Werten/Wertebereichen in topologischer Reihenfolge (<name>: <param> <wert>, ...; <name2>: ...) statt der Stops; manueller Freitext hinter ' | '
+  - Neue Funktion describe_indicator_params in indicator_factory.py als Basis fuer die Indikator-Auflistung (auch feste Skalar-Parameter, ohne Inputs/Meta-Keys)
+  - Generier-Buttons 'Titel'/'Beschreibung' im Config-Editor bewahren den manuell gepflegten Freitext (' : ' bzw. ' | ')
+  - Chart-Playground: Dropdown 'Indikator-Konfiguration' zeigt pro Zeile nur den Titel; die Beschreibung erscheint beim Hover als schwebender, gut lesbarer Tooltip (verschiebt das Layout nicht)
+
+### Files
+- services/api/utils/indicator_labels.py
+- user_data/strategies/generic/indicator_factory.py
+- services/frontend/templates/config/indicator_config_edit.html
+- services/frontend/templates/chart_playground/index.html
+- services/api/tests/test_indicator_labels.py
+
+
+
 ## [1.30.39] - 05.07.2026
 
 ### Changed
