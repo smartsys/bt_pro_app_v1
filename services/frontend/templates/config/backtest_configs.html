@@ -12,9 +12,9 @@
         <div class="page-pretitle">Konfiguration</div>
       </div>
       <div class="col-auto ms-auto d-flex gap-2">
-        <button type="button" id="btn-download-all" class="btn btn-outline-primary" title="Für alle Configs die OHLC-Daten (binance) bis heute laden bzw. aktualisieren">
+        <button type="button" id="btn-download-all" class="btn btn-outline-primary" title="Für die angehakten Configs die OHLC-Daten (binance) bis heute laden bzw. aktualisieren">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></svg>
-          Alle Daten herunterladen
+          Ausgewählte Daten herunterladen
         </button>
         <a href="/config/backtest/new" class="btn btn-primary">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
@@ -71,6 +71,9 @@
       <table id="configs-table" class="table table-vcenter card-table table-striped">
         <thead>
           <tr>
+            <th class="text-center" style="width:1%">
+              <input type="checkbox" class="form-check-input m-0" id="select-all" title="Alle (gefilterten) auswählen">
+            </th>
             <th class="text-center" style="width:1%"></th>
             <th>ID</th>
             <th>Name</th>
@@ -245,6 +248,22 @@ document.addEventListener("DOMContentLoaded", function() {
     selectEl.value = uniq.indexOf(current) !== -1 ? current : '';
   }
 
+  // Ausgewählte Config-IDs (seiten- und filterübergreifend gemerkt, weil DataTables
+  // die Checkbox-Zellen bei jedem Draw neu rendert und der DOM-Zustand sonst verloren ginge).
+  var selectedIds = new Set();
+
+  // Kopf-Checkbox spiegelt den Auswahlzustand der aktuell gefilterten Zeilen:
+  // leer -> unchecked, alle -> checked, teilweise -> indeterminate.
+  function syncSelectAllState() {
+    if (!table) return;
+    var head = document.getElementById("select-all");
+    if (!head) return;
+    var ids = table.rows({ search: 'applied' }).data().toArray().map(function(r) { return Number(r.id); });
+    var selected = ids.filter(function(id) { return selectedIds.has(id); }).length;
+    head.checked = ids.length > 0 && selected === ids.length;
+    head.indeterminate = selected > 0 && selected < ids.length;
+  }
+
   var table;
   function initTable() {
     table = new DataTable("#configs-table", {
@@ -261,6 +280,14 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     },
     columns: [
+      // Auswahl-Checkbox: Zustand aus selectedIds, damit er Paginierung/Filter/Redraw übersteht.
+      // d wird von DataTables als String geliefert -> auf Number normalisieren (Set haelt Numbers).
+      { data: "id", orderable: false, className: "text-center", render: function(d, type) {
+          var id = Number(d);
+          if (type !== 'display') return selectedIds.has(id) ? 1 : 0;
+          var checked = selectedIds.has(id) ? ' checked' : '';
+          return '<input type="checkbox" class="form-check-input m-0 row-select" data-id="' + id + '"' + checked + '>';
+      }},
       // GEÄNDERT: Favoriten-Stern (nicht-exklusiv) ersetzt das frühere Default-Flag.
       { data: "is_favorite", orderable: true, className: "text-center", render: function(d, type, row) {
           if (type === 'sort' || type === 'type') return d ? 1 : 0;
@@ -312,10 +339,13 @@ document.addEventListener("DOMContentLoaded", function() {
     pageLength: 25,
     dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
     // GEÄNDERT: Favoriten zuerst (Stern DESC), dann alphabetisch nach Name (ASC).
-    order: [[0, "desc"], [2, "asc"]],
+    // Indizes um 1 verschoben wegen der vorangestellten Auswahl-Checkbox-Spalte.
+    order: [[1, "desc"], [3, "asc"]],
     drawCallback: function() {
       // Tooltips für die Datums-Warnungen nach jedem Render initialisieren
       initTooltips(document.getElementById('configs-table'));
+      // Kopf-Checkbox an den Auswahlzustand der gefilterten Zeilen angleichen
+      syncSelectAllState();
     },
     language: {
       search: "Suche:",
@@ -366,6 +396,28 @@ document.addEventListener("DOMContentLoaded", function() {
       ohlcStartInp.value = ''; ohlcEndInp.value = '';
       qMinInp.value = ''; qMaxInp.value = '';
       table.draw();
+    });
+
+    // Einzelne Zeilen-Checkbox: Auswahl im Set pflegen (Delegation, da Zellen neu gerendert werden)
+    document.getElementById("configs-table").addEventListener("change", function(e) {
+      var cb = e.target.closest(".row-select");
+      if (!cb) return;
+      var id = parseInt(cb.getAttribute("data-id"), 10);
+      if (cb.checked) selectedIds.add(id); else selectedIds.delete(id);
+      syncSelectAllState();
+    });
+
+    // Kopf-Checkbox: alle aktuell gefilterten Zeilen (seitenübergreifend) an-/abwählen.
+    // Set aktualisieren, dann die betroffenen Zeilen invalidieren und neu zeichnen -
+    // nur so ruft DataTables render() erneut auf und die Auswahl erscheint auf allen Seiten.
+    document.getElementById("select-all").addEventListener("change", function() {
+      var check = this.checked;
+      var rows = table.rows({ search: 'applied' });
+      rows.data().toArray().forEach(function(r) {
+        var id = Number(r.id);
+        if (check) selectedIds.add(id); else selectedIds.delete(id);
+      });
+      rows.invalidate('data').draw(false);
     });
   });
 
@@ -427,11 +479,20 @@ document.addEventListener("DOMContentLoaded", function() {
   var dlBtn = document.getElementById("btn-download-all");
   if (dlBtn) {
     dlBtn.addEventListener("click", function() {
-      if (!confirm("Für alle Backtest-Configs die OHLC-Daten (binance) bis heute laden bzw. aktualisieren?")) return;
+      var ids = Array.from(selectedIds);
+      if (ids.length === 0) {
+        alert("Bitte zuerst mindestens eine Config anhaken.");
+        return;
+      }
+      if (!confirm("Für " + ids.length + " ausgewählte Backtest-Config(s) die OHLC-Daten (binance) bis heute laden bzw. aktualisieren?")) return;
       var original = dlBtn.innerHTML;
       dlBtn.disabled = true;
       dlBtn.innerHTML = "Lege Jobs an ...";
-      fetch("/api/config/data/download-all", { method: "POST" })
+      fetch("/api/config/data/download-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config_ids: ids }),
+      })
         .then(function(r) { return r.json(); })
         .then(function(json) {
           dlBtn.disabled = false;

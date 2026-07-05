@@ -1237,6 +1237,14 @@ def list_data_files():
     return {'data': {'files': files_info}, 'error': None}
 
 
+class DownloadAllConfigsIn(BaseModel):
+    """Auswahl der Backtest-Configs für den Sammel-Download.
+
+    config_ids leer/None => alle Configs (Altverhalten); sonst nur die genannten IDs.
+    """
+    config_ids: Optional[List[int]] = None
+
+
 class OhlcDownloadIn(BaseModel):
     """Payload für einen Download-Job."""
     exchange: str = 'binance'
@@ -1437,11 +1445,15 @@ def create_baseline_ohlc_jobs():
 
 
 @router.post('/data/download-all')
-def create_download_all_configs_jobs():
-    """Legt OHLC-Jobs für alle in Backtest-Configs verwendeten Kombinationen an.
+def create_download_all_configs_jobs(
+    payload: DownloadAllConfigsIn = Body(default_factory=DownloadAllConfigsIn),
+):
+    """Legt OHLC-Jobs für die ausgewählten Backtest-Configs an.
 
-    Aggregiert über ALLE Backtest-Configs die Kombinationen aus exchange, symbol
-    und timeframe und leitet den frühesten benötigten Start aus MIN(ohlc_start) ab.
+    Aggregiert über die (per config_ids) ausgewählten Backtest-Configs die
+    Kombinationen aus exchange, symbol und timeframe und leitet den frühesten
+    benötigten Start aus MIN(ohlc_start) ab. Ohne config_ids werden alle Configs
+    berücksichtigt (Altverhalten).
     Pro Kombination:
       - Symbol noch nicht vorhanden -> Download-Job vom frühesten Start bis jetzt (UTC).
       - Symbol bereits vorhanden    -> Update-Job (schreibt bis jetzt fort).
@@ -1450,15 +1462,22 @@ def create_download_all_configs_jobs():
     """
     session = get_session()
     try:
+        # Nur die ausgewählten Configs filtern; leere/keine Auswahl => alle.
+        where = ''
+        params = {}
+        if payload.config_ids:
+            where = 'WHERE id = ANY(:config_ids)'
+            params['config_ids'] = payload.config_ids
         rows = session.execute(text(
-            """
+            f"""
             SELECT exchange, symbol, timeframe,
                    MIN(ohlc_start)::text AS start_date
             FROM backtest_configs
+            {where}
             GROUP BY exchange, symbol, timeframe
             ORDER BY symbol, timeframe
             """
-        )).mappings().all()
+        ), params).mappings().all()
 
         downloaded = []
         updated = []

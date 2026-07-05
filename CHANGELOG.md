@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.48] - 05.07.2026
+
+### Added
+- Backtest-Config-Tabelle: Auswahl per Checkbox, Download nur für angehakte Configs
+  - Neue Auswahl-Checkbox-Spalte pro Zeile plus Select-All im Tabellenkopf (mit Zwischenzustand fuer Teilauswahl)
+  - Der Button heisst jetzt 'Ausgewaehlte Daten herunterladen' und legt OHLC-Jobs nur fuer die angehakten Configs an; ohne Auswahl erscheint ein Hinweis statt eines Requests
+  - Auswahl wird in einem selectedIds-Set gehalten und uebersteht Paginierung, Filter und Redraw; Select-All wirkt nur auf die aktuell gefilterten Zeilen
+  - Endpunkt POST /api/config/data/download-all nimmt optionales config_ids entgegen und filtert die Aggregation per WHERE id = ANY(:config_ids); ohne config_ids bleibt das Altverhalten (alle Configs)
+  - Render-Fix: DataTables liefert den Zell-Wert als String und rendert Zeilen-Nodes ohne deferRender einmal vor - Auswahl-State wird daher ueber Number-Normalisierung und rows().invalidate('data').draw(false) zuverlaessig neu gezeichnet
+
+### Files
+- services/frontend/templates/config/backtest_configs.html
+- services/api/routes/api_config.py
+
+
+
 ## [1.30.47] - 05.07.2026
 
 ### Added
