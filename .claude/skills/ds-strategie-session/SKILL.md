@@ -174,8 +174,8 @@ toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-B
 toolbox.py indicator-config-set --id 4 --concept 2 --iteration 2  # Teil-Update (PATCH): nur gesetzte Felder, config_json/_stops bleiben
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
-toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nach Notation setzen (überschreibt beide)
-toolbox.py indicator-config-labels --id 2018 --desc-suffix "Gate-Sweep BNB" --save  # Notation + Zusatz, nur Name/Beschreibung
+toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nach Notation setzen (überschreibt beide, ohne Freitext)
+toolbox.py indicator-config-labels --id 2018 --name-freetext "BNB Plateau" --desc-freetext "Gate-Sweep, VWMA-fix auf BNB im Plateau-Regime" --save  # Notation + Freitext, nur Name/Beschreibung
 ```
 
 - Neue IDs / Ergebnis stehen in der Ausgabe (`-> **<id>**`) — **wortwörtlich** zurückgeben.
@@ -184,9 +184,10 @@ toolbox.py indicator-config-labels --id 2018 --desc-suffix "Gate-Sweep BNB" --sa
 - `create-indicator-config`: Segment-Label (z.B. Return/Sharpe/PF) optional via `:` oder `/`; nur `result` als Quelle. Optional — der Sweep-Run liegt ohnehin in der DB (siehe „Auswertung — die vier Bestwerte").
 - Kopien/IndicatorConfigs bekommen Namenszusatz bzw. Konvention; **Originale bleiben unangetastet**.
 - **Nachträgliche Verknüpfung:** Eine bestehende Indicator-Config einem Konzept/einer Iteration zuweisen (oder gezielt Name/Beschreibung setzen) über `indicator-config-set --id <n> [--concept … --iteration … --name … --description …]` — Teil-Update, `config_json`/`_stops` bleiben bit-genau. NICHT `indicator-config-update` (das ist ein voller Replace und braucht den kompletten Body).
-- **Indicator-Config-Labels nicht selbst basteln:** Für die reine Standard-Notation `indicator-config-generate-labels <id>` (überschreibt Name+Beschreibung komplett). Soll ein **individueller Zusatz** an die Notation (`<Notation> — <Zusatz>`), stattdessen `indicator-config-labels --id <n> [--name-suffix … --desc-suffix …] --save` — holt die Notation zustandslos, hängt den Zusatz an und schreibt nur Name/Beschreibung zurück (ohne `--save` nur Vorschau). Beide nutzen dieselbe Server-Notation (Single Source, identisch zu den Frontend-Buttons):
-  - **Name:** `<Konzept>-<Iteration> - <Kombinationen> Kombi. <tp>/<sl>` (z. B. `Teststrategie-2 - 65.637 Kombi. 5/15`). Ohne verknüpftes Konzept entfällt der Kopf samt Trenner; ohne Iteration nur die Nummer. tp/sl als Zahl ohne `%`.
-  - **Beschreibung:** Stops `TP, SL, TSL (th/stop), delta_format, TD, time_delta_format` — Stop nur wenn gesetzt, `delta_format` nur bei gesetztem `tsl_th`, `time_delta_format` nur bei gesetztem `td_stop`, `null` weggelassen (z. B. `TP 5%, SL 15%, TD 8, rows`). Ohne Stops leer.
+- **Indicator-Config-Labels nicht selbst basteln:** Für die reine Standard-Notation `indicator-config-generate-labels <id>` (überschreibt Name+Beschreibung komplett, ohne Freitext). Für einen **individuellen Freitext** stattdessen `indicator-config-labels --id <n> [--name-freetext … --desc-freetext …] --save` — holt die Notation zustandslos, setzt den Freitext an die richtige Stelle und schreibt nur Name/Beschreibung zurück (ohne `--save` nur Vorschau). Beide nutzen dieselbe Server-Notation (Single Source, identisch zu den Frontend-Buttons):
+  - **Name:** `<Konzept>-<Iteration>-(<Kombinationen>) <Stops>` (z. B. `VWMA-3-(35) TP 30% SL 15% TD 1-999 (35), rows`). Ohne verknüpftes Konzept nur `(<Kombinationen>)`; ohne Iteration nur die Nummer. Stops leerzeichengetrennt (`TP`, `SL`, `TSL`, `TD`; Format-Wort per Komma am Stop), Sweep-Achsen als `min-max (n)`. Ein **Freitext** (`--name-freetext`) hängt hinten per ` : ` an — kurze, lesbare Kennung (Symbol + Regime/Kontext), z. B. ` : BNB Spitze Bull 20/21`.
+  - **Beschreibung:** Auflistung der Indikatoren mit Werten/Wertebereichen — `<name>: <param> <wert>, <param> <min-max (n)>; …` (z. B. `fast_sma: length 12, multiplier 9; vwma: length 3, below_pct 7`). Ein **Freitext** (`--desc-freetext`) steht **vor** der Auflistung, per ` | ` getrennt (`<Freitext> | <Auflistung>`).
+  - **Freitext IMMER ausschreiben — keine kryptischen Kürzel.** Statt `v9 bp2 s5x8` sprechende Klartext-Erklärungen; deutsch formuliert (Eigenwörter wie `Total Return` bleiben englisch). Der Freitext ist das, was Titel/Beschreibung menschenlesbar unterscheidet — er muss ohne Vorwissen verständlich sein.
 - `iteration-delete`/`concept-delete` ohne `--force` → Backend meldet **409 mit Blocker-Zählern**: nachfragen, nicht blind forcen.
 
 ### Auswertung eines Multiparameter-Laufs — die vier Bestwerte

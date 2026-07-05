@@ -90,9 +90,10 @@ durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
   python3 toolbox.py indicator-config-set --id 4 [--concept 2 --iteration 2 --name "..." --description "..."]
         Teil-Update (PATCH): schreibt NUR die gesetzten Felder; config_json/_stops bleiben unangetastet.
         Kernfall: bestehende Config nachträglich einem Konzept/einer Iteration zuweisen.
-  python3 toolbox.py indicator-config-labels --id 4 [--name-suffix "..." --desc-suffix "..." --save]
-        Standard-Notation erzeugen (preview-labels), optional Zusatz anhängen (`<Notation> — <Zusatz>`),
-        mit --save via PATCH nur Name/Beschreibung zurückschreiben. Ohne --save nur Vorschau.
+  python3 toolbox.py indicator-config-labels --id 4 [--name-freetext "..." --desc-freetext "..." --save]
+        Standard-Notation erzeugen (preview-labels), optional Freitext setzen (Titel: `<Notation> : <Freitext>`,
+        Beschreibung: `<Freitext> | <Auflistung>`), mit --save via PATCH nur Name/Beschreibung zurückschreiben.
+        Ohne --save nur Vorschau. Freitext ausschreiben, keine kryptischen Kürzel.
   python3 toolbox.py backtest-config-create --file backtest.json
         --file = der volle Body (Pflicht: name, start, end, ohlc_start, ohlc_end; Defaults: symbol BTCUSDT, exchange binance, timeframe 4h, size 100, size_type value, init_cash 100, fees 0.001).
   python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
@@ -1704,15 +1705,16 @@ def indicator_config_set(args: list) -> int:
 
 
 def indicator_config_labels(args: list) -> int:
-    """Standard-Notation einer Config erzeugen, optional um Zusatz erweitern, optional speichern.
+    """Standard-Notation einer Config erzeugen, optional um Freitext erweitern, optional speichern.
 
     Flags: --id <n> (oder erstes Positional)
-           [--name-suffix "..."] [--desc-suffix "..."]  individueller Teil, angehängt als
-                                                          `<Notation> — <Zusatz>`
-           [--save]                                       Ergebnis via PATCH zurückschreiben
-    Bildet den Frontend-Flow nach: „Beschreibung generieren" ruft dieselbe zustandslose
-    Route (/api/config/indicator/preview-labels, einzige Notations-Wahrheit), hängt den
-    KI-gelieferten Zusatz an und speichert getrennt. Ohne --save wird nur angezeigt.
+           [--name-freetext "..."]  kurze lesbare Kennung, hängt hinten per " : " an den Titel
+           [--desc-freetext "..."]  Freitext, steht VOR der Auflistung: "<Freitext> | <Auflistung>"
+           [--save]                 Ergebnis via PATCH zurückschreiben
+    Bildet den Frontend-Flow nach: dieselbe zustandslose Route
+    (/api/config/indicator/preview-labels, einzige Notations-Wahrheit) liefert Name +
+    Indikator-Auflistung; der KI-Freitext wird an die richtige Stelle gesetzt und getrennt
+    gespeichert. Freitext immer ausschreiben, keine kryptischen Kürzel. Ohne --save nur Anzeige.
     """
     f = _parse_flags(args)
     pos = f.get("_positional", [])
@@ -1724,12 +1726,14 @@ def indicator_config_labels(args: list) -> int:
                              d.get("strategy_concept_id"), d.get("strategy_iteration_id"))
     name = labels.get("name") or ""
     description = labels.get("description") or ""
-    name_suffix = f.get("name-suffix")
-    desc_suffix = f.get("desc-suffix")
-    if name_suffix and name_suffix is not True:
-        name = f"{name} — {name_suffix}"
-    if desc_suffix and desc_suffix is not True:
-        description = f"{description} — {desc_suffix}"
+    name_freetext = f.get("name-freetext")
+    desc_freetext = f.get("desc-freetext")
+    # Titel-Freitext hängt hinten per " : " (kurze, lesbare Kennung: Symbol + Regime)
+    if name_freetext and name_freetext is not True:
+        name = f"{name} : {name_freetext}"
+    # Beschreibungs-Freitext steht VOR der Auflistung, per " | " getrennt
+    if desc_freetext and desc_freetext is not True:
+        description = f"{desc_freetext} | {description}"
 
     print(f"## indicator-config-labels — Config {int(cid)}")
     print(f"- Name: {name}")

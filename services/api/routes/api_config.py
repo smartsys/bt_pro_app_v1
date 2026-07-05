@@ -122,6 +122,62 @@ def list_configs():
         session.close()
 
 
+@router.get('/backtest/quality')
+def backtest_configs_range_quality():
+    """Datenqualitaet je Backtest-Config fuer den eingestellten OHLC-Zeitraum.
+
+    Fuer jede Config wird gemessen, wie vollstaendig die OHLC-Daten im Bereich
+    [ohlc_start, ohlc_end] sind: vorhandene Kerzen im Zeitraum geteilt durch die
+    laut Timeframe erwarteten Kerzen. Anders als die Gesamtqualitaet auf
+    /config/data erfasst das auch fehlende Raender (Datei beginnt spaeter oder
+    endet frueher als der Config-Zeitraum). Rueckgabe: {config_id: prozent|null}.
+
+    Effizienz: Je (exchange, timeframe) wird die HDF5-Datei nur einmal geoeffnet
+    und der Zeit-Index pro Symbol einmal geladen (select_column, ohne OHLC-Werte),
+    danach werden alle Configs desselben Symbols per searchsorted bedient.
+    """
+    session = get_session()
+    try:
+        rows = session.execute(text(
+            "SELECT id, exchange, symbol, timeframe, ohlc_start, ohlc_end "
+            "FROM backtest_configs"
+        )).mappings().all()
+
+        # Benoetigte Symbole je (exchange, timeframe) sammeln.
+        needed = {}
+        for r in rows:
+            needed.setdefault((r['exchange'], r['timeframe']), set()).add(r['symbol'])
+
+        idx_cache = {}  # (exchange, timeframe, symbol) -> DatetimeIndex (UTC)
+        for (exchange, timeframe), symbols in needed.items():
+            path = os.path.join(Config.DATA_PATH, f'ohlcv_{timeframe}_{exchange}.h5')
+            if not os.path.exists(path):
+                continue
+            try:
+                with pd.HDFStore(path, mode='r') as store:
+                    available = {k.lstrip('/') for k in store.keys()}
+                    for sym in symbols:
+                        if sym not in available:
+                            continue
+                        try:
+                            col = store.select_column(f'/{sym}', 'index')
+                            idx_cache[(exchange, timeframe, sym)] = pd.DatetimeIndex(col)
+                        except (KeyError, ValueError):
+                            continue
+            except OSError:
+                continue
+
+        quality_by_id = {}
+        for r in rows:
+            quality_by_id[r['id']] = _config_range_quality(
+                idx_cache.get((r['exchange'], r['timeframe'], r['symbol'])),
+                r['ohlc_start'], r['ohlc_end'], _TF_SECONDS.get(r['timeframe']),
+            )
+        return {'data': {'quality': quality_by_id}, 'error': None}
+    finally:
+        session.close()
+
+
 @router.get('/backtest/{config_id}')
 def get_config(config_id: int):
     """Einzelne Backtest-Config laden."""
@@ -1083,6 +1139,37 @@ def _quality_pct(first_ts, last_ts, nrows: int, tf_seconds: int) -> Optional[flo
     return round(min(100.0, nrows / expected * 100.0), 1)
 
 
+def _config_range_quality(idx, ohlc_start, ohlc_end, tf_seconds) -> Optional[float]:
+    """Datenqualitaet fuer einen vorgegebenen Config-Zeitraum [ohlc_start, ohlc_end].
+
+    Nutzt denselben Prozent-Baustein wie die Gesamtqualitaet (_quality_pct), misst
+    aber gegen die Config-Grenzen statt gegen erste/letzte vorhandene Kerze und
+    erfasst so auch fehlende Raender. `idx` ist der UTC-Zeit-Index des Symbols
+    (DatetimeIndex) oder None, wenn fuer Symbol/Timeframe keine Daten vorliegen.
+
+    None (nicht bestimmbar) nur bei unbekanntem Timeframe oder fehlendem/ungueltigem
+    Zeitraum. Fehlen die Daten selbst (idx None) bei gueltigem Zeitraum, sind schlicht
+    0 Kerzen im Bereich vorhanden -> 0 Prozent (nicht Bindestrich).
+    """
+    if not tf_seconds or not ohlc_start or not ohlc_end:
+        return None
+    try:
+        start_ts = pd.Timestamp(ohlc_start, tz='UTC')
+        end_ts = pd.Timestamp(ohlc_end, tz='UTC')
+    except (ValueError, TypeError):
+        return None
+    if end_ts < start_ts:
+        return None
+    # Kerzen im Bereich [start, end] zaehlen (beide Grenzen inklusive); ohne Daten 0.
+    if idx is None:
+        count = 0
+    else:
+        lo = idx.searchsorted(start_ts, side='left')
+        hi = idx.searchsorted(end_ts, side='right')
+        count = int(hi - lo)
+    return _quality_pct(start_ts, end_ts, count, tf_seconds)
+
+
 def _read_file_metadata(path: str, tf_seconds: Optional[int]) -> dict:
     """Liest pro Symbol nrows + erste/letzte Index-Zeile (schnell, ohne OHLC zu laden).
 
@@ -1343,6 +1430,72 @@ def create_baseline_ohlc_jobs():
 
         return {
             'data': {'jobs': created, 'count': len(created), 'skipped': skipped},
+            'error': None,
+        }
+    finally:
+        session.close()
+
+
+@router.post('/data/download-all')
+def create_download_all_configs_jobs():
+    """Legt OHLC-Jobs für alle in Backtest-Configs verwendeten Kombinationen an.
+
+    Aggregiert über ALLE Backtest-Configs die Kombinationen aus exchange, symbol
+    und timeframe und leitet den frühesten benötigten Start aus MIN(ohlc_start) ab.
+    Pro Kombination:
+      - Symbol noch nicht vorhanden -> Download-Job vom frühesten Start bis jetzt (UTC).
+      - Symbol bereits vorhanden    -> Update-Job (schreibt bis jetzt fort).
+    Nicht-binance-Kombinationen werden übersprungen (Download ist binance-spezifisch)
+    und im Ergebnis gemeldet.
+    """
+    session = get_session()
+    try:
+        rows = session.execute(text(
+            """
+            SELECT exchange, symbol, timeframe,
+                   MIN(ohlc_start)::text AS start_date
+            FROM backtest_configs
+            GROUP BY exchange, symbol, timeframe
+            ORDER BY symbol, timeframe
+            """
+        )).mappings().all()
+
+        downloaded = []
+        updated = []
+        skipped_exchange = []
+        for r in rows:
+            if r['exchange'] != 'binance':
+                skipped_exchange.append(f"{r['symbol']}/{r['exchange']}/{r['timeframe']}")
+                continue
+            # Schon vorhanden? Datei pro timeframe+exchange, Symbole als HDF5-Keys.
+            filename = f"ohlcv_{r['timeframe']}_{r['exchange']}.h5"
+            path = os.path.join(Config.DATA_PATH, filename)
+            already = False
+            if os.path.exists(path):
+                try:
+                    with pd.HDFStore(path, mode='r') as store:
+                        already = any(k.lstrip('/') == r['symbol'] for k in store.keys())
+                except (OSError, KeyError):
+                    already = False
+            if already:
+                updated.extend(_create_ohlc_jobs(
+                    session, 'update', r['exchange'], r['timeframe'],
+                    [r['symbol']], None, 'now UTC',
+                ))
+            else:
+                downloaded.extend(_create_ohlc_jobs(
+                    session, 'download', r['exchange'], r['timeframe'],
+                    [r['symbol']], r['start_date'], 'now UTC',
+                ))
+
+        return {
+            'data': {
+                'downloaded': downloaded,
+                'updated': updated,
+                'download_count': len(downloaded),
+                'update_count': len(updated),
+                'skipped_exchange': skipped_exchange,
+            },
             'error': None,
         }
     finally:

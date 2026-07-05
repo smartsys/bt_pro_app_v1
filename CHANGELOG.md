@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.42] - 05.07.2026
+
+### Added
+- Backtest-Configs: Bulk-Download aller OHLC-Daten und zeitraum-bezogene Datenqualitäts-Anzeige
+  - Button 'Alle Daten herunterladen' auf /config/backtest: neuer Endpoint POST /api/config/data/download-all aggregiert exchange/symbol/timeframe über alle Backtest-Configs, lädt fehlende Symbole ab frühestem ohlc_start bis jetzt (UTC) und schreibt vorhandene per Update-Job bis heute fort. Nur binance; nicht unterstützte Exchanges werden übersprungen und gemeldet.
+  - Neue Spalte 'Qualität' in der Config-Liste: Endpoint GET /api/config/backtest/quality berechnet je Config die Datenqualität im eingestellten OHLC-Zeitraum [ohlc_start, ohlc_end]. Anders als die Gesamtqualität auf /config/data erfasst das auch fehlende Ränder (Datei beginnt später oder endet früher als der Config-Zeitraum).
+  - Effiziente Berechnung: HDF5-Datei je (exchange, timeframe) nur einmal geöffnet, Zeit-Index je Symbol einmal via select_column geladen, pro Config per searchsorted gezählt; Wiederverwendung von _quality_pct mit den Config-Grenzen.
+  - Fehlende Daten im Zeitraum werden als 0 Prozent (rote Badge) angezeigt statt als Bindestrich; Bindestrich nur noch bei nicht bestimmbarer Kennzahl (unbekannter Timeframe oder fehlender Zeitraum).
+  - Unit-Tests für _config_range_quality (volle Abdeckung, fehlender Rand, keine Daten -> 0 Prozent, unbekannter Timeframe, fehlender Zeitraum, negative Zeitspanne).
+
+### Files
+- services/api/routes/api_config.py
+- services/frontend/templates/config/backtest_configs.html
+- tests/test_config_range_quality.py
+
+
+
 ## [1.30.41] - 05.07.2026
 
 ### Changed

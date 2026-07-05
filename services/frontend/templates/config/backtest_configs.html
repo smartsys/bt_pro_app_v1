@@ -11,7 +11,11 @@
 
         <div class="page-pretitle">Konfiguration</div>
       </div>
-      <div class="col-auto ms-auto">
+      <div class="col-auto ms-auto d-flex gap-2">
+        <button type="button" id="btn-download-all" class="btn btn-outline-primary" title="Für alle Configs die OHLC-Daten (binance) bis heute laden bzw. aktualisieren">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></svg>
+          Alle Daten herunterladen
+        </button>
         <a href="/config/backtest/new" class="btn btn-primary">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
           Neue Config
@@ -51,6 +55,7 @@
             <th>Start</th>
             <th>End</th>
             <th>OHLC End</th>
+            <th class="text-center">Qualität</th>
             <th class="text-center">Size</th>
             <th>Size Type</th>
             <th class="text-center">Init Cash</th>
@@ -91,6 +96,26 @@ document.addEventListener("DOMContentLoaded", function() {
         });
       })
       .catch(function() { /* fallback: leere Map -> kein Marker */ });
+  }
+
+  // Datenqualität je Config-ID für den eingestellten OHLC-Zeitraum (aus /api/config/backtest/quality)
+  var configQuality = {};
+  function loadQuality() {
+    return fetch('/api/config/backtest/quality')
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        configQuality = (j.data && j.data.quality) || {};
+      })
+      .catch(function() { configQuality = {}; });
+  }
+
+  // Prozentwert als farbige Badge (grün >= 99,5 / gelb >= 90 / rot darunter; null -> Strich).
+  // Formatierung identisch zur OHLC-Daten-Seite (data_files.html).
+  function qualityBadge(q) {
+    if (q === null || q === undefined) return '<span class="text-muted">–</span>';
+    var cls = q >= 99.5 ? 'bg-green-lt' : (q >= 90 ? 'bg-yellow-lt' : 'bg-red-lt');
+    var txt = q.toFixed(1).replace('.', ',') + ' %';
+    return '<span class="badge ' + cls + '">' + txt + '</span>';
   }
 
   // ISO 'YYYY-MM-DD' -> 'DD.MM.YYYY' (mitteleuropäisches Format, Zeitzone bleibt UTC)
@@ -191,6 +216,12 @@ document.addEventListener("DOMContentLoaded", function() {
       { data: "start",      render: renderDateCell },
       { data: "end",        render: renderDateCell },
       { data: "ohlc_end",   render: renderDateCell },
+      // Datenqualität im eingestellten OHLC-Zeitraum (aus separatem Endpoint, per Config-ID gemappt)
+      { data: "id", orderable: true, className: "text-center", render: function(d, type) {
+          var q = configQuality[d];
+          if (type === 'sort' || type === 'type') return (q === null || q === undefined) ? -1 : q;
+          return qualityBadge(q);
+      }},
       { data: "size", className: "text-center" },
       { data: "size_type" },
       { data: "init_cash", className: "text-center" },
@@ -227,9 +258,9 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // Erst Availability laden, dann DataTable initialisieren — damit die
-  // Datums-Renderer den Verfügbarkeitsabgleich beim ersten Render schon haben.
-  loadAvailability().then(initTable).then(function() {
+  // Erst Availability + Qualität laden, dann DataTable initialisieren — damit die
+  // Datums-Renderer und die Qualitäts-Spalte beim ersten Render schon Daten haben.
+  Promise.all([loadAvailability(), loadQuality()]).then(initTable).then(function() {
     // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
     var searchInput = document.getElementById("configs-search");
     searchInput.addEventListener("input", function() {
@@ -290,6 +321,38 @@ document.addEventListener("DOMContentLoaded", function() {
     fetch('/api/config/backtest/' + id, { method: 'DELETE' })
       .then(function() { table.ajax.reload(); });
   });
+
+  /* Alle Daten herunterladen: Download-/Update-Jobs für alle Config-Kombinationen */
+  var dlBtn = document.getElementById("btn-download-all");
+  if (dlBtn) {
+    dlBtn.addEventListener("click", function() {
+      if (!confirm("Für alle Backtest-Configs die OHLC-Daten (binance) bis heute laden bzw. aktualisieren?")) return;
+      var original = dlBtn.innerHTML;
+      dlBtn.disabled = true;
+      dlBtn.innerHTML = "Lege Jobs an ...";
+      fetch("/api/config/data/download-all", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          dlBtn.disabled = false;
+          dlBtn.innerHTML = original;
+          if (json.error) { alert("Fehler: " + json.error); return; }
+          var d = json.data || {};
+          var msg = "Jobs angelegt: " + (d.download_count || 0) + " Download, "
+                  + (d.update_count || 0) + " Aktualisierung.";
+          var sk = d.skipped_exchange || [];
+          if (sk.length) {
+            msg += "\n\n" + sk.length + " übersprungen (Exchange nicht binance):\n" + sk.join(", ");
+          }
+          msg += "\n\nFortschritt unter Konfiguration -> OHLC-Daten.";
+          alert(msg);
+        })
+        .catch(function(err) {
+          dlBtn.disabled = false;
+          dlBtn.innerHTML = original;
+          alert("Fehler: " + err);
+        });
+    });
+  }
 });
 </script>
 {% endblock %}
