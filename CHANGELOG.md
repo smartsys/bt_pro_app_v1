@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.50] - 06.07.2026
+
+### Added
+- Chart-Playground: Backtest-Config-Browser als Tabellen-Popup neben dem Dropdown
+  - Icon-Button neben dem Label 'Backtest-Config' öffnet ein Modal mit allen Backtest-Configs als Tabelle im Stil der Backtest-Config-Liste (Badges für Symbol/Exchange/TF)
+  - Zeilen-Klick wählt die Config und füllt die Playground-Felder über den bestehenden Change-Handler vor
+  - Gleiche Filter wie auf der Backtest-Config-Seite: TF, Symbol, OHLC-Fenster (ab/bis), Qualität min/max, Zurücksetzen, plus Volltextsuche
+  - Datenqualitäts-Spalte (farbige Badges) aus /api/config/backtest/quality, einmal geladen und gecacht; während des Nachladens zeigt die Zelle einen Spinner statt eines Strichs
+  - Alle Spalten klickbar sortierbar (numerisch bzw. alphabetisch, leere Werte ans Ende), aktive Spalte mit Sortierpfeil
+  - Speist sich aus dem bereits geladenen state.backtestConfigs, kein neuer Endpunkt; das Select-Feld bleibt unangetastet
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.49] - 05.07.2026
 
 ### Changed

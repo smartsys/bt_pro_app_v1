@@ -54,7 +54,13 @@
         </div>
       </div>
       <div style="flex:1;min-width:120px">
-        <label class="form-label">Backtest-Config</label>
+        <!-- GEÄNDERT: Icon-Button neben dem Label öffnet den Backtest-Config-Browser (Tabelle) -->
+        <label class="form-label d-flex align-items-center gap-1">
+          Backtest-Config
+          <button type="button" class="btn btn-link p-0 border-0 text-secondary" id="cpBtCfgBrowseBtn" title="Backtest-Configs in Tabelle durchsuchen" style="line-height:1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/></svg>
+          </button>
+        </label>
         <select class="form-select w-100" id="cpBacktestCfgSelect">
           <option value="">-- Backtest --</option>
         </select>
@@ -401,6 +407,58 @@
   </div>
 </div>
 
+<!-- GEÄNDERT: Custom Modal — Backtest-Config-Browser (Tabelle im Stil der Backtest-Config-Liste) -->
+<div class="cp-modal-backdrop" id="cpBtCfgBrowseModal">
+  <div class="cp-modal-box" style="max-width:1500px;width:96%">
+    <div class="cp-modal-head">
+      <h5>Backtest-Config auswählen</h5>
+      <button type="button" class="btn-close" data-cp-close="cpBtCfgBrowseModal"></button>
+    </div>
+    <div class="cp-modal-body">
+      <!-- GEÄNDERT: Filterleiste identisch zur Backtest-Config-Liste (TF, Symbol, OHLC-Fenster, Qualität) -->
+      <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+        <select id="cpBtCfgFilterTf" class="form-select form-select-sm" style="width:110px" title="Nach Timeframe filtern">
+          <option value="">TF (alle)</option>
+        </select>
+        <select id="cpBtCfgFilterSymbol" class="form-select form-select-sm" style="width:140px" title="Nach Symbol filtern">
+          <option value="">Symbol (alle)</option>
+        </select>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-secondary small text-nowrap">OHLC ab</span>
+          <input type="date" id="cpBtCfgFilterOhlcStart" class="form-control form-control-sm" style="width:150px" title="OHLC Start ab diesem Datum (ohlc_start >= Datum)">
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-secondary small text-nowrap">bis</span>
+          <input type="date" id="cpBtCfgFilterOhlcEnd" class="form-control form-control-sm" style="width:150px" title="OHLC End bis zu diesem Datum (ohlc_end <= Datum)">
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-secondary small text-nowrap">Qual. %</span>
+          <input type="number" id="cpBtCfgFilterQMin" class="form-control form-control-sm" style="width:80px" placeholder="min" min="0" max="100" step="0.1" title="Qualität min. (Prozent)">
+          <input type="number" id="cpBtCfgFilterQMax" class="form-control form-control-sm" style="width:80px" placeholder="max" min="0" max="100" step="0.1" title="Qualität max. (Prozent)">
+        </div>
+        <button type="button" id="cpBtCfgFilterReset" class="btn btn-sm btn-outline-secondary" title="Alle Filter zurücksetzen">Zurücksetzen</button>
+      </div>
+      <input type="text" class="form-control mb-2" id="cpBtCfgBrowseSearch" placeholder="Suchen (Name, Symbol, Exchange, Timeframe)...">
+      <div class="table-responsive">
+        <!-- GEÄNDERT: text-nowrap verhindert Zeilenumbrüche in den Zellen (white-space vererbt an td/th) -->
+        <table class="table table-sm table-hover table-vcenter text-nowrap">
+          <thead>
+            <!-- GEÄNDERT: klickbare Header für Sortierung (data-sort-key) -->
+            <tr id="cpBtCfgBrowseHead">
+              <th data-sort-key="id">ID</th><th data-sort-key="name">Name</th><th class="text-center" data-sort-key="quality">Qualität</th>
+              <th data-sort-key="symbol">Symbol</th><th data-sort-key="exchange">Exchange</th><th data-sort-key="timeframe">TF</th>
+              <th data-sort-key="ohlc_start">OHLC Start</th><th data-sort-key="start">Start</th><th data-sort-key="end">End</th><th data-sort-key="ohlc_end">OHLC End</th>
+              <th class="text-center" data-sort-key="size">Size</th><th data-sort-key="size_type">Size Type</th>
+              <th class="text-center" data-sort-key="init_cash">Init Cash</th><th class="text-center" data-sort-key="fees">Fees</th>
+            </tr>
+          </thead>
+          <tbody id="cpBtCfgBrowseBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -674,6 +732,134 @@
         sel.appendChild(o);
       });
     } catch (e) { console.warn('BT-Configs load failed', e); }
+  }
+
+  // GEÄNDERT: Backtest-Config-Browser — Datenqualität je Config-ID (einmal geladen, gecacht)
+  let btCfgQuality = null;
+  async function loadBtCfgQuality() {
+    if (btCfgQuality !== null) return btCfgQuality;
+    try {
+      const r = await fetch('/api/config/backtest/quality');
+      const j = await r.json();
+      btCfgQuality = (j.data && j.data.quality) || {};
+    } catch (e) { btCfgQuality = {}; }
+    return btCfgQuality;
+  }
+
+  // GEÄNDERT: Prozentwert als farbige Badge (grün >= 99,5 / gelb >= 90 / rot; null -> Strich) — Format wie Backtest-Config-Liste
+  function btCfgQualityBadge(q) {
+    if (q === null || q === undefined) return '<span class="text-muted">–</span>';
+    const cls = q >= 99.5 ? 'bg-green-lt' : (q >= 90 ? 'bg-yellow-lt' : 'bg-red-lt');
+    const txt = q.toFixed(1).replace('.', ',') + ' %';
+    return '<span class="badge ' + cls + '">' + txt + '</span>';
+  }
+
+  // ISO-Datum auf 'YYYY-MM-DD' kürzen (für OHLC-Fensterfilter)
+  function btCfgDatePart(v) { return v ? ('' + v).substring(0, 10) : ''; }
+
+  // GEÄNDERT: Filter-Dropdowns (TF/Symbol) aus den geladenen Configs befüllen, Auswahl behalten
+  function fillBtCfgFilterSelect(selectEl, values, placeholder) {
+    const current = selectEl.value;
+    const uniq = Array.from(new Set(values.filter(Boolean))).sort();
+    selectEl.innerHTML = '<option value="">' + placeholder + '</option>';
+    uniq.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; selectEl.appendChild(o); });
+    selectEl.value = uniq.indexOf(current) !== -1 ? current : '';
+  }
+
+  // Leerer/ungültiger Zahlwert -> null (kein Filter); Komma als Dezimaltrenner erlaubt
+  function btCfgParseNum(v) {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(('' + v).replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+
+  // GEÄNDERT: Sortierzustand + Wert-Accessor je Spalte (Qualität aus dem Cache)
+  const btCfgSort = { key: 'id', dir: 1 };
+  const BTCFG_NUMERIC_KEYS = new Set(['id', 'quality', 'size', 'init_cash', 'fees']);
+  function btCfgSortValue(c, key) {
+    if (key === 'quality') return (btCfgQuality || {})[c.id];
+    return c[key];
+  }
+
+  // GEÄNDERT: Backtest-Config-Browser — Tabelle aus state.backtestConfigs, Filter identisch zur Backtest-Config-Liste
+  function renderBtCfgBrowse() {
+    const body = document.getElementById('cpBtCfgBrowseBody');
+    if (!body) return;
+    const q = (document.getElementById('cpBtCfgBrowseSearch').value || '').trim().toLowerCase();
+    const fTf = document.getElementById('cpBtCfgFilterTf').value;
+    const fSym = document.getElementById('cpBtCfgFilterSymbol').value;
+    const fOhlcStart = document.getElementById('cpBtCfgFilterOhlcStart').value;
+    const fOhlcEnd = document.getElementById('cpBtCfgFilterOhlcEnd').value;
+    const fQMin = btCfgParseNum(document.getElementById('cpBtCfgFilterQMin').value);
+    const fQMax = btCfgParseNum(document.getElementById('cpBtCfgFilterQMax').value);
+    const qualityLoading = btCfgQuality === null; // noch nicht nachgeladen -> Spinner statt Strich
+    const quality = btCfgQuality || {};
+    const selectedId = document.getElementById('cpBacktestCfgSelect').value;
+    const rows = (state.backtestConfigs || []).filter(c => {
+      if (q && ![c.name, c.symbol, c.exchange, c.timeframe].some(v => String(v || '').toLowerCase().includes(q))) return false;
+      if (fTf && c.timeframe !== fTf) return false;
+      if (fSym && c.symbol !== fSym) return false;
+      if (fOhlcStart && btCfgDatePart(c.ohlc_start) < fOhlcStart) return false;
+      if (fOhlcEnd && btCfgDatePart(c.ohlc_end) > fOhlcEnd) return false;
+      if (fQMin !== null || fQMax !== null) {
+        const qv = quality[c.id];
+        if (qv === null || qv === undefined) return false;
+        if (fQMin !== null && qv < fQMin) return false;
+        if (fQMax !== null && qv > fQMax) return false;
+      }
+      return true;
+    });
+    // GEÄNDERT: sortieren nach aktivem Header; leere Werte immer ans Ende
+    const numeric = BTCFG_NUMERIC_KEYS.has(btCfgSort.key);
+    rows.sort((a, b) => {
+      let va = btCfgSortValue(a, btCfgSort.key), vb = btCfgSortValue(b, btCfgSort.key);
+      const ea = (va === null || va === undefined || va === ''), eb = (vb === null || vb === undefined || vb === '');
+      if (ea && eb) return 0;
+      if (ea) return 1;
+      if (eb) return -1;
+      let cmp;
+      if (numeric) { cmp = Number(va) - Number(vb); }
+      else { cmp = String(va).localeCompare(String(vb)); }
+      return cmp * btCfgSort.dir;
+    });
+    body.innerHTML = '';
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3">Keine Backtest-Config gefunden</td></tr>';
+      return;
+    }
+    rows.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      if (String(c.id) === selectedId) tr.classList.add('table-active');
+      tr.dataset.id = c.id;
+      const cell = (v) => { const td = document.createElement('td'); td.textContent = (v === null || v === undefined) ? '' : v; return td; };
+      const badge = (v, cls) => { const td = document.createElement('td'); const s = document.createElement('span'); s.className = 'badge ' + cls; s.textContent = v || ''; td.appendChild(s); return td; };
+      tr.appendChild(cell(c.id));
+      const nameTd = document.createElement('td'); const strong = document.createElement('strong'); strong.textContent = c.name || ''; nameTd.appendChild(strong); tr.appendChild(nameTd);
+      const qualTd = document.createElement('td'); qualTd.className = 'text-center';
+      qualTd.innerHTML = qualityLoading
+        ? '<div class="spinner-border spinner-border-sm text-secondary" role="status" title="Qualität wird geladen"></div>'
+        : btCfgQualityBadge(quality[c.id]);
+      tr.appendChild(qualTd);
+      tr.appendChild(badge(c.symbol, 'bg-cyan-lt'));
+      tr.appendChild(badge(c.exchange, 'bg-azure-lt'));
+      tr.appendChild(badge(c.timeframe, 'bg-green-lt'));
+      tr.appendChild(cell(btCfgDatePart(c.ohlc_start)));
+      tr.appendChild(cell(btCfgDatePart(c.start)));
+      tr.appendChild(cell(btCfgDatePart(c.end)));
+      tr.appendChild(cell(btCfgDatePart(c.ohlc_end)));
+      const sizeTd = cell(c.size); sizeTd.className = 'text-center'; tr.appendChild(sizeTd);
+      tr.appendChild(cell(c.size_type));
+      const cashTd = cell(c.init_cash); cashTd.className = 'text-center'; tr.appendChild(cashTd);
+      const feesTd = cell(c.fees); feesTd.className = 'text-center'; tr.appendChild(feesTd);
+      tr.addEventListener('click', () => {
+        const sel = document.getElementById('cpBacktestCfgSelect');
+        sel.value = String(c.id);
+        sel.dispatchEvent(new Event('change'));
+        closeModal('cpBtCfgBrowseModal');
+      });
+      body.appendChild(tr);
+    });
   }
 
   async function loadSetups() {
@@ -3725,6 +3911,57 @@
     prefillPortfolioFromBacktestCfg(cfg);
     setStatus('Backtest-Config geladen: ' + cfg.name);
   });
+
+  // GEÄNDERT: Backtest-Config-Browser öffnen (Dropdowns befüllen, Qualität laden) + Filter
+  document.getElementById('cpBtCfgBrowseBtn').addEventListener('click', async () => {
+    const search = document.getElementById('cpBtCfgBrowseSearch');
+    search.value = '';
+    // Filter-Dropdowns aus den geladenen Configs befüllen (Auswahl bleibt erhalten)
+    fillBtCfgFilterSelect(document.getElementById('cpBtCfgFilterTf'),
+                          (state.backtestConfigs || []).map(c => c.timeframe), 'TF (alle)');
+    fillBtCfgFilterSelect(document.getElementById('cpBtCfgFilterSymbol'),
+                          (state.backtestConfigs || []).map(c => c.symbol), 'Symbol (alle)');
+    openModal('cpBtCfgBrowseModal');
+    search.focus();
+    updateBtCfgSortIndicators();
+    renderBtCfgBrowse();
+    // Qualität nachladen und Tabelle erneut zeichnen, sobald da
+    await loadBtCfgQuality();
+    renderBtCfgBrowse();
+  });
+  document.getElementById('cpBtCfgBrowseSearch').addEventListener('input', renderBtCfgBrowse);
+  ['cpBtCfgFilterTf', 'cpBtCfgFilterSymbol', 'cpBtCfgFilterOhlcStart', 'cpBtCfgFilterOhlcEnd'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderBtCfgBrowse);
+  });
+  ['cpBtCfgFilterQMin', 'cpBtCfgFilterQMax'].forEach(id => {
+    document.getElementById(id).addEventListener('input', renderBtCfgBrowse);
+  });
+  document.getElementById('cpBtCfgFilterReset').addEventListener('click', () => {
+    ['cpBtCfgFilterTf', 'cpBtCfgFilterSymbol', 'cpBtCfgFilterOhlcStart', 'cpBtCfgFilterOhlcEnd', 'cpBtCfgFilterQMin', 'cpBtCfgFilterQMax', 'cpBtCfgBrowseSearch'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    renderBtCfgBrowse();
+  });
+
+  // GEÄNDERT: Header klickbar für Sortierung; Basis-Label merken, Pfeil an aktive Spalte hängen
+  document.querySelectorAll('#cpBtCfgBrowseHead th[data-sort-key]').forEach(th => {
+    th.dataset.label = th.textContent;
+    th.style.cursor = 'pointer';
+    th.style.userSelect = 'none';
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (btCfgSort.key === key) { btCfgSort.dir *= -1; }
+      else { btCfgSort.key = key; btCfgSort.dir = 1; }
+      updateBtCfgSortIndicators();
+      renderBtCfgBrowse();
+    });
+  });
+  function updateBtCfgSortIndicators() {
+    document.querySelectorAll('#cpBtCfgBrowseHead th[data-sort-key]').forEach(th => {
+      const active = th.dataset.sortKey === btCfgSort.key;
+      th.textContent = th.dataset.label + (active ? (btCfgSort.dir > 0 ? ' ▲' : ' ▼') : '');
+    });
+  }
 
   document.getElementById('cpConceptSlug').addEventListener('change', async (e) => {
     await loadIterationsForConcept(e.target.value);
