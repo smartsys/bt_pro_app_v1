@@ -1589,6 +1589,11 @@
   // baut Indikatoren + Regeln serverseitig selbst. Ein Primitive je Block-Index, an candleSeries.
   const cpEntryBgPrimitives = {};   // block-index -> RegimeBandsPrimitive
   let cpEntryBgTimer = null;        // Debounce-Handle für Live-Aktualisierung
+  // GEÄNDERT: Generations-Zähler gegen Race Condition — ein Entry-Signal-Fetch dauert länger
+  // als der Debounce (400 ms), sodass sich Refreshes überlappen. Jeder Refresh bekommt eine
+  // Nummer; ein zurückkehrender Fetch hängt sein grünes Band nur an, wenn seine Nummer noch die
+  // aktuelle ist. So bleiben keine Overlays aus Zwischenzuständen als Leichen am Chart hängen.
+  let cpEntryBgEpoch = 0;
 
   function cpRemoveAllEntryBackgrounds() {
     for (const bi of Object.keys(cpEntryBgPrimitives)) {
@@ -1619,7 +1624,7 @@
   // Holt die erfüllten Bars EINES Blocks und zeichnet dessen grünes Overlay.
   // Der Payload wird auf genau diesen (gecleanten) Block reduziert und enabled erzwungen —
   // der Hintergrund zeigt die Bedingung unabhängig vom Aktiv-Schalter des Blocks.
-  async function cpFetchAndRenderBlockBackground(block, bi) {
+  async function cpFetchAndRenderBlockBackground(block, bi, epoch) {
     const cg = cleanRuleGroup({ blocks: [block] });
     if (!cg || !cg.blocks.length) return;  // Block ohne Conditions
     const single = { ...cg.blocks[0], enabled: true };
@@ -1644,6 +1649,9 @@
     }
     const signals = j.data.signals || [];
     if (!state.candleSeries || !signals.length) return;
+    // GEÄNDERT: Race-Guard — während des Fetch kann ein neuerer Refresh gestartet sein.
+    // Dann dieses (veraltete) Ergebnis verwerfen, statt es anzuhängen und als Leiche zu hinterlassen.
+    if (epoch !== cpEntryBgEpoch) return;
     const green = 'rgba(47, 179, 68, 0.15)';
     const points = cpSnapEntryPoints(signals).map(t => ({ time: t, color: green }));
     const prim = new RegimeBandsPrimitive(points);
@@ -1654,12 +1662,18 @@
   // Zeichnet alle aktiven Block-Overlays neu: erst alle entfernen (Index-Drift bei Block-Add/
   // Remove vermeiden), dann für jeden Entry-Block mit _showBg das Overlay holen.
   async function cpRefreshEntryBackgrounds() {
+    // GEÄNDERT: Diesen Refresh als aktuelle Generation markieren — spätere Refreshes machen ihn ungültig.
+    const epoch = ++cpEntryBgEpoch;
     cpRemoveAllEntryBackgrounds();
     if (!state.candleSeries || !state.rules || !state.rules.entry) return;
     const blocks = state.rules.entry.blocks || [];
     for (let bi = 0; bi < blocks.length; bi++) {
       const block = blocks[bi];
-      if (block && block._showBg) await cpFetchAndRenderBlockBackground(block, bi);
+      if (block && block._showBg) {
+        await cpFetchAndRenderBlockBackground(block, bi, epoch);
+        // Ein neuerer Refresh läuft bereits -> abbrechen, damit sich Overlays nicht mischen.
+        if (epoch !== cpEntryBgEpoch) return;
+      }
     }
   }
 

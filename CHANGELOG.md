@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.46] - 05.07.2026
+
+### Fixed
+- Chart-Playground: Race Condition im grünen Entry-Hintergrund behoben — überlappende Refreshes hinterließen verwaiste Overlays
+  - Der grüne Entry-Hintergrund wird bei jeder Regeländerung per entry-signals-Fetch neu geholt. Ein Fetch (~0,9 s über 2 Jahre 5m-Daten) dauert länger als der Debounce (400 ms), sodass sich Refreshes überlappten.
+  - Ohne Concurrency-Schutz hängte ein zurückkehrender Fetch sein Overlay auch dann an, wenn bereits ein neuerer Refresh lief — das alte Band blieb als Leiche am Chart hängen und wurde nie entfernt.
+  - Folge: Beim Aufbauen einer zweiten UND-Bedingung blieben Overlays aus Zwischenzuständen (z.B. nur die weite Bedingung) liegen und stapelten sich, sodass die grüne Fläche mit mehr Bedingungen größer statt kleiner wirkte.
+  - Fix: Generations-Zähler cpEntryBgEpoch — jeder Refresh bekommt eine Nummer; ein Fetch hängt sein Band nur an, wenn seine Nummer noch aktuell ist, sonst wird es verworfen. Rein im Frontend, Engine und Datenmodell unverändert (Backend rechnet nachweislich korrekt UND).
+  - Verifiziert im Browser: nach 5 provozierten überlappenden Refreshes bleibt die grüne Fläche bit-genau die saubere Zwei-Bedingungs-Fläche (16652 Pixel), keine Akkumulation.
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.45] - 05.07.2026
 
 ### Changed
