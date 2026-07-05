@@ -31,6 +31,14 @@ class QuietAccessFilter(logging.Filter):
 
 logging.getLogger('uvicorn.access').addFilter(QuietAccessFilter())
 
+# GEÄNDERT: vbt-Progressbars im API-Prozess deaktivieren. vbt.Data.from_hdf (in load_ohlc_data)
+# nutzt eine globale Progressbar-Registry, die bei gleichzeitigen Requests kollidiert
+# ("Progress bar with bar id ... must be opened first") — z.B. Schnellbacktest und die
+# Entry-Vorschau (/entry-signals) laufen als synchrone Endpunkte parallel in Uvicorn-Threads.
+# Im Server-Kontext sind die Balken ohnehin nur Log-Rauschen.
+import vectorbtpro as vbt
+vbt.settings['pbar']['disable'] = True
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates

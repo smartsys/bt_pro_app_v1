@@ -36,9 +36,12 @@
       </div>
       <div style="flex:1;min-width:120px">
         <label class="form-label">Indikator-Konfiguration</label>
-        <select class="form-select w-100" id="cpIndCfgSelect">
-          <option value="">-- Indikator --</option>
-        </select>
+        <!-- GEAENDERT: natives select durch Custom-Dropdown ersetzt (zweite Spalte: Beschreibung); Wert lebt im hidden input cpIndCfgSelect -->
+        <div class="dropdown w-100" id="cpIndCfgDropdown" style="position:relative">
+          <button type="button" class="form-select w-100 text-start text-truncate" id="cpIndCfgButton">-- Indikator --</button>
+          <div class="dropdown-menu p-0" id="cpIndCfgMenu" style="position:absolute;top:100%;left:0;min-width:100%;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
+          <input type="hidden" id="cpIndCfgSelect">
+        </div>
       </div>
       <div style="flex:1;min-width:120px">
         <label class="form-label">Backtest-Config</label>
@@ -800,6 +803,9 @@
       // GEÄNDERT: Finalen Fit nach dem Layout nachziehen, damit der Chart beim Laden garantiert auf "Fit" steht.
       // Beim Setup-Restore wird der Fit uebersprungen; der Zoom-Bereich stellt runBacktestLite nach dem Equity-Overlay her.
       if (!cpRestoreLayout) cpFitChartDeferred();
+      // GEÄNDERT: Candle-Serie wurde neu erstellt — Entry-Hintergrund (falls aktiv) neu anhängen.
+      cpRemoveAllEntryBackgrounds();
+      cpScheduleEntryBgRefresh();
     } catch (e) {
       setStatus('Fehler: ' + e.message, 'err');
     } finally {
@@ -1561,6 +1567,101 @@
     state.backgroundPrimitivesByClientId[ind.client_id] = prim;
   }
 
+  // ========= Entry-Bedingung als grüner Hintergrund (pro Block) =========
+  // GEÄNDERT: Pro Entry-Block ein Schiebeschalter (unter dem Aktiv-Schalter). Ist er an, wird
+  // grün markiert, wo GENAU DIESER Block erfüllt ist — jeder Block eine eigene Bedingung, also
+  // ein eigenes Overlay. Die Bars kommen vom Endpunkt /entry-signals (reine evaluate_rules-Maske,
+  // positionsunabhängig). Kein Cache: bei jeder relevanten Änderung wird neu geholt — der Endpunkt
+  // baut Indikatoren + Regeln serverseitig selbst. Ein Primitive je Block-Index, an candleSeries.
+  const cpEntryBgPrimitives = {};   // block-index -> RegimeBandsPrimitive
+  let cpEntryBgTimer = null;        // Debounce-Handle für Live-Aktualisierung
+
+  function cpRemoveAllEntryBackgrounds() {
+    for (const bi of Object.keys(cpEntryBgPrimitives)) {
+      const prim = cpEntryBgPrimitives[bi];
+      if (prim && state.candleSeries) {
+        try { state.candleSeries.detachPrimitive(prim); } catch (e) {}
+      }
+      delete cpEntryBgPrimitives[bi];
+    }
+  }
+
+  // Bars auf das aktuelle Anzeige-Raster snappen (bei aktivem visualTf gröber als Basis-TF).
+  // Da nur erfüllte Bars gesendet werden, genügt floor auf targetSec + Deduplizieren -> ein
+  // Anzeige-Balken wird grün, sobald mindestens ein Basis-Bar darin die Bedingung erfüllt.
+  function cpSnapEntryPoints(signals) {
+    const baseSec = CHART_TF_SEC[document.getElementById('cpTimeframe').value];
+    const targetSec = visualTf ? CHART_TF_SEC[visualTf] : baseSec;
+    if (!targetSec || targetSec === baseSec) return signals.map(p => p.time);
+    const seen = new Set();
+    const out = [];
+    for (const p of signals) {
+      const t = Math.floor(p.time / targetSec) * targetSec;
+      if (!seen.has(t)) { seen.add(t); out.push(t); }
+    }
+    return out;
+  }
+
+  // Holt die erfüllten Bars EINES Blocks und zeichnet dessen grünes Overlay.
+  // Der Payload wird auf genau diesen (gecleanten) Block reduziert und enabled erzwungen —
+  // der Hintergrund zeigt die Bedingung unabhängig vom Aktiv-Schalter des Blocks.
+  async function cpFetchAndRenderBlockBackground(block, bi) {
+    const cg = cleanRuleGroup({ blocks: [block] });
+    if (!cg || !cg.blocks.length) return;  // Block ohne Conditions
+    const single = { ...cg.blocks[0], enabled: true };
+    const payload = buildBacktestPayload();
+    payload.rules = { entry: { blocks: [single] }, exit: null };
+    let j;
+    try {
+      const r = await fetch('/api/chart-playground/entry-signals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      j = await r.json();
+      if (!r.ok || j.error || !j.data) {
+        const msg = j.detail || j.error || (r.ok ? 'unbekannt' : `HTTP ${r.status}`);
+        showToast('Entry-Hintergrund: ' + msg, 'err');
+        return;
+      }
+    } catch (e) {
+      showToast('Entry-Hintergrund: ' + e.message, 'err');
+      return;
+    }
+    const signals = j.data.signals || [];
+    if (!state.candleSeries || !signals.length) return;
+    const green = 'rgba(47, 179, 68, 0.15)';
+    const points = cpSnapEntryPoints(signals).map(t => ({ time: t, color: green }));
+    const prim = new RegimeBandsPrimitive(points);
+    state.candleSeries.attachPrimitive(prim);
+    cpEntryBgPrimitives[bi] = prim;
+  }
+
+  // Zeichnet alle aktiven Block-Overlays neu: erst alle entfernen (Index-Drift bei Block-Add/
+  // Remove vermeiden), dann für jeden Entry-Block mit _showBg das Overlay holen.
+  async function cpRefreshEntryBackgrounds() {
+    cpRemoveAllEntryBackgrounds();
+    if (!state.candleSeries || !state.rules || !state.rules.entry) return;
+    const blocks = state.rules.entry.blocks || [];
+    for (let bi = 0; bi < blocks.length; bi++) {
+      const block = blocks[bi];
+      if (block && block._showBg) await cpFetchAndRenderBlockBackground(block, bi);
+    }
+  }
+
+  // Debounced Live-Aktualisierung: koalesziert die vielen invalidateLiteResult-/TF-Trigger
+  // (Tippen in Bedingungsfeldern, Indikator-Änderungen) zu einem Refresh. No-op wenn kein
+  // Block markiert ist.
+  function cpAnyEntryBgActive() {
+    const blocks = (state.rules && state.rules.entry && state.rules.entry.blocks) || [];
+    return blocks.some(b => b && b._showBg);
+  }
+  function cpScheduleEntryBgRefresh() {
+    if (!cpAnyEntryBgActive()) return;
+    if (cpEntryBgTimer) clearTimeout(cpEntryBgTimer);
+    cpEntryBgTimer = setTimeout(() => { cpEntryBgTimer = null; cpRefreshEntryBackgrounds(); }, 400);
+  }
+
   // GEÄNDERT: Reine Anzeige-Verschiebung. Schiebt die Zeitstempel der Punkte um
   // displayOffset ganze ANGEZEIGTE Kerzen (positiv = nach rechts/Zukunft, negativ = links).
   // Bezugsgröße ist die aktuell angezeigte Kerze (secPerBar = Anzeige-TF), darum wird die
@@ -1899,6 +2000,15 @@
       // GEÄNDERT: Ticket 48 — Aktiv-Schalter pro Block (jetzt Schiebeschalter ganz rechts)
       const blockEnabled = block.enabled !== false;
       const enabledToggleId = `blockEnabled_${groupKey}_${bi}`;
+      const bgToggleId = `entryBg_${groupKey}_${bi}`;
+      // GEÄNDERT: Entry-Hintergrund-Schalter pro Block — markiert grün, wo GENAU DIESER Block erfüllt
+      // ist (positionsunabhängig). Rechts UNTER dem Aktiv-Schalter im selben Stapel (keine extra Zeile,
+      // Box bleibt gleich hoch). Nur bei Entry.
+      const bgSwitchHtml = groupKey === 'entry' ? `
+          <label class="form-check form-switch mb-0 cp-entry-bg-switch" title="Zeigt die Entries dieses Blocks als grünen Hintergrund an allen Bars, an denen seine Bedingung erfüllt ist — unabhängig davon, ob gerade eine Order offen ist.">
+            <span class="form-check-label text-muted small">Entry anzeigen</span>
+            <input class="form-check-input" type="checkbox" id="${bgToggleId}" data-entry-bg data-grp="${groupKey}" data-bi="${bi}" ${block._showBg ? 'checked' : ''}>
+          </label>` : '';
       footer.innerHTML = `
         <button class="btn btn-sm btn-outline-primary" data-add-cond data-grp="${groupKey}" data-bi="${bi}">+ Bedingung</button>
         <button class="btn btn-sm btn-ghost-danger" data-remove-block data-grp="${groupKey}" data-bi="${bi}" title="Diesen Block entfernen">Block entfernen</button>
@@ -1906,11 +2016,13 @@
           <input class="form-check-input" type="checkbox" id="${shortToggleId}" data-short-toggle data-grp="${groupKey}" data-bi="${bi}" ${isShort ? 'checked' : ''}>
           <span class="form-check-label text-muted small">Short</span>
         </label>
-        <!-- GEÄNDERT: Aktiv als Schiebeschalter ganz rechts (Text links, Schalter rechts) -->
-        <label class="form-check form-switch mb-0 ms-auto cp-block-enabled-switch" title="Block aktiv: deaktivierter Block wird bei der Auswertung übersprungen">
-          <span class="form-check-label text-muted small">Aktiv</span>
-          <input class="form-check-input" type="checkbox" id="${enabledToggleId}" data-block-enabled data-grp="${groupKey}" data-bi="${bi}" ${blockEnabled ? 'checked' : ''}>
-        </label>
+        <!-- GEÄNDERT: Aktiv- und Markieren-Schalter rechts übereinander gestapelt (ein Block, keine extra Zeile) -->
+        <div class="ms-auto d-flex flex-column align-items-end gap-1">
+          <label class="form-check form-switch mb-0 cp-block-enabled-switch" title="Block aktiv: deaktivierter Block wird bei der Auswertung übersprungen">
+            <span class="form-check-label text-muted small">Aktiv</span>
+            <input class="form-check-input" type="checkbox" id="${enabledToggleId}" data-block-enabled data-grp="${groupKey}" data-bi="${bi}" ${blockEnabled ? 'checked' : ''}>
+          </label>${bgSwitchHtml}
+        </div>
       `;
       blockEl.appendChild(footer);
       container.appendChild(blockEl);
@@ -1983,6 +2095,16 @@
         state.rules[grp].blocks[bi].enabled = t.checked;
         renderRuleGroup(grp, containerId);
         invalidateLiteResult();
+      });
+    });
+    // GEÄNDERT: Entry-Hintergrund-Schalter pro Block — grüne Markierung dieses Blocks an/aus.
+    // Kein renderRuleGroup/invalidateLiteResult: das Ergebnis bleibt gültig, nur die Chart-Ebene ändert sich.
+    container.querySelectorAll('[data-entry-bg]').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const t = e.currentTarget;
+        const grp = t.dataset.grp, bi = parseInt(t.dataset.bi, 10);
+        state.rules[grp].blocks[bi]._showBg = t.checked;
+        cpRefreshEntryBackgrounds();
       });
     });
   }
@@ -2439,6 +2561,9 @@
       cpCurrentOrderPrimitive = null;
       cpCurrentTrades = null;
     }
+    // GEÄNDERT: Entry-Bedingung hat sich geändert (Regel-/Indikator-Edit) -> grünen Hintergrund
+    // debounced neu berechnen, falls der Schalter aktiv ist.
+    cpScheduleEntryBgRefresh();
   }
 
   // GEÄNDERT: Ticket 23 — Schnellanalyse-Button (Lite-Backtest, kein DB-Schreiben)
@@ -2562,6 +2687,8 @@
   document.getElementById('cpToggleShort').addEventListener('change', cpApplyMarkerFilter);
   // GEÄNDERT: Equity-Kurve ein-/ausblenden
   document.getElementById('cpToggleEquity').addEventListener('change', cpApplyEquityVisibility);
+  // Hinweis: Der Entry-Hintergrund-Schalter sitzt jetzt pro Block in der Bedingungsgruppe;
+  // sein change-Handler wird in renderRuleGroup (data-entry-bg) verdrahtet.
 
   // Vollanalyse-Button im Playground-Stats-Tab
   document.getElementById('cp-btn-full-metrics').setAttribute('data-full-metrics-btn', '1');
@@ -2809,6 +2936,7 @@
       document.getElementById('cpIndCfgSelect').value = String(sc.indicator_config_id);
       // Überschreib-Bindung konsistent zum Dropdown setzen (Speichern überschreibt dann diese Config)
       state.currentIndCfgId = sc.indicator_config_id;
+      updateIndCfgButton();  // GEÄNDERT: Button-Anzeige nachziehen
     }
 
     renderIndicatorList();
@@ -3159,6 +3287,7 @@
     // (kein change-Event -> KEIN Chart-Reload)
     state.currentIndCfgId = targetId;
     document.getElementById('cpIndCfgSelect').value = String(targetId);
+    updateIndCfgButton();  // GEÄNDERT: Button-Anzeige nachziehen
     if (stale.length) setIndCfgStatus('"' + current.name + '" aktualisiert — Altlast-Felder entfernt: ' + stale.join(', '), 'warn');
     else setIndCfgStatus('Indikator-Konfiguration "' + current.name + '" aktualisiert', 'ok');
   }
@@ -3190,6 +3319,7 @@
     state.currentIndCfgId = j.data.id;
     await loadIndicatorConfigs();
     document.getElementById('cpIndCfgSelect').value = state.currentIndCfgId;
+    updateIndCfgButton();  // GEÄNDERT: Button-Anzeige nachziehen
     closeModal('cpIndCfgSaveModal');
     // GEÄNDERT: Altlast-Felder sichtbar melden statt still zu schlucken
     if (stale.length) setIndCfgStatus('"' + name + '" gespeichert — Altlast-Felder entfernt: ' + stale.join(', '), 'warn');
@@ -3272,6 +3402,10 @@
     // Zoom/Scroll wiederherstellen, nur beim ersten TF-Wechsel fitten
     if (savedRange) ts.setVisibleLogicalRange(savedRange);
     else ts.fitContent();
+    // GEÄNDERT: Entry-Hintergrund auf das neue Anzeige-Raster neu holen — die alten Snap-Zeiten
+    // passen nicht mehr. Stale-Bänder sofort entfernen, dann debounced neu berechnen.
+    cpRemoveAllEntryBackgrounds();
+    cpScheduleEntryBgRefresh();
   }
 
   function renderIndFromCacheResampled(ind, targetSec) {
@@ -3615,9 +3749,10 @@
     } catch (e) { console.warn('Indikator-Configs laden fehlgeschlagen', e); }
   }
 
-  // GEÄNDERT: Dropdown neu sortieren — Iterations-Match zuerst, dann Konzept-Match, dann Rest
+  // GEÄNDERT: Custom-Dropdown-Menü neu aufbauen — Iterations-Match zuerst, dann Konzept-Match, dann Rest.
+  // Jedes Item hat zwei Spalten: Name (feste Breite) + Beschreibung (dezent), damit gleichnamige Configs unterscheidbar sind.
   function refreshIndCfgOptions() {
-    const sel = document.getElementById('cpIndCfgSelect');
+    const menu = document.getElementById('cpIndCfgMenu');
     const conceptSlug = document.getElementById('cpConceptSlug').value;
     const iterationId = parseInt(document.getElementById('cpIterationSelect').value, 10) || null;
     const concept = (state.concepts || []).find(c => c.slug === conceptSlug);
@@ -3633,28 +3768,89 @@
       else rest.push(c);
     });
 
-    sel.innerHTML = '<option value="">-- Indikator --</option>';
+    menu.innerHTML = '';
+    // Leerauswahl (Reset der Bindung)
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'dropdown-item text-secondary';
+    clear.dataset.id = '';
+    clear.textContent = '-- Indikator --';
+    menu.appendChild(clear);
+
+    function addItem(c) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'dropdown-item d-flex gap-3 align-items-start';
+      item.dataset.id = c.id;
+      const nameCol = document.createElement('span');
+      nameCol.className = 'fw-bold text-nowrap';
+      nameCol.style.flex = '0 0 15rem';
+      nameCol.textContent = c.name;
+      const descCol = document.createElement('span');
+      descCol.className = 'text-secondary small';
+      descCol.style.whiteSpace = 'normal';  // Bootstrap-nowrap des dropdown-item aufheben -> volle Beschreibung umbricht
+      descCol.textContent = c.description || '';
+      item.appendChild(nameCol);
+      item.appendChild(descCol);
+      menu.appendChild(item);
+    }
     function addGroup(label, items) {
       if (!items.length) return;
-      const grp = document.createElement('optgroup');
-      grp.label = label;
-      items.forEach(c => {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.name;
-        grp.appendChild(o);
-      });
-      sel.appendChild(grp);
+      const head = document.createElement('div');
+      head.className = 'dropdown-header fw-bold';
+      head.style.color = '#2fb344';  // GEÄNDERT: Grün der Setup-ok-Meldung (.cp-status.ok)
+      head.textContent = label;
+      menu.appendChild(head);
+      items.forEach(addItem);
     }
-    addGroup('Diese Iteration', iterMatch);
-    addGroup('Dieses Konzept', conceptMatch);
-    rest.forEach(c => {
-      const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = c.name;
-      sel.appendChild(o);
-    });
+    // GEÄNDERT: filtern statt gruppieren — Iteration gewählt -> nur deren Configs; sonst Konzept gewählt -> nur dessen Configs; nichts gewählt -> alle
+    // GEÄNDERT: alphabetisch sortieren (numerisch-bewusst: VWMA-4 vor VWMA-10)
+    const visible = (iterationId ? iterMatch : (conceptId ? conceptMatch : rest))
+      .slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }));
+    const groupLabel = iterationId ? 'Diese Iteration' : (conceptId ? 'Dieses Konzept' : null);
+    if (groupLabel && !visible.length) {
+      // gefiltert, aber keine passende Config -> sichtbarer Hinweis statt leerem Menü
+      const hint = document.createElement('div');
+      hint.className = 'dropdown-item text-secondary disabled';
+      hint.textContent = '(keine Konfiguration für ' + (iterationId ? 'diese Iteration' : 'dieses Konzept') + ')';
+      menu.appendChild(hint);
+    } else if (groupLabel) {
+      addGroup(groupLabel, visible);
+    } else {
+      visible.forEach(addItem);
+    }
+    updateIndCfgButton();
   }
+
+  // GEÄNDERT: Button-Anzeige (geschlossenes Dropdown) aus dem hidden-Wert ableiten
+  function updateIndCfgButton() {
+    const id = parseInt(document.getElementById('cpIndCfgSelect').value, 10) || null;
+    const btn = document.getElementById('cpIndCfgButton');
+    const cfg = id ? (state.indicatorConfigs || []).find(c => c.id === id) : null;
+    btn.textContent = cfg ? cfg.name : '-- Indikator --';
+    btn.title = cfg ? (cfg.name + (cfg.description ? ' — ' + cfg.description : '')) : '';
+  }
+
+  // GEÄNDERT: Custom-Dropdown auf/zu (eigenes .show-Toggle, konsistent zu openModal/closeModal)
+  document.getElementById('cpIndCfgButton').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('cpIndCfgMenu').classList.toggle('show');
+  });
+  // GEÄNDERT: Item-Klick → hidden-Wert setzen, Menü schließen, change auslösen (bestehende Ladelogik greift)
+  document.getElementById('cpIndCfgMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    const hidden = document.getElementById('cpIndCfgSelect');
+    hidden.value = item.dataset.id || '';
+    document.getElementById('cpIndCfgMenu').classList.remove('show');
+    updateIndCfgButton();
+    hidden.dispatchEvent(new Event('change'));
+  });
+  // GEÄNDERT: Klick außerhalb schließt das Menü
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('cpIndCfgDropdown');
+    if (dd && !dd.contains(e.target)) document.getElementById('cpIndCfgMenu').classList.remove('show');
+  });
 
   // GEÄNDERT: Indikator-Konfiguration wählen → Indikatoren in Playground laden
   document.getElementById('cpIndCfgSelect').addEventListener('change', async (e) => {

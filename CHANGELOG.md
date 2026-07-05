@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.39] - 05.07.2026
+
+### Changed
+- Chart-Playground: Indikator-Konfigurations-Dropdown von nativem Select auf Custom-Dropdown mit Beschreibungsspalte umgebaut und nach Konzept/Iteration gefiltert
+  - Natives <select> durch Custom-Dropdown ersetzt; der Wert lebt in einem versteckten Input (cpIndCfgSelect), damit alle bestehenden .value-Zugriffe unverändert weiterlaufen
+  - Jeder Eintrag zeigt jetzt zwei Spalten: Name (feste Breite) plus dazugehörige Beschreibung, damit gleichnamige Konfigurationen (z.B. mehrfach 'VWMA-4 - 9 Kombi. 30/15') am Anker/result-Verweis unterscheidbar sind
+  - Gruppen-Überschriften 'Diese Iteration' / 'Dieses Konzept' im Grün der Setup-ok-Meldung (#2fb344)
+  - Hover-Highlight der Einträge im App-Primärblau (var(--tblr-primary)) mit weißer Schrift, angelehnt an das native Select-Verhalten
+  - Menü verbreitert (max-width 900px), Beschreibungen umbrechen statt horizontal zu scrollen
+  - Filter statt Gruppierung: ohne Auswahl alle Konfigurationen, bei gewähltem Konzept nur dessen, bei gewählter Iteration nur deren Konfigurationen; passt nichts, erscheint ein sichtbarer Hinweis statt leerem Menü
+  - Einträge werden in allen Fällen alphabetisch (numerisch-bewusst: VWMA-4 vor VWMA-10) sortiert
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/static/css/app.css
+
+
+
 ## [1.30.38] - 03.07.2026
 
 ### Changed

@@ -1253,3 +1253,78 @@ def _pf_scalar(value: Any) -> Optional[float]:
         return float(value) if value is not None else None
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Entry-Signale (Bedingungsmaske) — grüner Entry-Hintergrund im Chart-Playground
+# ---------------------------------------------------------------------------
+def _entry_mask_to_series(mask: Any) -> pd.Series:
+    """Reduziert eine Signal-Maske auf eine eindimensionale Boolean-Series.
+
+    Bei Multiparameter-Läufen liefert evaluate_rules ein DataFrame (eine Spalte
+    je Kombination). Für die reine Vorschau im Playground wird die erste Spalte
+    genommen — analog zum Lite-Backtest, der ebenfalls auf die erste Kombi
+    reduziert.
+    """
+    if isinstance(mask, pd.DataFrame):
+        if mask.shape[1] == 0:
+            return pd.Series(dtype=bool)
+        mask = mask.iloc[:, 0]
+    return mask.astype(bool)
+
+
+@router.post('/entry-signals')
+def entry_signals(req: RunBacktestIn) -> dict:
+    """Liefert die Bars, an denen die aktiven Entry-Bedingungen erfüllt sind.
+
+    Reine Bedingungsmaske über evaluate_rules (long_entries ODER short_entries) —
+    unabhängig vom Positionsstatus. Anders als /run-backtest-lite, dessen Trades
+    offene Positionen berücksichtigen (ein Entry-Signal bei offener Position löst
+    keinen neuen Trade aus): Diese Route zeigt, wo die Bedingung gilt, auch wenn
+    gerade eine Order offen wäre. Grundlage für den grünen Entry-Hintergrund.
+
+    Nur aktive Blöcke (enabled != false) gehen ein — deaktivierte Blöcke sind aus
+    der ODER-Verknüpfung genommen (DNF-Semantik). Der Indikator-Bau ist identisch
+    zum echten Runner (build_indicators), damit die markierten Bars exakt den vom
+    Backtest gesehenen Entry-Signalen entsprechen.
+    """
+    from user_data.strategies.generic.indicator_factory import build_indicators
+    from user_data.strategies.generic.rules_engine import evaluate_rules
+    from user_data.utils.ohlc.loader import load_ohlc_data
+
+    backtest_config = _build_backtest_config(req)
+
+    try:
+        ohlc_data = load_ohlc_data(backtest_config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'OHLC-Daten laden fehlgeschlagen: {e}')
+
+    # Nur aktive Entry-Blöcke (deaktivierte Blöcke werden aus der ODER-Verknüpfung genommen)
+    entry_spec = (req.rules or {}).get('entry') or {}
+    active_blocks = [b for b in (entry_spec.get('blocks') or []) if b.get('enabled', True)]
+    if not active_blocks:
+        return {'data': {'signals': []}, 'error': None}
+
+    indicators_json = _indicators_with_stops(req)
+
+    try:
+        indicators = build_indicators(
+            indicators_json, ohlc_data, base_tf=backtest_config.get('timeframe')
+        )
+        masks = evaluate_rules(
+            {'entry': {'blocks': active_blocks}, 'exit': None}, ohlc_data, indicators
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'{e}')
+
+    long_entries = _entry_mask_to_series(masks.long_entries)
+    short_entries = _entry_mask_to_series(masks.short_entries)
+    entry_mask = long_entries | short_entries
+
+    # Nur die erfüllten Bars als Zeitpunkte — das Frontend malt daraus grüne Bänder.
+    signals = [
+        {'time': int(pd.Timestamp(ts).timestamp())}
+        for ts, val in entry_mask.items()
+        if bool(val)
+    ]
+    return {'data': {'signals': signals}, 'error': None}

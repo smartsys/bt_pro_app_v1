@@ -815,6 +815,19 @@ tr.dt-hasChild td.dt-control::before {
   margin: 0;
   float: none;
 }
+/* GEÄNDERT: Entry-Hintergrund-Schalter — gleiches Schiebeschalter-Layout wie Block-Aktiv
+   (Text links, Schalter rechts, kein negatives Margin) */
+.cp-entry-bg-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 0;
+  min-height: auto;
+}
+.cp-entry-bg-switch .form-check-input {
+  margin: 0;
+  float: none;
+}
 .cp-block-or {
   display: flex;
   align-items: center;
@@ -1233,6 +1246,17 @@ tr.dt-hasChild td.dt-control::before {
   border: 1px solid var(--tblr-border-color);
   border-radius: var(--tblr-border-radius);
   white-space: pre;
+}
+
+/* GEÄNDERT: Custom-Indikator-Dropdown im Playground — Hover einheitlich im App-Primary (wie die nativen Selects) statt kaum sichtbarem Grau */
+#cpIndCfgMenu .dropdown-item:hover,
+#cpIndCfgMenu .dropdown-item:focus {
+  background-color: var(--tblr-primary);
+  color: #fff;
+}
+#cpIndCfgMenu .dropdown-item:hover .text-secondary,
+#cpIndCfgMenu .dropdown-item:focus .text-secondary {
+  color: rgba(255, 255, 255, 0.8) !important;
 }
 
 /* Zahlen-Inputs zentrieren */
