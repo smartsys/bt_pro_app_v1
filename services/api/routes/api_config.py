@@ -1781,3 +1781,50 @@ def delete_download_job(job_id: int):
         return {'data': {'deleted': job_id}, 'error': None}
     finally:
         session.close()
+
+
+@router.delete('/data/jobs/by-status/{status}')
+def delete_download_jobs_by_status(status: str):
+    """Löscht alle OHLC-Jobs eines Status in einem Rutsch.
+
+    Erlaubt sind ausschließlich 'completed', 'failed' und 'queued':
+    - 'completed'/'failed': nur die DB-Zeilen werden entfernt.
+    - 'queued': jeder wartende RQ-Job wird zusätzlich aus der Queue storniert (cancel),
+      danach wird die DB-Zeile entfernt.
+
+    Laufende Jobs ('running') werden bewusst nicht per Massenaktion abgebrochen —
+    dafür bleibt das gezielte Einzel-Löschen.
+    """
+    if status not in ('completed', 'failed', 'queued'):
+        return JSONResponse(
+            {'data': None, 'error': f'Status für Massenlöschung nicht erlaubt: {status}'},
+            status_code=400,
+        )
+    session = get_session()
+    try:
+        jobs = (
+            session.query(OhlcDownloadJob)
+            .filter(OhlcDownloadJob.status == status)
+            .all()
+        )
+        if status == 'queued':
+            # rq.job ist eine Worker-/Container-Dep — lokal importieren, damit api_config
+            # auch ohne vollständige rq-Installation (z.B. in Tests) ladbar bleibt.
+            from rq.job import Job as RqJob
+            redis_conn = get_redis_connection()
+            for job in jobs:
+                if not job.rq_job_id:
+                    continue
+                try:
+                    RqJob.fetch(job.rq_job_id, connection=redis_conn).cancel()
+                except Exception as exc:
+                    # RQ-Job evtl. bereits abgeschlossen/entfernt — DB-Zeile trotzdem löschen.
+                    logger.warning('RQ-Stornierung für OHLC-Job %s fehlgeschlagen: %s', job.id, exc)
+        deleted = 0
+        for job in jobs:
+            session.delete(job)
+            deleted += 1
+        session.commit()
+        return {'data': {'deleted': deleted, 'status': status}, 'error': None}
+    finally:
+        session.close()

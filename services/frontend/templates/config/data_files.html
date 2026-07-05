@@ -67,10 +67,27 @@
 <!-- Jobs -->
 <div class="card mb-3">
   <div class="card-header">
-    <h3 class="card-title">Laufende / letzte Jobs</h3>
+    <h3 class="card-title mb-0">Laufende / letzte Jobs (<span id="jobs-total">...</span>)</h3>
+    <div id="jobs-status-counts" class="d-flex align-items-center gap-1 ms-3"></div>
+    <div class="card-actions d-flex align-items-center gap-2">
+      <button id="btn-delete-completed" class="btn btn-sm btn-outline-danger">completed löschen</button>
+      <button id="btn-delete-failed" class="btn btn-sm btn-outline-danger">failed löschen</button>
+      <button id="btn-delete-queued" class="btn btn-sm btn-outline-danger">queued löschen</button>
+    </div>
   </div>
-  <div class="card-body">
-    <div id="jobs-list"><div class="text-muted">Lädt...</div></div>
+  <div class="card-body p-0">
+    <div id="jobs-empty" class="text-muted p-3">Lädt...</div>
+    <div class="table-responsive" id="jobs-table-wrap" style="display:none;">
+      <table id="jobs-table" class="table table-sm table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>Typ</th><th>Markt</th><th>Symbole</th>
+            <th>Range</th><th>Status</th><th>Erstellt</th><th class="text-end no-sort"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -282,100 +299,192 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Aktions-Icon je Job-Status: bei abgeschlossen/fehlgeschlagen ein Papierkorb (nur Zeile löschen),
   // bei queued/running ein X (Job abbrechen + Zeile löschen).
-  function jobActionCell(j) {
+  function jobActionButton(j) {
     var trashSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>';
     var xSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>';
     var cancellable = (j.status === 'queued' || j.status === 'running');
     var icon = cancellable ? xSvg : trashSvg;
     var title = cancellable ? 'Job abbrechen und entfernen' : 'Zeile löschen';
-    return '<td class="text-end">'
-      + '<button class="btn btn-sm btn-icon btn-ghost-danger btn-cancel-job" '
+    return '<button class="btn btn-sm btn-icon btn-ghost-danger btn-cancel-job" '
       +   'data-id="' + j.id + '" data-status="' + j.status + '" title="' + title + '">'
       +   icon
-      + '</button>'
-      + '</td>';
+      + '</button>';
+  }
+
+  // DataTable-Instanz (client-side) und letzter Status-Summary, einmal pro Seite.
+  var jobsTable = null;
+  var lastJobSummary = null;
+
+  // Zähler im Titel + Status-Badges (nur Stati mit Anzahl > 0) aus dem Summary-Endpunkt.
+  function renderJobStatusCounts(sum) {
+    document.getElementById("jobs-total").textContent = sum && sum.total != null ? sum.total : "0";
+    var defs = [
+      ['running', 'bg-primary-lt', 'running'],
+      ['queued', 'bg-secondary-lt', 'queued'],
+      ['completed', 'bg-success-lt', 'completed'],
+      ['failed', 'bg-danger-lt', 'failed'],
+    ];
+    var parts = defs.filter(function(d) { return (sum && sum[d[0]]) > 0; })
+      .map(function(d) { return '<span class="badge ' + d[1] + '">' + sum[d[0]] + ' ' + d[2] + '</span>'; });
+    document.getElementById("jobs-status-counts").innerHTML = parts.join("");
+  }
+
+  // Range aus Start/Ende ableiten. Fallback bei nicht-parsebarem end_date (z.B. "now UTC"
+  // bei Update-Jobs): das tatsächliche Abschlussdatum (completed_at) statt des Platzhalters.
+  // Bewusst nur Datum ohne Uhrzeit, damit Start und Ende gleich formatiert sind.
+  function jobRange(j) {
+    var endParseable = j.end_date && !isNaN(new Date(j.end_date).getTime());
+    var endValue = endParseable
+      ? j.end_date
+      : (j.completed_at ? String(j.completed_at).substring(0, 10) : null);
+    return fmtDate(j.start_date) + ' – ' + fmtDate(endValue);
+  }
+
+  function initJobsTable(items) {
+    jobsTable = jQuery("#jobs-table").DataTable({
+      data: items,
+      columns: [
+        { data: 'id', render: function(data, type) { return type === 'display' ? '#' + data : data; } },
+        { data: 'job_type' },
+        { data: null, render: function(data, type, row) { return row.exchange + '/' + row.timeframe; } },
+        { data: 'symbols', render: function(data) { return Array.isArray(data) ? data.join(', ') : ''; } },
+        { data: null, className: 'text-nowrap', render: function(data, type, row) {
+            return (type === 'sort' || type === 'filter') ? (row.start_date || '') : jobRange(row);
+        } },
+        { data: null, render: function(data, type, row) {
+            if (type === 'sort' || type === 'filter') return row.status;
+            var prog = (row.status === 'running') ? progressText(row) : "";
+            var msg = row.message ? ('<br><small class="text-muted">' + row.message + '</small>') : "";
+            return statusBadge(row.status) + prog + msg;
+        } },
+        { data: 'created_at', className: 'text-nowrap', render: function(data, type) {
+            return (type === 'sort' || type === 'filter') ? (data || '') : fmtDate(data);
+        } },
+        { data: null, orderable: false, className: 'text-end', render: function(data, type, row) {
+            return jobActionButton(row);
+        } },
+      ],
+      pageLength: 10,
+      lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Alle"]],
+      order: [[0, 'desc']],
+      columnDefs: [{ targets: 'no-sort', orderable: false }],
+      dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
+      language: {
+        lengthMenu: "_MENU_ pro Seite",
+        info: "_START_ bis _END_ von _TOTAL_ Jobs",
+        infoEmpty: "Keine Jobs",
+        infoFiltered: "(gefiltert von _MAX_)",
+        zeroRecords: "Keine Jobs",
+        paginate: { first: "Erste", last: "Letzte", next: "Nächste", previous: "Zurück" },
+      },
+    });
   }
 
   function loadJobs() {
-    fetch("/api/config/data/jobs?limit=10")
+    Promise.all([
+      fetch("/api/config/data/jobs?limit=200").then(function(r) { return r.json(); }),
+      fetch("/api/config/data/jobs/summary").then(function(r) { return r.json(); }),
+    ])
+    .then(function(res) {
+      var items = (res[0].data && res[0].data.items) || [];
+      lastJobSummary = res[1].data || {};
+      renderJobStatusCounts(lastJobSummary);
+
+      var wrap = document.getElementById("jobs-table-wrap");
+      var empty = document.getElementById("jobs-empty");
+      if (items.length === 0) {
+        wrap.style.display = "none";
+        empty.style.display = "";
+        empty.textContent = "Keine Jobs";
+        if (jobsTable) jobsTable.clear().draw();
+      } else {
+        empty.style.display = "none";
+        wrap.style.display = "";
+        // draw(false) behält Seite/Sortierung beim Polling.
+        if (!jobsTable) initJobsTable(items);
+        else jobsTable.clear().rows.add(items).draw(false);
+      }
+
+      // Wenn noch Jobs laufen/queued, weiter pollen und Dateien danach neu laden.
+      var running = items.some(function(j) { return j.status === 'queued' || j.status === 'running'; });
+      if (running) {
+        setTimeout(loadJobs, 2000);
+      } else {
+        loadFiles();
+      }
+    })
+    .catch(function(e) {
+      console.error("[DATA] Jobs laden fehlgeschlagen:", e);
+    });
+  }
+
+  // Löschen/Abbrechen eines einzelnen Jobs — delegiert, weil DataTable die Zeilen
+  // bei jedem Poll/Paging neu rendert (direkt gebundene Handler gingen sonst verloren).
+  jQuery("#jobs-table tbody").on("click", ".btn-cancel-job", function() {
+    var btn = this;
+    var id = btn.getAttribute("data-id");
+    var status = btn.getAttribute("data-status");
+    var msg;
+    if (status === 'running') {
+      msg = "Job #" + id + " läuft gerade und wird abgebrochen. "
+        + "Bereits geladene Kerzen bleiben erhalten.\n\nWirklich abbrechen und entfernen?";
+    } else if (status === 'queued') {
+      msg = "Job #" + id + " wartet in der Warteschlange und wird storniert.\n\nWirklich abbrechen und entfernen?";
+    } else {
+      msg = "Zeile für Job #" + id + " wirklich löschen?";
+    }
+    if (!confirm(msg)) return;
+    btn.disabled = true;
+    fetch("/api/config/data/jobs/" + id, { method: "DELETE" })
       .then(function(r) { return r.json(); })
       .then(function(json) {
-        var items = (json.data && json.data.items) || [];
-        var el = document.getElementById("jobs-list");
-        if (items.length === 0) {
-          el.innerHTML = '<div class="text-muted">Keine Jobs</div>';
-          return;
-        }
-        var rows = items.map(function(j) {
-          var symbolsTxt = Array.isArray(j.symbols) ? j.symbols.join(", ") : "";
-          // GEÄNDERT: Fallback nicht nur bei leerem end_date, sondern auch bei nicht-parsebaren
-          // Werten wie "now UTC" (Update-Job): dann das tatsächliche Abschlussdatum (completed_at)
-          // anzeigen statt des relativen Platzhalters, damit der Range das echte aktualisierte Datum zeigt.
-          // Range bewusst nur Datum, ohne Uhrzeit — Start und Ende sollen gleich formatiert sein.
-          var endParseable = j.end_date && !isNaN(new Date(j.end_date).getTime());
-          var endValue = endParseable
-            ? j.end_date
-            : (j.completed_at ? String(j.completed_at).substring(0, 10) : null);
-          var range = fmtDate(j.start_date) + ' – ' + fmtDate(endValue);
-          var msg = j.message ? ('<br><small class="text-muted">' + j.message + '</small>') : "";
-          var prog = (j.status === 'running') ? progressText(j) : "";
-          return '<tr>'
-            + '<td>#' + j.id + '</td>'
-            + '<td>' + j.job_type + '</td>'
-            + '<td>' + j.exchange + '/' + j.timeframe + '</td>'
-            + '<td>' + symbolsTxt + '</td>'
-            + '<td class="text-nowrap">' + range + '</td>'
-            + '<td>' + statusBadge(j.status) + prog + msg + '</td>'
-            + '<td class="text-nowrap">' + fmtDate(j.created_at) + '</td>'
-            + jobActionCell(j)
-            + '</tr>';
-        }).join("");
-        el.innerHTML = '<div class="table-responsive"><table class="table table-sm table-vcenter">'
-          + '<thead><tr><th>ID</th><th>Typ</th><th>Markt</th><th>Symbole</th><th>Range</th><th>Status</th><th>Erstellt</th><th class="text-end"></th></tr></thead>'
-          + '<tbody>' + rows + '</tbody></table></div>';
+        if (json.error) { alert("Fehler: " + json.error); btn.disabled = false; return; }
+        loadJobs();
+      })
+      .catch(function(e) {
+        console.error("[DATA] Job löschen fehlgeschlagen:", e);
+        alert("Fehler beim Löschen — bitte erneut versuchen.");
+        btn.disabled = false;
+      });
+  });
 
-        // Klick-Handler für Löschen/Abbrechen binden (Tabelle wird bei jedem Poll neu gerendert).
-        el.querySelectorAll(".btn-cancel-job").forEach(function(btn) {
-          btn.addEventListener("click", function() {
-            var id = btn.getAttribute("data-id");
-            var status = btn.getAttribute("data-status");
-            // Sicherheitsabfrage je nach Status: bei running zusätzlich der Hinweis,
-            // dass der laufende Job abgebrochen wird.
-            var msg;
-            if (status === 'running') {
-              msg = "Job #" + id + " läuft gerade und wird abgebrochen. "
-                + "Bereits geladene Kerzen bleiben erhalten.\n\nWirklich abbrechen und entfernen?";
-            } else if (status === 'queued') {
-              msg = "Job #" + id + " wartet in der Warteschlange und wird storniert.\n\nWirklich abbrechen und entfernen?";
-            } else {
-              msg = "Zeile für Job #" + id + " wirklich löschen?";
-            }
-            if (!confirm(msg)) return;
-            btn.disabled = true;
-            fetch("/api/config/data/jobs/" + id, { method: "DELETE" })
-              .then(function(r) { return r.json(); })
-              .then(function(json) {
-                if (json.error) { alert("Fehler: " + json.error); btn.disabled = false; return; }
-                loadJobs();
-              })
-              .catch(function(e) {
-                console.error("[DATA] Job löschen fehlgeschlagen:", e);
-                alert("Fehler beim Löschen — bitte erneut versuchen.");
-                btn.disabled = false;
-              });
-          });
-        });
-
-        // Wenn noch Jobs laufen/queued, weiter pollen und Dateien danach neu laden
-        var running = items.some(function(j) { return j.status === 'queued' || j.status === 'running'; });
-        if (running) {
-          setTimeout(loadJobs, 2000);
-        } else {
-          // Einmal nach dem letzten Abschluss die Dateien aktualisieren
-          loadFiles();
-        }
+  // Massenlöschung eines ganzen Status (abgeschlossen bzw. Warteschlange).
+  function bulkDeleteJobs(status, btn) {
+    btn.disabled = true;
+    fetch("/api/config/data/jobs/by-status/" + status, { method: "DELETE" })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        btn.disabled = false;
+        if (json.error) { alert("Fehler: " + json.error); return; }
+        loadJobs();
+      })
+      .catch(function(e) {
+        btn.disabled = false;
+        console.error("[DATA] Massenlöschung fehlgeschlagen:", e);
+        alert("Fehler beim Löschen — bitte erneut versuchen.");
       });
   }
+
+  document.getElementById("btn-delete-completed").addEventListener("click", function() {
+    var n = (lastJobSummary && lastJobSummary.completed) || 0;
+    if (n === 0) { alert("Keine abgeschlossenen Jobs vorhanden."); return; }
+    if (!confirm("Alle " + n + " abgeschlossenen Jobs löschen?")) return;
+    bulkDeleteJobs("completed", this);
+  });
+
+  document.getElementById("btn-delete-failed").addEventListener("click", function() {
+    var n = (lastJobSummary && lastJobSummary.failed) || 0;
+    if (n === 0) { alert("Keine fehlgeschlagenen Jobs vorhanden."); return; }
+    if (!confirm("Alle " + n + " fehlgeschlagenen Jobs löschen?")) return;
+    bulkDeleteJobs("failed", this);
+  });
+
+  document.getElementById("btn-delete-queued").addEventListener("click", function() {
+    var n = (lastJobSummary && lastJobSummary.queued) || 0;
+    if (n === 0) { alert("Keine Jobs in der Warteschlange."); return; }
+    if (!confirm("Alle " + n + " Jobs in der Warteschlange stornieren und löschen?")) return;
+    bulkDeleteJobs("queued", this);
+  });
 
   document.getElementById("download-form").addEventListener("submit", function(e) {
     e.preventDefault();

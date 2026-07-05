@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.49] - 05.07.2026
+
+### Changed
+- OHLC-Job-Tabelle (Konfiguration -> OHLC-Daten) auf DataTable umgestellt mit Zähler, Status-Badges und Massenlöschung nach Status
+  - Job-Tabelle nutzt jetzt eine client-side DataTable nach Design-Guide-Standard: Auswahlbox (10/25/50/100/Alle), Info und Paging im Footer; lädt alle Jobs statt nur die letzten 10
+  - Titel zeigt die Gesamtzahl der Jobs, daneben Status-Zähler-Badges (nur Stati mit Anzahl groesser 0), gespeist aus dem bestehenden /data/jobs/summary-Endpunkt
+  - Drei Massenlösch-Buttons in der Card-Header-Row: completed, failed und queued löschen; queued storniert zusätzlich die wartenden RQ-Jobs, running ist bewusst ausgenommen
+  - Neuer Backend-Endpunkt DELETE /api/config/data/jobs/by-status/{status} (erlaubt completed, failed, queued; sonst 400)
+  - Buttons, Titel-Zähler-Badges und Status-Spalte tragen einheitlich dieselben Status-Begriffe (running/completed/failed/queued)
+  - Einzel-Löschen/Abbrechen bleibt erhalten und läuft jetzt über einen delegierten Handler, der Polling und Paging übersteht
+
+### Files
+- services/api/routes/api_config.py
+- services/frontend/templates/config/data_files.html
+
+
+
 ## [1.30.48] - 05.07.2026
 
 ### Added
