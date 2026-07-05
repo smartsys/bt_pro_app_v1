@@ -309,6 +309,13 @@ tr.custom-details-open {
 .card .form-control-sm {
   padding: 0.25rem 0.5rem;
 }
+/* GEÄNDERT: Portfolio-Card — Dropdowns auf Input-Hoehe angleichen. form-select-sm behaelt
+   sonst Tablers 1px Padding-y (= 21px), waehrend form-control-sm ueber die Regel oben auf
+   27px kommt. Nur vertikales Padding setzen, damit rechts der Platz fuer den Pfeil bleibt. */
+#cpPortfolioFields .form-select-sm {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
 
 /* Pagination — abgerundete Buttons */
 .dt-container .dt-paging .dt-paging-button {

@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.45] - 05.07.2026
+
+### Changed
+- Chart-Playground: Portfolio-Card als eigenständige Card unter die Analyse-Tabs verschoben und Dropdown-Höhe angeglichen
+  - Portfolio-Card aus dem Tab-Pane 'Strategie / Iteration' herausgelöst und als eigene Card direkt unter der Tab-Card platziert (bleibt so tab-übergreifend sichtbar)
+  - Breite wieder auf 6/12 (col-md-6) wie die Indikatoren-Card
+  - Dropdowns in der Portfolio-Card (size_type, stop_exit_price, stop_order_type) auf Input-Höhe angeglichen (27px statt 21px) - form-select-sm erhielt sonst nur Tablers 1px Padding-y, während form-control-sm über die Card-Regel auf 27px kommt; Fix auf #cpPortfolioFields beschränkt
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/frontend/static/css/app.css
+
+
+
 ## [1.30.44] - 05.07.2026
 
 ### Fixed
