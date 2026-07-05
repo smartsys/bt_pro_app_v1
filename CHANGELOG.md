@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.43] - 05.07.2026
+
+### Added
+- Testset-Detailseite: Spalten OHLC Start, OHLC End und Qualität in der Backtest-Config-Tabelle
+  - Drei neue Spalten rechts neben Timeframe: OHLC Start und OHLC End (Anzeige DD.MM.YYYY, chronologisch sortierbar via ISO in data-order) sowie Datenqualität pro Config fuer den eingestellten OHLC-Zeitraum.
+  - Qualitaet als farbige Badge (gruen >= 99,5 Prozent / gelb >= 90 Prozent / rot darunter), identische Formatierung wie in der Backtest-Config-Liste.
+  - Kein neuer Backend-Code fuer die Qualitaet noetig: bestehender Endpoint /api/config/backtest/quality wird per Fetch nachgeladen und in serverseitig gerenderte Platzhalter-Zellen gefuellt; nicht bestimmbare Werte via data-order -1 einsortiert.
+  - views_testsets: ohlc_start/ohlc_end in die Config-Daten des Testset-Formulars aufgenommen.
+
+### Files
+- services/api/routes/views_testsets.py
+- services/frontend/templates/testsets/detail.html
+
+
+
 ## [1.30.42] - 05.07.2026
 
 ### Added

@@ -27,8 +27,16 @@ def _load_configs_data(session: Session) -> List[Dict[str, Any]]:
         .order_by(BacktestConfig.name)
         .all()
     )
+    # GEÄNDERT: OHLC-Start/-Ende ergänzt (Spalten OHLC Start/End + Qualität im TestSet-Formular)
     return [
-        {'id': c.id, 'name': c.name, 'symbol': c.symbol, 'timeframe': c.timeframe}
+        {
+            'id': c.id,
+            'name': c.name,
+            'symbol': c.symbol,
+            'timeframe': c.timeframe,
+            'ohlc_start': c.ohlc_start,
+            'ohlc_end': c.ohlc_end,
+        }
         for c in all_configs
     ]
 

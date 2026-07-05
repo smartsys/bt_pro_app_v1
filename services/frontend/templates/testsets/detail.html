@@ -87,6 +87,9 @@
                 <th>Name</th>
                 <th>Symbol</th>
                 <th>Timeframe</th>
+                <th>OHLC Start</th>
+                <th>OHLC End</th>
+                <th class="text-center">Qualität</th>
               </tr>
             </thead>
             <tbody>
@@ -96,6 +99,10 @@
                 <td>{{ c.name }}</td>
                 <td>{{ c.symbol }}</td>
                 <td>{{ c.timeframe }}</td>
+                {# Anzeige DD.MM.YYYY, Sortierung über ISO in data-order (YYYY-MM-DD sortiert chronologisch) #}
+                <td data-order="{{ c.ohlc_start or '' }}">{% if c.ohlc_start %}{{ c.ohlc_start[8:10] }}.{{ c.ohlc_start[5:7] }}.{{ c.ohlc_start[0:4] }}{% else %}-{% endif %}</td>
+                <td data-order="{{ c.ohlc_end or '' }}">{% if c.ohlc_end %}{{ c.ohlc_end[8:10] }}.{{ c.ohlc_end[5:7] }}.{{ c.ohlc_end[0:4] }}{% else %}-{% endif %}</td>
+                <td class="text-center quality-cell" data-id="{{ c.id }}" data-order="-1"><span class="text-muted">–</span></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -132,6 +139,30 @@
     dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
     language: { url: '/static/datatables-de.json' }
   });
+
+  // Datenqualität je Config-ID für den eingestellten OHLC-Zeitraum (aus /api/config/backtest/quality).
+  // Formatierung identisch zur Backtest-Config-Liste (backtest_configs.html).
+  function qualityBadge(q) {
+    if (q === null || q === undefined) return '<span class="text-muted">–</span>';
+    var cls = q >= 99.5 ? 'bg-green-lt' : (q >= 90 ? 'bg-yellow-lt' : 'bg-red-lt');
+    var txt = q.toFixed(1).replace('.', ',') + ' %';
+    return '<span class="badge ' + cls + '">' + txt + '</span>';
+  }
+
+  // Qualitäts-Platzhalter serverseitig gerendert, Werte hier nachladen und füllen.
+  // Nach dem Füllen die DataTable-Zellen invalidieren, damit die Spalte per data-order sortierbar bleibt.
+  fetch('/api/config/backtest/quality')
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      var quality = (j.data && j.data.quality) || {};
+      document.querySelectorAll('#configs-table td.quality-cell').forEach(function(td) {
+        var q = quality[td.getAttribute('data-id')];
+        td.setAttribute('data-order', (q === null || q === undefined) ? -1 : q);
+        td.innerHTML = qualityBadge(q);
+      });
+      table.rows().invalidate('dom').draw(false);
+    })
+    .catch(function() { /* fallback: Platzhalter bleiben stehen */ });
 
   // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
   var searchInput = document.getElementById('configs-search');
