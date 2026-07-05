@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.44] - 05.07.2026
+
+### Fixed
+- Chart-Playground und Backtest-Runner: TA-Lib-Indikatoren wurden ab der ersten Datenlücke konstant (flache Linie), weil ein einzelnes durch Resampling entstandenes NaN via TA-Lib bis zum Serienende propagiert. Behoben durch NaN-sicheren Indikator-Lauf (skipna).
+  - Ursache: Beim Per-Indikator-Timeframe erzeugt das Resampling für Zeitfenster ohne zugrundeliegende Basis-Bars (Datenlücken) NaN-Bars. TA-Lib (und die meisten talib-basierten Indikatoren) propagieren ein einzelnes NaN in der Mitte der Serie bis zum Ende; realign_closing(ffill=True) schrieb den letzten gültigen Wert dann konstant bis zum Rand fort.
+  - Fix: Neuer zentraler Helfer run_indicator_nan_safe(factory, ...) ruft factory.run mit skipna=True und split_columns=True auf (kanonischer VBT-Weg). Der Indikator läuft nur auf den Nicht-NaN-Werten, Ergebnisse werden an die Originalpositionen zurückgesetzt. split_columns ist Voraussetzung, damit skipna auch bei Multi-Combo-Läufen greift.
+  - Eingesetzt an allen factory.run-Stellen: build_indicators (Basis-tf und Per-Indikator-tf) im Spec-Runner sowie compute_indicators (Chart-Playground-Vorschau) — Vorschau und echter Lauf teilen denselben Pfad.
+  - Ohne NaN-Werte ist der Fix ein No-Op: auf lückenlosem Zeitraum bit-identische Indikatorwerte (verifiziert, 20161 Werte je Indikator). Bestehende Test-Suite grün (83 passed).
+
+### Files
+- user_data/strategies/generic/indicator_factory.py
+- services/api/routes/api_chart_playground.py
+
+
+
 ## [1.30.43] - 05.07.2026
 
 ### Added

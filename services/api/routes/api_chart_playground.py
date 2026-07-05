@@ -27,6 +27,7 @@ import vectorbtpro as vbt
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from user_data.strategies.generic.indicator_factory import run_indicator_nan_safe
 from user_data.strategies.generic.tf_resample import (
     normalize_tf,
     realign_to_index,
@@ -542,8 +543,10 @@ def compute_indicators(req: ComputeRequest) -> dict:
             params = {k: v for k, v in params.items() if v is not None}
             # timeframe-Param im Factory-Call entfernen - wir machen das selbst via Resample
             params.pop('timeframe', None)
-            # Run
-            result = factory.run(*input_values, **params)
+            # GEÄNDERT: NaN-sicherer Lauf (skipna) — sonst propagiert ein Resample-NaN an
+            # Datenluecken via TA-Lib bis zum Serienende (Indikator wird flach). Identisch
+            # zum Runner (build_indicators).
+            result = run_indicator_nan_safe(factory, *input_values, **params)
             # Outputs einsammeln
             outputs = {}
             series_cache: dict[str, pd.Series] = {}

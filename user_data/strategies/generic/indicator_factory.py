@@ -214,6 +214,33 @@ _OHLCV_MAP = {
 }
 
 
+# GEÄNDERT: NaN-sicherer Indikator-Lauf. Beim Per-Indikator-tf erzeugt das Resampling
+# fuer Zeitfenster ohne zugrundeliegende Basis-Bars (Datenluecken) NaN-Bars. TA-Lib
+# (und die meisten talib-basierten Indikatoren) propagieren ein einzelnes NaN in der
+# Mitte der Serie bis zum Serienende — der Indikator wird ab der ersten Luecke konstant
+# (im Chart: flache Linie), was via realign_closing(ffill=True) bis zum Rand durchschlaegt.
+# Loesung (kanonisch laut VBT): skipna=True laesst den Indikator nur auf den Nicht-NaN-
+# Werten laufen und setzt die Ergebnisse an die Originalpositionen zurueck. split_columns=True
+# ist Voraussetzung, damit skipna auch bei Multi-Combo-Laeufen (mehrspaltige Inputs) greift.
+def run_indicator_nan_safe(factory: Any, *args: Any, **run_kwargs: Any) -> Any:
+    """Ruft ``factory.run`` mit look-ahead-sicherer NaN-Behandlung auf.
+
+    Setzt ``skipna=True`` und ``split_columns=True``, damit ein einzelnes NaN in einer
+    (z.B. durch Resampling an Datenluecken entstandenen) Input-Serie nicht via TA-Lib bis
+    zum Serienende durchschlaegt. Ohne NaN-Werte sind beide Argumente ein No-Op — die
+    Ergebnisse bleiben unveraendert.
+
+    Args:
+        factory: VBT IndicatorFactory-Objekt (talib-, vbt- oder custom-Indikator).
+        *args: Positionale Argumente fuer ``factory.run`` (z.B. Input-Serien).
+        **run_kwargs: Weitere run-Argumente (Params, ``param_product`` usw.).
+
+    Returns:
+        Die vom Indikator gelieferte Instanz.
+    """
+    return factory.run(*args, skipna=True, split_columns=True, **run_kwargs)
+
+
 def build_indicators(indicators_json: dict, ohlc_data: Any,
                      base_tf: Optional[str] = None) -> dict[str, Any]:
     """Baut alle Indikatoren aus dem Spec in Abhängigkeits-Reihenfolge.
@@ -253,8 +280,8 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
         if target_tf is None:
             # Basis-Timeframe: unveraendert (kein Resampling).
             inputs_kwargs = _resolve_inputs(entry, factory, ohlc_data, results, ind_id)
-            results[ind_id] = factory.run(
-                **inputs_kwargs, **params_kwargs, param_product=True
+            results[ind_id] = run_indicator_nan_safe(
+                factory, **inputs_kwargs, **params_kwargs, param_product=True
             )
             continue
 
@@ -264,7 +291,7 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
         inputs_kwargs = _resolve_inputs(
             entry, factory, resampled, results, ind_id, chain_realign_index=tf_index
         )
-        inst = factory.run(**inputs_kwargs, **params_kwargs, param_product=True)
+        inst = run_indicator_nan_safe(factory, **inputs_kwargs, **params_kwargs, param_product=True)
 
         realigned: dict[str, Any] = {}
         for oname in (getattr(inst, 'output_names', ()) or ()):
