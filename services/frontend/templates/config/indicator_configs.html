@@ -2,6 +2,22 @@
 
 {% block title %}Indicator-Configs - BT Pro{% endblock %}
 
+{% block head %}
+<style>
+  /* Indikator-Badges: 4 pro Reihe, jede Reihe fuer sich zentriert */
+  .indicator-badges {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+  .indicator-badge-row {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+  }
+</style>
+{% endblock %}
 
 {% block page_header %}
 <div class="page-header d-print-none">
@@ -52,14 +68,14 @@
         <thead>
           <tr>
             <th class="w-1"><input class="form-check-input" type="checkbox" id="select-all"></th>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Beschreibung</th>
+            <th class="text-center">ID</th>
+            <th style="width:22%">Name</th>
+            <th style="width:32%">Beschreibung</th>
             <th>Konzept</th>
-            <th>Iteration</th>
-            <th class="text-center text-nowrap">Indikatoren</th>
+            <th style="width:8%">Iteration</th>
+            <th class="text-center">Indikatoren</th>
             <th>Erstellt</th>
-            <th style="min-width:120px"></th>
+            <th style="width:1%" class="text-nowrap"></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -90,7 +106,7 @@ document.addEventListener("DOMContentLoaded", function() {
           return '<input class="form-check-input row-select" type="checkbox" value="' + data + '">';
         }
       },
-      { data: "id" },
+      { data: "id", className: "text-center" },
       {
         data: null,
         render: function(data) {
@@ -127,13 +143,21 @@ document.addEventListener("DOMContentLoaded", function() {
       },
       {
         data: "config_json",
-        className: "text-center text-nowrap",
+        className: "text-center",
+        // GEÄNDERT: _stops ausgeblendet (steckt in jeder Config); Badges in Reihen zu je 4,
+        // jede Reihe fuer sich zentriert (auch die letzte Teilreihe)
         render: function(d) {
-          var keys = Object.keys(d || {});
-          return keys.map(function(k) {
-            var cls = (d[k] && d[k].enabled === false) ? 'bg-danger-lt' : 'bg-success-lt';
-            return '<span class="badge ' + cls + ' me-1">' + k + '</span>';
-          }).join('');
+          var keys = Object.keys(d || {}).filter(function(k) { return k !== '_stops'; });
+          if (!keys.length) { return '<span class="text-muted">-</span>'; }
+          var rows = [];
+          for (var i = 0; i < keys.length; i += 4) {
+            var group = keys.slice(i, i + 4).map(function(k) {
+              var cls = (d[k] && d[k].enabled === false) ? 'bg-danger-lt' : 'bg-success-lt';
+              return '<span class="badge ' + cls + '">' + k + '</span>';
+            }).join('');
+            rows.push('<div class="indicator-badge-row">' + group + '</div>');
+          }
+          return '<div class="indicator-badges">' + rows.join('') + '</div>';
         }
       },
       {
@@ -153,12 +177,17 @@ document.addEventListener("DOMContentLoaded", function() {
       {
         data: "id",
         orderable: false,
+        // GEÄNDERT: nur noch Edit sichtbar; Kopieren/Export/Löschen im Drei-Punkte-Menü
         render: function(data) {
           return '<div class="text-end text-nowrap">' +
             '<a href="/config/indicator/' + data + '" class="btn btn-sm btn-outline-primary me-1" title="Bearbeiten"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/><path d="M16 5l3 3"/></svg></a>' +
-            '<button class="btn btn-sm btn-outline-info btn-copy me-1" data-id="' + data + '" title="Kopieren"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></svg></button>' +
-            '<button class="btn btn-sm btn-outline-secondary btn-export me-1" data-id="' + data + '" title="Als JSON-Datei exportieren"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 8l3 -3l3 3"/><path d="M12 5l0 9"/></svg></button>' +
-            '<button class="btn btn-sm btn-outline-danger btn-delete" data-id="' + data + '" title="Löschen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></button>' +
+            '<button type="button" class="btn btn-sm btn-icon btn-outline-secondary config-actions-toggle" title="Aktionen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></svg></button>' +
+            '<div class="dropdown-menu config-actions-menu text-start">' +
+              '<button type="button" class="dropdown-item btn-copy" data-id="' + data + '">Kopieren</button>' +
+              '<button type="button" class="dropdown-item btn-export" data-id="' + data + '">Als JSON exportieren</button>' +
+              '<div class="dropdown-divider"></div>' +
+              '<button type="button" class="dropdown-item text-danger btn-delete" data-id="' + data + '">Löschen</button>' +
+            '</div>' +
             '</div>';
         }
       }
@@ -301,6 +330,59 @@ document.addEventListener("DOMContentLoaded", function() {
         table.ajax.reload();
       });
   });
+
+  /* Drei-Punkte-Aktionsmenü. Das Menü liegt im DOM in der Zelle (damit die
+     bestehende Klick-Delegation weiter greift), wird aber per position:fixed
+     positioniert, damit es nicht vom table-responsive-Container abgeschnitten wird. */
+  var openActionsMenu = null;
+
+  function closeActionsMenu() {
+    if (openActionsMenu) {
+      openActionsMenu.classList.remove("show");
+      openActionsMenu.removeAttribute("style");
+      openActionsMenu = null;
+    }
+  }
+
+  function positionActionsMenu(menu, toggle) {
+    var rect = toggle.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.margin = "0";
+    var menuW = menu.offsetWidth;
+    var menuH = menu.offsetHeight;
+    var left = rect.right - menuW;
+    if (left < 4) left = 4;
+    var top = rect.bottom + 2;
+    // Nach oben klappen, wenn unten kein Platz ist
+    if (top + menuH > window.innerHeight - 4) top = rect.top - menuH - 2;
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+  }
+
+  document.getElementById("configs-table").addEventListener("click", function(e) {
+    var toggle = e.target.closest(".config-actions-toggle");
+    if (!toggle) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var menu = toggle.parentNode.querySelector(".config-actions-menu");
+    var wasOpen = (menu === openActionsMenu);
+    closeActionsMenu();
+    if (!wasOpen && menu) {
+      menu.classList.add("show");
+      positionActionsMenu(menu, toggle);
+      openActionsMenu = menu;
+    }
+  });
+
+  // Klick außerhalb schließt das Menü; Klicks auf Menü-Items bubbeln vorher zu den
+  // bestehenden Handlern (Kopieren/Export/Löschen) und schließen es danach mit
+  document.addEventListener("click", function(e) {
+    if (openActionsMenu && !e.target.closest(".config-actions-toggle")) closeActionsMenu();
+  });
+  document.addEventListener("keydown", function(e) { if (e.key === "Escape") closeActionsMenu(); });
+  window.addEventListener("resize", closeActionsMenu);
+  window.addEventListener("scroll", closeActionsMenu, true);
+  table.on("draw", closeActionsMenu);
 });
 </script>
 {% endblock %}

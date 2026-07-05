@@ -385,15 +385,15 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Beschreibung generieren — Indikator-Auflistung neu bauen, den manuellen " | <Freitext>" erhalten.
-     Der Generator liefert nur die Indikatoren + Werte/Wertebereiche; ein Freitext hinter " | " bleibt stehen. */
+  /* Beschreibung generieren — Indikator-Auflistung neu bauen, den manuellen Freitext VOR " | " erhalten.
+     Reihenfolge: "<Freitext> | <Auflistung>". Der Generator liefert nur die Auflistung. */
   document.getElementById("btn-gen-desc").addEventListener("click", async function() {
     try {
       var labels = await _fetchPreviewLabels();
       var descEl = document.getElementById("cfg-description");
       var sepIdx = descEl.value.indexOf(" | ");
-      var freetext = sepIdx >= 0 ? descEl.value.slice(sepIdx) : "";  // " | <Freitext>"
-      descEl.value = labels.description + freetext;
+      var freetext = sepIdx >= 0 ? descEl.value.slice(0, sepIdx) : "";  // Freitext VOR " | "
+      descEl.value = freetext ? (freetext + " | " + labels.description) : labels.description;
     } catch(e) {
       alert('Fehler beim Beschreibung generieren: ' + e.message);
     }

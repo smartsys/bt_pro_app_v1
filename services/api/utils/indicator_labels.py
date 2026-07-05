@@ -21,7 +21,8 @@ Beschreibung:
   ``<name>: <param> <wert>, <param> <min-max (n)>; <name2>: ...`` in topologischer
   Reihenfolge. Skalare als Wert, Sweep-Achsen (Range oder Liste) als ``min-max (n)``.
   Inputs (OHLC/Chains), Meta-Keys und Stops bleiben außen vor. Ein KI-/User-Freitext
-  wird separat per `` | `` angehängt (Frontend/Skill) — nicht vom Generator.
+  steht VOR der Auflistung, per `` | `` getrennt (``<Freitext> | <Auflistung>``);
+  angehängt wird er im Frontend/Skill — nicht vom Generator.
 """
 from typing import Optional
 

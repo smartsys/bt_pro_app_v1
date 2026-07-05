@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.41] - 05.07.2026
+
+### Changed
+- Indicator-Config-Tabelle umgestaltet und Beschreibungs-Freitext vorangestellt
+  - Aktionen-Spalte verschlankt: nur der Bearbeiten-Button bleibt sichtbar, Kopieren/Als JSON exportieren/Löschen wandern in ein Drei-Punkte-Dropdown (per position:fixed positioniert, damit es nicht vom table-responsive-Container abgeschnitten wird)
+  - Indikatoren-Spalte: Sonderschlüssel _stops wird nicht mehr als Badge angezeigt (steckt in jeder Config)
+  - Indikator-Badges brechen nach 4 pro Reihe um, jede Reihe für sich zentriert (auch die letzte Teilreihe)
+  - Spaltenbreiten zugunsten von Name/Beschreibung gewichtet: Name 22 Prozent, Beschreibung 32 Prozent, Iteration schmal (8 Prozent), Aktionen-Spalte auf Inhaltsbreite geschrumpft
+  - ID-Spalte zentriert
+  - Beschreibungs-Generator: manueller Freitext steht jetzt VOR der Indikator-Auflistung (Freitext | Auflistung statt Auflistung | Freitext)
+
+### Files
+- services/frontend/templates/config/indicator_configs.html
+- services/frontend/templates/config/indicator_config_edit.html
+- services/api/utils/indicator_labels.py
+
+
+
 ## [1.30.40] - 05.07.2026
 
 ### Changed
