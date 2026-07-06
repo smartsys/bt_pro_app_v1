@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.54] - 06.07.2026
+
+### Fixed
+- Negative Shift-Werte in Rules-Conditions werden abgewiesen (Audit-Befund 3: Lookahead-Schutz)
+  - Speicher-Klemmung am zentralen Choke-Point repository_strategies._clamp_negative_shifts: negative lhs_shift/rhs_shift in rules.entry/rules.exit werden beim Speichern der Iteration auf 0 gesetzt (create_iteration/update_iteration) - greift fuer alle Schreibwege inkl. der ds-strategie-session-Toolbox ueber die API
+  - Engine-Backstop: neuer Helper _read_shift wirft ValueError bei shift < 0 an beiden Lese-Stellen (_evaluate_condition pandas-Pfad + statische Block-Masken; _build_stateful_condition_spec nativer stateful Pfad)
+  - Hintergrund: shift(-1) zoege den Wert der Folgekerze auf die aktuelle Kerze (nicht-kausaler Lookahead); in einem kausalen Backtest gibt es dafuer keinen legitimen Fall
+  - Tests: tests/test_shift_sign_validation.py (9 Tests: Klemmung, beide Entry-Pfade, stateful Series-Operand, Gegenproben Shift 0/positiv); Regression neq_nan_warmup/native_state_exits/native_short/native_disjoint_axes gruen
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- user_data/utils/database/repository_strategies.py
+- tests/test_shift_sign_validation.py
+- documentation/todo/audit-rechenpfad-spec-runner-indikatoren.md
+
+
+
 ## [1.30.53] - 06.07.2026
 
 ### Fixed

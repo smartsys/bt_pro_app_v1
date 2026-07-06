@@ -263,6 +263,43 @@ def next_iteration_version(session: Session, concept_id: int) -> int:
     return int(row[0])
 
 
+def _clamp_negative_shifts(spec_json: Optional[dict]) -> None:
+    """Klemmt negative lhs_shift/rhs_shift in den Rules auf 0 (in-place).
+
+    Ein negativer Shift ist nicht-kausaler Lookahead — er zöge den Wert der
+    Folgekerze auf die aktuelle Kerze. Beim Speichern einer Iteration wird er
+    still auf 0 gesetzt, damit der User es beim Neuladen der Iteration direkt
+    sieht. Zentraler Choke-Point: alle Schreibwege (create/update/copy/import,
+    inkl. der ds-strategie-session-Toolbox über die API) laufen durch
+    create_iteration/update_iteration. Die Rules-Engine wirft zusätzlich zur
+    Laufzeit einen ValueError als Backstop (falls ein Spec je an der API vorbei
+    entsteht, z.B. im Offline-Harness).
+
+    Args:
+        spec_json: Das spec_json der Iteration (wird in-place verändert). None
+            oder fehlende Rules sind No-op.
+    """
+    if not isinstance(spec_json, dict):
+        return
+    rules = spec_json.get('rules')
+    if not isinstance(rules, dict):
+        return
+    for side in ('entry', 'exit'):
+        group = rules.get(side)
+        if not isinstance(group, dict):
+            continue
+        for block in (group.get('blocks') or []):
+            if not isinstance(block, dict):
+                continue
+            for cond in (block.get('conditions') or []):
+                if not isinstance(cond, dict):
+                    continue
+                for key in ('lhs_shift', 'rhs_shift'):
+                    val = cond.get(key)
+                    if isinstance(val, (int, float)) and not isinstance(val, bool) and val < 0:
+                        cond[key] = 0
+
+
 def create_iteration(session: Session, **kwargs) -> StrategyIteration:
     """Neue Strategie-Iteration anlegen.
 
@@ -273,6 +310,8 @@ def create_iteration(session: Session, **kwargs) -> StrategyIteration:
     Returns:
         Die neu erstellte StrategyIteration.
     """
+    # GEÄNDERT: Audit 2026-07-06 Befund 3 — negative Shifts beim Speichern klemmen
+    _clamp_negative_shifts(kwargs.get('spec_json'))
     iteration = StrategyIteration(**kwargs)
     session.add(iteration)
     session.commit()
@@ -294,6 +333,8 @@ def update_iteration(session: Session, iteration_id: int, **kwargs) -> Optional[
     iteration = get_iteration(session, iteration_id)
     if iteration is None:
         return None
+    # GEÄNDERT: Audit 2026-07-06 Befund 3 — negative Shifts beim Speichern klemmen
+    _clamp_negative_shifts(kwargs.get('spec_json'))
     for key, value in kwargs.items():
         setattr(iteration, key, value)
     session.commit()

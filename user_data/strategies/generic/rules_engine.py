@@ -451,6 +451,34 @@ def _evaluate_rule_group(group: dict, ohlc_data: Any, indicators: dict):
     return result
 
 
+def _read_shift(cond: dict, key: str) -> int:
+    """Liest einen Shift-Wert aus der Condition und weist negative Werte ab.
+
+    Ein negativer Shift (series.shift(-n)) zöge den Wert einer Zukunftskerze auf
+    die aktuelle Kerze — nicht-kausaler Lookahead. In einem kausalen Backtest gibt
+    es dafür keinen legitimen Fall (eine Prognose lebt bereits auf der aktuellen
+    Kerze und wird mit Shift 0 gelesen), deshalb wird ein negativer Shift hart
+    abgewiesen. Zentrale Lese-Stelle für beide Rechenpfade (pandas + nativ).
+
+    Args:
+        cond: Condition-Dict.
+        key: 'lhs_shift' oder 'rhs_shift'.
+
+    Returns:
+        Der Shift als int (>= 0).
+
+    Raises:
+        ValueError: Bei negativem Shift.
+    """
+    shift = int(cond.get(key) or 0)
+    if shift < 0:
+        raise ValueError(
+            f"Negativer Shift ({key}={shift}) ist nicht erlaubt — das zöge den Wert "
+            f"einer Zukunftskerze auf die aktuelle Kerze (Lookahead). Nur Shift >= 0."
+        )
+    return shift
+
+
 def _evaluate_condition(cond: dict, ohlc_data: Any, indicators: dict):
     """Wertet eine einzelne Condition aus.
 
@@ -463,12 +491,12 @@ def _evaluate_condition(cond: dict, ohlc_data: Any, indicators: dict):
         raise ValueError(f"Unbekannter Operator: {op_name!r}. Erlaubt: {list(_OPS.keys())}")
 
     lhs = _resolve_ref(cond['lhs'], ohlc_data, indicators)
-    lhs_shift = cond.get('lhs_shift', 0)
+    lhs_shift = _read_shift(cond, 'lhs_shift')
     if lhs_shift and hasattr(lhs, 'shift'):
         lhs = lhs.shift(lhs_shift)
 
     rhs = _resolve_ref(cond['rhs'], ohlc_data, indicators)
-    rhs_shift = cond.get('rhs_shift', 0)
+    rhs_shift = _read_shift(cond, 'rhs_shift')
     if rhs_shift and hasattr(rhs, 'shift'):
         rhs = rhs.shift(rhs_shift)
 
@@ -1124,9 +1152,9 @@ def _build_stateful_condition_spec(
         op_codes[idx] = _OP_CODE_MAP[op_name]
 
         lhs_ref   = cond.get('lhs')
-        lhs_shift = int(cond.get('lhs_shift') or 0)
+        lhs_shift = _read_shift(cond, 'lhs_shift')
         rhs_ref   = cond.get('rhs')
-        rhs_shift = int(cond.get('rhs_shift') or 0)
+        rhs_shift = _read_shift(cond, 'rhs_shift')
 
         _encode_side(lhs_ref, lhs_shift, idx, 'lhs')
         _encode_side(rhs_ref, rhs_shift, idx, 'rhs')
