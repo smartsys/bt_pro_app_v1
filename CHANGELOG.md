@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.52] - 06.07.2026
+
+### Removed
+- Veraltete Test-Datei tests/test_indicator_labels.py entfernt — sie prüfte die mit 1.30.40 abgelöste Label-Notation und schlug seitdem fehl (8 rote Tests)
+  - Die Datei stammte aus 1.30.36 (Beschreibung = Stops-Rendering, Name mit „Kombi.“, Eingabe als nacktes Stops-Dict) und wurde beim Notation-Umbau in 1.30.40 nicht mitentfernt
+  - Die aktuelle Notation wird vollständig von services/api/tests/test_indicator_labels.py abgedeckt (Single Source, 10/10 grün — Skalar-, arange- und Sweep-Fälle für Name und Beschreibung)
+  - Kein Code-Fix nötig: die Produktions-Aufrufer (api_config.py) übergeben immer das volle config_json, die alte Aufruf-Form (nacktes Stops-Dict) existiert nicht mehr
+  - Volle Test-Suite nach der Löschung grün (466 bestanden)
+
+### Files
+- tests/test_indicator_labels.py
+
+
+
 ## [1.30.51] - 06.07.2026
 
 ### Fixed
