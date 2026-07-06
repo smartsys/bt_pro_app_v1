@@ -114,6 +114,83 @@ def _describe_operand(obj: Any) -> str:
     return f"{type(obj).__name__}: {obj!r}"
 
 
+# GEÄNDERT: Ticket 51 — Kreuz-Logik aus _combine_broadcast extrahiert, damit
+# evaluate_rules_native dieselbe Mechanik für die Entry-/Exit-Achsen nutzen kann.
+def _pairwise_alignable_names(name_sets: list) -> bool:
+    """Prüft, ob alle Level-Namen-Mengen paarweise in Teilmengen-Beziehung stehen.
+
+    Nur dann kann vbt.broadcast die Operanden alignen; sonst müssen die
+    disjunkten privaten Level gekreuzt werden.
+
+    Args:
+        name_sets: Liste von Mengen der Spalten-Level-Namen.
+
+    Returns:
+        True, wenn jedes Paar in Teilmengen-/Gleichheits-Beziehung steht.
+    """
+    return all(
+        name_sets[i] <= name_sets[j] or name_sets[j] <= name_sets[i]
+        for i in range(len(name_sets)) for j in range(i + 1, len(name_sets))
+    )
+
+
+def _cross_target_from_indexes(col_indexes: list) -> Any:
+    """Baut den Ziel-Spalten-Index als Kreuzprodukt disjunkter privater Level.
+
+    Carrier-Level (Level-Namen, die ALLE Indizes teilen — typisch `symbol`)
+    bleiben aligned und werden nie gekreuzt; ihre privaten Werte werden je
+    Index dedupliziert. Indizes ohne eigenes privates Level tragen keine
+    Kreuz-Achse bei. Mechanik identisch zum Kreuz-Pfad von _combine_broadcast
+    (Ticket 49).
+
+    Args:
+        col_indexes: Spalten-Indizes (pd.Index/MultiIndex) der Combo-Quellen.
+
+    Returns:
+        Ziel-Spalten-Index (Kartesisches Produkt der maximalen privaten Level
+        × Carrier-Level).
+    """
+    name_sets = [set(ix.names) for ix in col_indexes]
+    carrier = set.intersection(*name_sets)
+
+    def _private(idx):
+        """Private (Nicht-Carrier-)Werte eines Spalten-Index, dedupliziert."""
+        keep = [n for n in idx.names if n not in carrier]
+        if not keep:
+            return None
+        return idx.droplevel(list(carrier)).unique()
+
+    # Maximale Indizes bestimmen: private Level-Menge ist nicht echte Teilmenge
+    # eines anderen und kommt nur einmal vor (gleiche Level-Mengen sind redundant).
+    privs = [(ix, _private(ix)) for ix in col_indexes]
+    privs = [(ix, p) for ix, p in privs if p is not None]
+    level_sets = [set(p.names) for _, p in privs]
+    maximal_idxs: list = []
+    seen_sets: list = []
+    for i, (_, p) in enumerate(privs):
+        ls = level_sets[i]
+        if any(j != i and ls < level_sets[j] for j in range(len(privs))):
+            continue
+        if any(ls == s for s in seen_sets):
+            continue
+        seen_sets.append(ls)
+        maximal_idxs.append(p)
+
+    if len(maximal_idxs) == 1:
+        priv_target = maximal_idxs[0]
+    else:
+        _, priv_target = vbt.base.indexes.cross_indexes(maximal_idxs, return_new_index=True)
+
+    if carrier:
+        non_carrier = [n for n in col_indexes[0].names if n not in carrier]
+        carrier_idx = col_indexes[0].droplevel(non_carrier).unique()
+        _, target = vbt.base.indexes.cross_indexes([priv_target, carrier_idx], return_new_index=True)
+    else:
+        target = priv_target
+
+    return target
+
+
 def _combine_broadcast(objs: list) -> tuple:
     """Broadcastet Operanden und kreuzt disjunkte Indikator-Param-Level.
 
@@ -156,55 +233,12 @@ def _combine_broadcast(objs: list) -> tuple:
     # Gate: alignen reicht nur, wenn JEDES Paar von Level-Namen-Mengen in einer
     # Teilmengen-/Gleichheits-Beziehung steht. Sonst immer kreuzen — nicht mehr
     # vom Exception-Zufall von vbt.broadcast abhängig (Kern von Bug 1).
-    pairwise_alignable = all(
-        name_sets[i] <= name_sets[j] or name_sets[j] <= name_sets[i]
-        for i in range(len(name_sets)) for j in range(i + 1, len(name_sets))
-    )
-    if pairwise_alignable:
+    # GEÄNDERT: Ticket 51 — Gate und Kreuz-Bau in Helper extrahiert (geteilt mit
+    # evaluate_rules_native).
+    if _pairwise_alignable_names(name_sets):
         return vbt.broadcast(*objs)
 
-    # Carrier = Level-Namen, die ALLE DataFrames teilen (typisch: 'symbol').
-    carrier = set.intersection(*name_sets)
-
-    def _private(idx):
-        """Private (Nicht-Carrier-)Werte eines Spalten-Index, dedupliziert.
-
-        None, wenn der Operand außer Carrier-Leveln keine eigenen Level hat —
-        trägt dann keine private Achse zum Kreuzen bei.
-        """
-        keep = [n for n in idx.names if n not in carrier]
-        if not keep:
-            return None
-        return idx.droplevel(list(carrier)).unique()
-
-    # Maximale Operanden bestimmen: private Level-Menge ist nicht echte Teilmenge
-    # eines anderen und kommt nur einmal vor (gleiche Level-Mengen sind redundant).
-    privs = [(d, _private(d.columns)) for d in dfs]
-    privs = [(d, p) for d, p in privs if p is not None]
-    level_sets = [set(p.names) for _, p in privs]
-    maximal_idxs: list = []
-    seen_sets: list = []
-    for i, (_, p) in enumerate(privs):
-        ls = level_sets[i]
-        if any(j != i and ls < level_sets[j] for j in range(len(privs))):
-            continue
-        if any(ls == s for s in seen_sets):
-            continue
-        seen_sets.append(ls)
-        maximal_idxs.append(p)
-
-    if len(maximal_idxs) == 1:
-        priv_target = maximal_idxs[0]
-    else:
-        _, priv_target = vbt.base.indexes.cross_indexes(maximal_idxs, return_new_index=True)
-
-    if carrier:
-        non_carrier = [n for n in dfs[0].columns.names if n not in carrier]
-        carrier_idx = dfs[0].columns.droplevel(non_carrier).unique()
-        _, target = vbt.base.indexes.cross_indexes([priv_target, carrier_idx], return_new_index=True)
-    else:
-        target = priv_target
-
+    target = _cross_target_from_indexes([d.columns for d in dfs])
     return vbt.broadcast(*objs, columns_from=target, align_index=False)
 
 
@@ -1079,53 +1113,12 @@ def _build_stateful_condition_spec(
         _encode_side(lhs_ref, lhs_shift, idx, 'lhs')
         _encode_side(rhs_ref, rhs_shift, idx, 'rhs')
 
-    # GEÄNDERT: Ticket 47 Bugfix — Series-Bundle in COMBO-MAJOR-Layout. Pro Combo-
-    # Spalte stehen alle Slots nebeneinander: [combo0_slot0, combo0_slot1, ...,
-    # combo1_slot0, ...]. So selektiert die signal_func mit base_col = (col % n_combo)
-    # * n_slots den Block einer Combo, und lhs/rhs_series_col indexiert den Slot
-    # INNERHALB dieses Blocks (0..n_slots-1). Ein 1-spaltiger (globaler) Slot wird auf
-    # alle Combos broadcastet. Single-Combo (n_combo==1) fällt darauf zurück: ein
-    # Block, base_col immer 0, Slot-Index == frühere Slot-Position.
-    # Slot-Spalten-Index des breitesten DataFrame-Slots (für combo_columns-Ableitung)
-    spec_combo_columns = None
-    if series_slots:
-        T = series_slots[0][0].shape[0]
-        n_slots = len(series_slots)
-        # n_combo aus dem breitesten DataFrame-Slot ableiten (1, wenn keiner 2D ist)
-        n_combo_local = 1
-        for arr, is_df in series_slots:
-            if is_df and arr.shape[1] > n_combo_local:
-                n_combo_local = arr.shape[1]
-
-        # Combo-major aufbauen: für jede Combo alle Slots als Spalten.
-        bundle_cols: list[np.ndarray] = []
-        for cc in range(n_combo_local):
-            for arr, is_df in series_slots:
-                if is_df:
-                    # Pro-Combo-Spalte; 1-spaltiger DataFrame -> Spalte 0 für alle Combos
-                    col_idx = cc if arr.shape[1] > 1 else 0
-                    bundle_cols.append(arr[:, col_idx].reshape(T, 1))
-                else:
-                    # Globaler 1D-Operand -> gleiche Spalte für alle Combos
-                    bundle_cols.append(arr.reshape(T, 1))
-        series_bundle = np.concatenate(bundle_cols, axis=1).astype(np.float64)
-
-        # lhs/rhs_series_col tragen bereits die Slot-Position (0..n_slots-1) — im
-        # combo-major-Block ist das genau der Index innerhalb des Combo-Blocks.
-
-        # n_series_cols ist die Block-Breite EINER Combo (= Anzahl Slots), damit die
-        # signal_func mit series_bundle[i, base:base+n_series_cols] genau einen Block liest.
-        n_series_cols_total = n_slots
-        spec_n_combo = n_combo_local
-        # Spalten-Index des breitesten DataFrame-Slots für combo_columns merken
-        for arr, is_df, cols in series_slot_columns:
-            if is_df and cols is not None and len(cols) == n_combo_local and n_combo_local > 1:
-                spec_combo_columns = cols
-                break
-    else:
-        series_bundle = np.zeros((1, 1), dtype=np.float64)
-        n_series_cols_total = 0
-        spec_n_combo = 1
+    # GEÄNDERT: Ticket 51 — Bundle-Bau in _build_series_bundle extrahiert; die
+    # rohen Slots wandern mit ins Ergebnis, damit evaluate_rules_native das Bundle
+    # nach der Achsen-Bestimmung auf die Ziel-Achse (neu) bauen kann.
+    series_bundle, n_series_cols_total, spec_n_combo, spec_combo_columns = (
+        _build_series_bundle(series_slots, series_slot_columns)
+    )
 
     return {
         'n_conds':        n,
@@ -1142,7 +1135,95 @@ def _build_stateful_condition_spec(
         'n_series_cols':  n_series_cols_total,
         'n_combo':        spec_n_combo,
         'combo_columns':  spec_combo_columns,
+        'series_slots':   series_slots,
+        'series_slot_columns': series_slot_columns,
     }
+
+
+def _build_series_bundle(
+    series_slots: list,
+    series_slot_columns: list,
+    target_columns: Any = None,
+) -> tuple:
+    """Baut das Series-Bundle in COMBO-MAJOR-Layout (ausgelagert aus dem Spec-Bau).
+
+    GEÄNDERT: Ticket 47 Bugfix — Series-Bundle in COMBO-MAJOR-Layout. Pro Combo-
+    Spalte stehen alle Slots nebeneinander: [combo0_slot0, combo0_slot1, ...,
+    combo1_slot0, ...]. So selektiert die signal_func mit base_col = (col % n_combo)
+    * n_slots den Block einer Combo, und lhs/rhs_series_col indexiert den Slot
+    INNERHALB dieses Blocks (0..n_slots-1). Ein 1-spaltiger (globaler) Slot wird auf
+    alle Combos broadcastet. Single-Combo (n_combo==1) fällt darauf zurück: ein
+    Block, base_col immer 0, Slot-Index == frühere Slot-Position.
+
+    GEÄNDERT: Ticket 51 — optionale Ziel-Achse: ist target_columns gesetzt, wird
+    jeder DataFrame-Slot mit Breite > 1, dessen Spalten nicht der Ziel-Achse
+    entsprechen, per Broadcast auf sie expandiert (Kreuz disjunkter Entry-/
+    Exit-Achsen bzw. Teilmengen-Expansion). 1-spaltige/globale Slots bleiben
+    geteilt.
+
+    Args:
+        series_slots: Liste (arr, is_df) der Series-Operanden.
+        series_slot_columns: Parallele Liste (arr, is_df, columns) mit den
+            pandas-Spalten-Indizes der Slots (None bei 1D-Operand).
+        target_columns: Ziel-Spalten-Index der Combo-Achse (oder None).
+
+    Returns:
+        Tuple (series_bundle, n_series_cols, n_combo, combo_columns).
+    """
+    if not series_slots:
+        return np.zeros((1, 1), dtype=np.float64), 0, 1, None
+
+    if target_columns is not None:
+        expanded: list = []
+        for (arr, is_df), (_arr2, _is_df2, cols) in zip(series_slots, series_slot_columns):
+            if (
+                is_df and arr.shape[1] > 1 and cols is not None
+                and not cols.equals(target_columns)
+            ):
+                slot_df = pd.DataFrame(arr, columns=cols)
+                slot_df = vbt.broadcast(
+                    slot_df, columns_from=target_columns, align_index=False
+                )
+                arr = np.asarray(slot_df.values, dtype=np.float64)
+            expanded.append((arr, is_df))
+        series_slots = expanded
+
+    T = series_slots[0][0].shape[0]
+    n_slots = len(series_slots)
+    # n_combo aus dem breitesten DataFrame-Slot ableiten (1, wenn keiner 2D ist)
+    n_combo_local = 1
+    for arr, is_df in series_slots:
+        if is_df and arr.shape[1] > n_combo_local:
+            n_combo_local = arr.shape[1]
+
+    # Combo-major aufbauen: für jede Combo alle Slots als Spalten.
+    bundle_cols: list[np.ndarray] = []
+    for cc in range(n_combo_local):
+        for arr, is_df in series_slots:
+            if is_df:
+                # Pro-Combo-Spalte; 1-spaltiger DataFrame -> Spalte 0 für alle Combos
+                col_idx = cc if arr.shape[1] > 1 else 0
+                bundle_cols.append(arr[:, col_idx].reshape(T, 1))
+            else:
+                # Globaler 1D-Operand -> gleiche Spalte für alle Combos
+                bundle_cols.append(arr.reshape(T, 1))
+    series_bundle = np.concatenate(bundle_cols, axis=1).astype(np.float64)
+
+    # lhs/rhs_series_col tragen bereits die Slot-Position (0..n_slots-1) — im
+    # combo-major-Block ist das genau der Index innerhalb des Combo-Blocks.
+
+    # n_series_cols ist die Block-Breite EINER Combo (= Anzahl Slots), damit die
+    # signal_func mit series_bundle[i, base:base+n_series_cols] genau einen Block liest.
+    spec_combo_columns = None
+    if target_columns is not None and n_combo_local > 1:
+        spec_combo_columns = target_columns
+    else:
+        # Spalten-Index des breitesten DataFrame-Slots für combo_columns merken
+        for arr, is_df, cols in series_slot_columns:
+            if is_df and cols is not None and len(cols) == n_combo_local and n_combo_local > 1:
+                spec_combo_columns = cols
+                break
+    return series_bundle, n_slots, n_combo_local, spec_combo_columns
 
 
 def _build_series_col_map(
@@ -1229,8 +1310,13 @@ def _static_conds_combo_width(
     """Ermittelt die breiteste Combo-Spaltenzahl der statischen Exit-Conditions.
 
     Wertet je Block dessen statische Conditions als pandas-Maske aus und liest die
-    Spaltenzahl. Liefert (max_width, columns) — columns ist der Spalten-Index der
-    breitesten Maske (oder None, wenn alle 1-spaltig sind).
+    Spaltenzahl. Liefert (max_width, columns, multi_axes) — columns ist der
+    Spalten-Index der breitesten Maske (oder None, wenn alle 1-spaltig sind).
+
+    GEÄNDERT: Audit 2026-07-06 Befund 1 — multi_axes listet zusätzlich (width,
+    columns) JEDER mehrspaltigen Block-Maske, damit der Disjunkt-Achsen-Guard
+    in evaluate_rules_native alle statischen Exit-Achsen prüfen kann (nicht nur
+    die breiteste).
 
     Args:
         block_static_conds: Liste je Block mit dessen statischen Conditions.
@@ -1238,20 +1324,94 @@ def _static_conds_combo_width(
         indicators: Berechnete Indikatoren.
 
     Returns:
-        Tuple (max_width: int, columns: pd.Index | None).
+        Tuple (max_width: int, columns: pd.Index | None,
+        multi_axes: list[tuple[int, pd.Index]]).
     """
     max_width = 1
     columns = None
+    multi_axes: list = []
     for conds in block_static_conds:
         if not conds:
             continue
         mask = _evaluate_rule_group(
             {'blocks': [{'conditions': conds}]}, ohlc_data, indicators
         )
-        if isinstance(mask, pd.DataFrame) and mask.shape[1] > max_width:
-            max_width = mask.shape[1]
-            columns = mask.columns
-    return max_width, columns
+        if isinstance(mask, pd.DataFrame) and mask.shape[1] > 1:
+            multi_axes.append((mask.shape[1], mask.columns))
+            if mask.shape[1] > max_width:
+                max_width = mask.shape[1]
+                columns = mask.columns
+    return max_width, columns, multi_axes
+
+
+# GEÄNDERT: Audit 2026-07-06 Befund 1 / Ticket 51 — Invarianten-Check: Nach der
+# Achsen-Bestimmung und Expansion (Kreuzprodukt disjunkter Entry-/Exit-Achsen)
+# müssen ALLE mehrspaltigen Quellen die gemeinsame Combo-Achse tragen (n_combo,
+# Spalten-Zugriff per col % n_combo). Feuert der Check, ist eine Quelle nicht
+# expandiert worden — ohne ihn entstünden stille Falschergebnisse:
+# Out-of-bounds-Read der Entry-Maske (Numba ohne Boundscheck), stiller Kollaps
+# einer stateful Exit-Achse oder positionsweise Diagonal-Paarung gleich breiter
+# Achsen. (Der frühere N5-Blanket-Guard hatte solche Konstellationen als Beifang
+# abgefangen und fiel mit Ticket 47.)
+def _assert_single_combo_axis(
+    n_combo: int,
+    combo_columns: Any,
+    full_axis_sources: list,
+    subset_sources: list,
+) -> None:
+    """Weist disjunkte Combo-Achsen zwischen den Quellen des nativen Pfads ab.
+
+    full_axis_sources müssen die Combo-Achse exakt tragen (gleiche Breite und
+    gleiche Spalten-Level-Namen) oder 1-spaltig sein — für sie existiert kein
+    Expansions-Mechanismus. subset_sources (statische Exit-Masken) dürfen eine
+    Teilmenge der Achsen-Level tragen; _build_static_block_arr expandiert sie
+    per Broadcast auf die volle Achse (Ticket-49-Mechanik).
+
+    Args:
+        n_combo: Breite der globalen Combo-Achse.
+        combo_columns: Spalten-Index der globalen Combo-Achse (oder None).
+        full_axis_sources: Liste (label, width, columns) — Entry-Masken und
+            stateful Exit-Operanden.
+        subset_sources: Liste (label, width, columns) — statische Exit-Masken.
+
+    Raises:
+        ValueError: Wenn eine Quelle eine abweichende/disjunkte Achse trägt.
+    """
+    full_names = set(combo_columns.names) if combo_columns is not None else None
+
+    def _axis_desc(names: Any, width: int) -> str:
+        if names is None:
+            return f"unbenannte Achse (Breite {width})"
+        return f"Achse {sorted(str(n) for n in names)} (Breite {width})"
+
+    def _reject(label: str, width: int, names: Any) -> None:
+        raise ValueError(
+            f"Interner Konsistenzfehler der Combo-Achse: {label} trägt "
+            f"{_axis_desc(names, width)}, die Combo-Achse des Laufs ist "
+            f"{_axis_desc(full_names, n_combo)}. Die Quelle wurde nicht auf die "
+            f"gemeinsame Combo-Achse expandiert (Ticket 51) — vermutlich fehlt ihr "
+            f"ein benannter Spalten-Index für das Kreuzprodukt."
+        )
+
+    for label, width, cols in full_axis_sources:
+        if width <= 1:
+            continue
+        src_names = set(cols.names) if cols is not None else None
+        if width != n_combo:
+            _reject(label, width, src_names)
+        if full_names is not None and src_names is not None and src_names != full_names:
+            _reject(label, width, src_names)
+
+    for label, width, cols in subset_sources:
+        if width <= 1:
+            continue
+        src_names = set(cols.names) if cols is not None else None
+        if src_names is None or full_names is None:
+            if width != n_combo:
+                _reject(label, width, src_names)
+            continue
+        if not src_names <= full_names:
+            _reject(label, width, src_names)
 
 
 def _build_static_block_arr(
@@ -1482,10 +1642,90 @@ def evaluate_rules_native(
     for _spec in (long_spec, short_spec):
         _consider(_spec['n_combo'], _spec['combo_columns'])
     # Statische Exit-Conditions können die einzige Combo-Achse tragen (kein State-Ref).
+    static_axis_infos: list = []
     for _static_conds in (long_static_conds, short_static_conds):
-        _w, _cols = _static_conds_combo_width(_static_conds, ohlc_data, indicators)
+        _w, _cols, _multi = _static_conds_combo_width(_static_conds, ohlc_data, indicators)
         _consider(_w, _cols)
+        static_axis_infos.extend(_multi)
+
+    # GEÄNDERT: Ticket 51 (Audit 2026-07-06 Befund 1) — disjunkte Sweep-Achsen
+    # zwischen Entry- und Exit-Regeln kreuzen: Sind die Level-Namen-Mengen der
+    # mehrspaltigen Quellen nicht paarweise alignbar, wird die Combo-Achse als
+    # Kreuzprodukt der disjunkten privaten Level gebaut (gleiche Mechanik wie
+    # _combine_broadcast/Ticket 49) und ersetzt das Breiten-Maximum aus _consider.
+    cross_source_indexes: list = []
+    for _mask in (entries, short_entries_raw):
+        if isinstance(_mask, pd.DataFrame) and _mask.shape[1] > 1:
+            cross_source_indexes.append(_mask.columns)
+    for _spec in (long_spec, short_spec):
+        for _slot_arr, _slot_is_df, _slot_cols in _spec['series_slot_columns']:
+            if _slot_is_df and _slot_arr.shape[1] > 1 and _slot_cols is not None:
+                cross_source_indexes.append(_slot_cols)
+    cross_source_indexes.extend(
+        _cols for _w, _cols in static_axis_infos if _cols is not None
+    )
+    if len(cross_source_indexes) >= 2 and not _pairwise_alignable_names(
+        [set(ix.names) for ix in cross_source_indexes]
+    ):
+        combo_columns = _cross_target_from_indexes(cross_source_indexes)
+        n_combo = len(combo_columns)
     is_multi_combo = n_combo > 1
+
+    if is_multi_combo and combo_columns is not None:
+        # GEÄNDERT: Ticket 51 — Entry-Masken auf die Combo-Achse expandieren
+        # (Kreuz-Fall oder Entry-Achse als echte Teilmenge der Exit-Achse).
+        def _expand_on_axis(mask: Any) -> Any:
+            if (
+                isinstance(mask, pd.DataFrame) and mask.shape[1] > 1
+                and not mask.columns.equals(combo_columns)
+            ):
+                return vbt.broadcast(mask, columns_from=combo_columns, align_index=False)
+            return mask
+
+        entries = _expand_on_axis(entries)
+        short_entries_raw = _expand_on_axis(short_entries_raw)
+
+        # GEÄNDERT: Ticket 51 — stateful Bundles neu bauen, wenn ihre Slot-Achse
+        # nicht der Combo-Achse entspricht (Expansion der Slots auf die Ziel-Achse).
+        for _spec in (long_spec, short_spec):
+            if _spec['n_combo'] > 1 and (
+                _spec['combo_columns'] is None
+                or not _spec['combo_columns'].equals(combo_columns)
+            ):
+                _bundle, _n_scols, _spec_nc, _spec_cols = _build_series_bundle(
+                    _spec['series_slots'], _spec['series_slot_columns'], combo_columns
+                )
+                _spec['series_bundle'] = _bundle
+                _spec['n_series_cols'] = _n_scols
+                _spec['n_combo'] = _spec_nc
+                _spec['combo_columns'] = _spec_cols
+
+    # GEÄNDERT: Ticket 51 — der Audit-Guard läuft als Invariante NACH der
+    # Expansion: alle mehrspaltigen Quellen müssen jetzt die Combo-Achse tragen.
+    # Feuert er, ist das ein interner Konsistenzfehler (z.B. nicht expandierbare
+    # Quelle ohne Spalten-Index), kein User-Fehler.
+    if is_multi_combo:
+        def _pd_axis(obj: Any) -> tuple:
+            if isinstance(obj, pd.DataFrame):
+                return obj.shape[1], obj.columns
+            return 1, None
+
+        _entry_w, _entry_cols = _pd_axis(entries)
+        _short_w, _short_cols = _pd_axis(short_entries_raw)
+        _assert_single_combo_axis(
+            n_combo,
+            combo_columns,
+            full_axis_sources=[
+                ('die Entry-Maske', _entry_w, _entry_cols),
+                ('die Short-Entry-Maske', _short_w, _short_cols),
+                ('ein stateful Long-Exit-Operand', long_spec['n_combo'], long_spec['combo_columns']),
+                ('ein stateful Short-Exit-Operand', short_spec['n_combo'], short_spec['combo_columns']),
+            ],
+            subset_sources=[
+                ('eine statische Exit-Condition', _w, _cols)
+                for _w, _cols in static_axis_infos
+            ],
+        )
 
     # Statische Block-Masken vorab berechnen: je Block AND seiner statischen
     # Conditions (pandas, voll Multi-Combo-fähig); leere Blöcke -> all True.

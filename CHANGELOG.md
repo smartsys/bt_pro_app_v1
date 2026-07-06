@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.51] - 06.07.2026
+
+### Fixed
+- Rules-Engine (nativer Pfad): disjunkte Entry-/Exit-Sweep-Achsen werden jetzt zum vollen Kreuzprodukt gekreuzt statt still falsch gerechnet (Audit-Befund 1, Ticket 51)
+  - Vorher lieferten Läufe, deren Entry- und Exit-Regeln verschiedene Parameter-Achsen sweepen, ohne Fehlermeldung falsche Ergebnisse: Out-of-bounds-Read der Entry-Maske (Numba ohne Boundscheck), stiller Kollaps der stateful Exit-Achse oder Diagonal-Paarung gleich breiter Achsen — der frühere N5-Blanket-Guard war mit Ticket 47 entfallen
+  - Kreuz-Logik aus _combine_broadcast (Ticket 49) in geteilte Helper extrahiert (_pairwise_alignable_names, _cross_target_from_indexes); evaluate_rules_native baut die Combo-Achse bei nicht-alignbaren Quellen als Kreuzprodukt und expandiert Entry-Masken, statische Exit-Masken und stateful Series-Bundles darauf (Bundle-Bau in _build_series_bundle ausgelagert)
+  - Entry-Achse als echte Teilmenge der Exit-Achse (vorher ebenfalls Out-of-bounds) wird mit expandiert; Portfolio-Spaltenzahl stimmt jetzt mit count_total_combos überein
+  - Invarianten-Check _assert_single_combo_axis nach der Expansion: alle mehrspaltigen Quellen müssen die Combo-Achse tragen — künftige Regressionen brechen laut statt still
+  - Regressionstests tests/test_native_disjoint_axes.py: alle drei Fehlpfade als Kreuzprodukt-Tests mit Kombi-für-Kombi-Bit-Parität gegen Einzel-Läufe, dazu Teilmengen-Fall und vier Positiv-Konstellationen (8 Tests); bestehende Engine-/Runner-Suiten unverändert grün
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- tests/test_native_disjoint_axes.py
+
+
+
 ## [1.30.50] - 06.07.2026
 
 ### Added
