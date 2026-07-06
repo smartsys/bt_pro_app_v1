@@ -185,8 +185,7 @@ document.addEventListener("DOMContentLoaded", function() {
         orderable: false,
         render: function(data) {
           return '<button class="btn btn-sm btn-outline-secondary btn-save-backtest-config" data-id="' + data + '" title="Backtest-Config speichern">BC</button>'
-               + ' <button class="btn btn-sm btn-outline-secondary btn-save-indicator-config" data-id="' + data + '" title="Indikator-Config speichern">IC</button>'
-               + ' <button class="btn btn-sm btn-outline-secondary btn-save-setup" data-id="' + data + '" title="Setup speichern">Setup</button>';
+               + ' <button class="btn btn-sm btn-outline-secondary btn-save-indicator-config" data-id="' + data + '" title="Indikator-Config speichern">IC</button>';
         }
       },
       {
@@ -241,8 +240,6 @@ document.addEventListener("DOMContentLoaded", function() {
     if (btn) { _saveFromResult('config/backtest', 'Backtest-Config', btn.getAttribute('data-id')); return; }
     btn = e.target.closest('.btn-save-indicator-config');
     if (btn) { _saveFromResult('config/indicator', 'Indikator-Config', btn.getAttribute('data-id')); return; }
-    btn = e.target.closest('.btn-save-setup');
-    if (btn) { _saveFromResult('chart-playground/setups', 'Setup', btn.getAttribute('data-id')); return; }
   });
 
   var searchInput = document.getElementById("results-search");

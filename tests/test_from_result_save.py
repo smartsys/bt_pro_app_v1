@@ -7,8 +7,6 @@ Verifiziert:
 - create_indicator_config_from_result: legt IndicatorConfig aus Snapshot an
 - create_indicator_config_from_result: 422 bei fehlendem Snapshot
 - create_indicator_config_from_result: funktioniert ohne Run/Iteration (kein Zugriff mehr)
-- create_setup_from_result: legt ChartPlaygroundSetup aus Snapshot an
-- create_setup_from_result: 422 bei fehlendem Snapshot
 """
 
 import sys
@@ -23,7 +21,6 @@ if 'rq' not in sys.modules:
     sys.modules['rq'] = rq_stub
 
 from services.api.routes import api_config as api_config_module  # noqa: E402
-from services.api.routes import api_chart_playground as api_playground_module  # noqa: E402
 from user_data.utils.database.models import (  # noqa: E402
     BacktestResult,
     BacktestConfig,
@@ -91,13 +88,6 @@ def _make_result(snapshot: dict | None = None) -> BacktestResult:
 def session_bc(test_session, monkeypatch):
     """Session mit Monkeypatch auf api_config.get_session."""
     monkeypatch.setattr(api_config_module, 'get_session', lambda: test_session)
-    return test_session
-
-
-@pytest.fixture
-def session_pg(test_session, monkeypatch):
-    """Session mit Monkeypatch auf api_playground.get_session."""
-    monkeypatch.setattr(api_playground_module, 'get_session', lambda: test_session)
     return test_session
 
 
@@ -255,63 +245,3 @@ def test_indicator_config_from_result_funktioniert_ohne_run_iteration(test_engin
     # Kein Fehler — Run wird nicht mehr abgefragt
     assert resp['error'] is None
     assert resp['data']['config_json'] is not None
-
-
-# ---------------------------------------------------------------------------
-# Tests: create_setup_from_result (api_chart_playground)
-# ---------------------------------------------------------------------------
-
-def test_setup_from_result_legt_setup_an(test_engine, monkeypatch):
-    """Gültiger Snapshot → ChartPlaygroundSetup wird angelegt."""
-    from sqlalchemy.orm import sessionmaker as sm
-    from user_data.utils.database.models import ChartPlaygroundSetup
-
-    Session = sm(bind=test_engine)
-    s = Session()
-    result = _make_result(snapshot=_make_valid_snapshot())
-    s.add(result)
-    s.commit()
-    result_id = result.id
-    s.close()
-
-    s2 = Session()
-    monkeypatch.setattr(api_playground_module, 'get_session', lambda: s2)
-
-    resp = api_playground_module.create_setup_from_result(result_id)
-
-    assert resp['error'] is None
-    data = resp['data']
-    assert data['setup_id'] is not None
-    assert 'BTCUSDT' in data['name']
-    assert f'/chart-playground?setupid={data["setup_id"]}' == data['url']
-
-    # Datenbankprüfung mit neuer Session
-    s3 = Session()
-    saved = s3.query(ChartPlaygroundSetup).filter(ChartPlaygroundSetup.id == data['setup_id']).first()
-    assert saved is not None
-    assert saved.backtest_config_json['symbols'] == ['BTCUSDT']
-    assert saved.strategy_config_json['concept_slug'] is None
-    s3.close()
-
-
-def test_setup_from_result_422_bei_fehlendem_snapshot(test_engine, monkeypatch):
-    """Fehlendem Snapshot → 422 (HTTPException)."""
-    from fastapi import HTTPException
-    from sqlalchemy.orm import sessionmaker as sm
-
-    Session = sm(bind=test_engine)
-    s = Session()
-    result = _make_result(snapshot=None)
-    s.add(result)
-    s.commit()
-    result_id = result.id
-    s.close()
-
-    s2 = Session()
-    monkeypatch.setattr(api_playground_module, 'get_session', lambda: s2)
-
-    with pytest.raises(HTTPException) as exc_info:
-        api_playground_module.create_setup_from_result(result_id)
-
-    assert exc_info.value.status_code == 422
-    assert 'Snapshot' in exc_info.value.detail or 'snapshot' in exc_info.value.detail.lower()

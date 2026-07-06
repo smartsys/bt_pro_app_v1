@@ -1982,7 +1982,6 @@ TABLE_VERBS = {
     "run-analyse-start": ("POST", "/api/backtest/runs/{}/analyse/start", 1, None, False),
     "run-analyse-stop": ("POST", "/api/backtest/runs/{}/analyse/stop", 1, None, False),
     "run-analyse-reset": ("POST", "/api/backtest/runs/{}/analyse/reset", 1, None, False),
-    "playground-setup-from-result": ("POST", "/api/chart-playground/setups/from-result/{}", 1, None, False),
     # Anlegen (POST, voller Body per --file)
     "strategy-config-create": ("POST", "/api/config/strategy", 0, "file", False),
     "data-download": ("POST", "/api/config/data/download", 0, "file", False),

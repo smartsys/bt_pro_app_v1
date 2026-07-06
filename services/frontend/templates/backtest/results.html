@@ -540,7 +540,6 @@ document.addEventListener("DOMContentLoaded", function() {
               + '<a href="/backtest/results/' + id + '/chart" class="dropdown-item ' + chartCls + '">Chart</a>'
               + '<button type="button" class="dropdown-item btn-save-backtest-config" data-id="' + id + '">Backtest-Config speichern</button>'
               + '<button type="button" class="dropdown-item btn-save-indicator-config" data-id="' + id + '">Indikator-Config speichern</button>'
-              + '<button type="button" class="dropdown-item btn-save-setup" data-id="' + id + '">Setup speichern</button>'
               + '<div class="dropdown-divider"></div>'
               + '<button type="button" class="dropdown-item text-danger btn-delete-result" data-id="' + id + '">Result löschen</button>'
             + '</div>'
@@ -818,8 +817,6 @@ document.addEventListener("DOMContentLoaded", function() {
     if (btn) { _saveFromResult('config/backtest', 'Backtest-Config', btn.getAttribute('data-id')); return; }
     btn = e.target.closest('.btn-save-indicator-config');
     if (btn) { _saveFromResult('config/indicator', 'Indikator-Config', btn.getAttribute('data-id')); return; }
-    btn = e.target.closest('.btn-save-setup');
-    if (btn) { _saveFromResult('chart-playground/setups', 'Setup', btn.getAttribute('data-id')); return; }
   });
 
   /* GEÄNDERT: Drei-Punkte-Aktionsmenü. Das Menü liegt im DOM in der Zelle (damit die

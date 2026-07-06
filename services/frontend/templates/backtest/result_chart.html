@@ -55,7 +55,7 @@
     <span class="badge bg-green-lt ms-1">{{ run.timeframe }}</span>
     <span class="ms-2">{{ run.start_date.strftime('%d.%m.%Y') }} — {{ run.end_date.strftime('%d.%m.%Y') }}</span>
     <div class="ms-3 d-flex align-items-center gap-1">
-      <button class="btn btn-sm btn-outline-success" id="btnOpenInPlayground" title="Diese Konfiguration als Playground-Setup speichern und öffnen">In Playground öffnen</button>
+      <button class="btn btn-sm btn-outline-success" id="btnOpenInPlayground" title="Dieses Ergebnis flüchtig im Playground öffnen (kein Setup wird gespeichert)">In Playground öffnen</button>
       <div class="dropdown">
         <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Walk Forward</button>
         <div class="dropdown-menu">
@@ -1180,25 +1180,9 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   });
 
-  // In-Playground-öffnen Button: Setup anlegen und zum Playground navigieren
+  // In-Playground-öffnen Button: flüchtiger Weg über die Result-ID (kein Setup wird angelegt)
   document.getElementById("btnOpenInPlayground").addEventListener("click", function() {
-    var btn = this;
-    var origText = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Speichere...';
-    fetch("/api/chart-playground/setups/from-result/{{ result.id }}", { method: "POST" })
-      .then(function(r) { return r.json(); })
-      .then(function(j) {
-        if (j.error || !j.data) {
-          alert('Fehler: ' + (j.detail || j.error || 'Setup konnte nicht erstellt werden'));
-          btn.disabled = false; btn.textContent = origText;
-          return;
-        }
-        window.location.href = j.data.url;
-      })
-      .catch(function(e) {
-        alert('Fehler: ' + e.message);
-        btn.disabled = false; btn.textContent = origText;
-      });
+    window.location.href = "/chart-playground?resultid={{ result.id }}";
   });
 
   // Walk-Forward Button

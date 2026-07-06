@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.56] - 06.07.2026
+
+### Removed
+- Playground: „Setup aus Result speichern" entfernt — Results werden nur noch über den flüchtigen Weg ?resultid= angesehen
+  - Route POST /api/chart-playground/setups/from-result/{id} samt zugehöriger Funktion entfernt
+  - Die drei „Setup speichern"-Knöpfe in den Result-Tabellen entfernt
+  - Toolbox-Werkzeug playground-setup-from-result entfernt
+  - Geändert: Result-Chartseite „In Playground öffnen" öffnet das Result jetzt flüchtig über ?resultid= (aufgelöste Parameter, kein Setup wird angelegt) statt ein Setup zu forken
+
+### Files
+- services/api/routes/api_chart_playground.py
+- services/frontend/templates/backtest/results.html
+- services/frontend/templates/backtest/analyse.html
+- services/frontend/templates/backtest/run_detail.html
+- services/frontend/templates/backtest/result_chart.html
+
+
+
 ## [1.30.55] - 06.07.2026
 
 ### Removed
