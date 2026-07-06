@@ -478,7 +478,21 @@ def _evaluate_condition(cond: dict, ohlc_data: Any, indicators: dict):
     if lhs_is_pd and rhs_is_pd:
         lhs, rhs = _broadcast_explained([lhs, rhs], f"Condition lhs/rhs (op={op_name!r})")
 
-    return _OPS[op_name](lhs, rhs)
+    result = _OPS[op_name](lhs, rhs)
+
+    # GEÄNDERT: Audit 2026-07-06 Befund 2 — IEEE-Semantik: NaN != x ist True,
+    # alle anderen Vergleiche mit NaN sind False. Ohne diese Maske erzeugt ein
+    # '!='-Vergleich während der Indikator-Warmup-Phase (Wert=NaN) an jeder Kerze
+    # ein Phantom-Signal. Deshalb wird das Ergebnis überall dort auf False
+    # gezwungen, wo ein Operand NaN ist.
+    if op_name == '!=':
+        for operand in (lhs, rhs):
+            if isinstance(operand, (pd.Series, pd.DataFrame)):
+                result = result & ~operand.isna()
+            elif pd.isna(operand):
+                result = result & False
+
+    return result
 
 
 def _uniquify_param_levels(obj: Any, inst: Any, ind_id: str) -> Any:
@@ -690,6 +704,10 @@ def _eval_one_cond_nb(
     elif op == 4:
         return lv == rv
     else:
+        # GEÄNDERT: Audit 2026-07-06 Befund 2 — IEEE-Semantik: NaN != x ist True.
+        # NaN-Operanden (Indikator-Warmup) dürfen kein Phantom-Signal liefern.
+        if np.isnan(lv) or np.isnan(rv):
+            return False
         return lv != rv
 
 

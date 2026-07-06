@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.53] - 06.07.2026
+
+### Fixed
+- Rules-Engine: '!='-Vergleich liefert bei NaN-Operanden keine Phantom-Signale mehr
+  - Audit-Befund 2: Nach IEEE/Pandas-Semantik ist NaN != x True, wodurch eine '!='-Regel waehrend der Indikator-Warmup-Phase (Wert=NaN) an jeder Kerze ein Signal erzeugte.
+  - Beide Rechenpfade zwingen das Ergebnis jetzt auf False, wo ein Operand NaN ist: pandas-Pfad in _evaluate_condition (Series/DataFrame via ~operand.isna(), Skalar via pd.isna), Numba-Pfad in _eval_one_cond_nb (np.isnan-Check vor dem !=).
+  - Latenter Fehler: bei ueblichem OHLC-Vorlauf sind Indikatoren im Handelsfenster aufgewaermt; der Fix ist Sicherheitsnetz fuer knappen Vorlauf oder Datenluecken und aendert bei sauberem Warmup kein Ergebnis.
+  - Tests: tests/test_neq_nan_warmup.py (6 Tests, beide Pfade plus Gegenprobe auf gueltige Werte); Regression der Rules-Engine-Tests gruen.
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- tests/test_neq_nan_warmup.py
+- documentation/todo/audit-rechenpfad-spec-runner-indikatoren.md
+
+
+
 ## [1.30.52] - 06.07.2026
 
 ### Removed
