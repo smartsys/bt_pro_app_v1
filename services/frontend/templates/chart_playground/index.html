@@ -489,7 +489,6 @@
     subplotChartsByClientId: {},
     backgroundSeriesByClientId: {},
     backgroundPrimitivesByClientId: {}, // GEÄNDERT: Hintergrund-Indikator als Custom Series Primitive (an candleSeries attached) statt HistogramSeries
-    touchMarkersByClientId: {},
   };
 
   const COLOR_POOL = ['#2fb344', '#d63939', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6', '#f97316', '#a855f7'];
@@ -1605,14 +1604,6 @@
       try { if (state.candleSeries) state.candleSeries.detachPrimitive(prim); } catch (e) {}
       delete state.backgroundPrimitivesByClientId[clientId];
     }
-    // GEÄNDERT: Touch-Punkt-Marker (Outputs *_touch) sauber abräumen. setMarkers([]) leert
-    // garantiert die sichtbaren Marker, detach() löst das Primitive — beides, damit sich bei
-    // mehreren Render-Durchläufen keine Marker-Schichten auf der Candle-Serie stapeln.
-    if (state.touchMarkersByClientId[clientId]) {
-      try { state.touchMarkersByClientId[clientId].setMarkers([]); } catch (e) {}
-      try { state.touchMarkersByClientId[clientId].detach(); } catch (e) {}
-      delete state.touchMarkersByClientId[clientId];
-    }
   }
 
   // GEÄNDERT: Verwaiste Chart-Serien entfernen — client_ids, die noch im Chart getrackt sind,
@@ -1626,7 +1617,6 @@
       ...Object.keys(state.subplotChartsByClientId),
       ...Object.keys(state.backgroundSeriesByClientId),
       ...Object.keys(state.backgroundPrimitivesByClientId), // GEÄNDERT: Hintergrund-Primitive ebenfalls auf Geister prüfen
-      ...Object.keys(state.touchMarkersByClientId),
     ]);
     tracked.forEach(clientId => { if (!valid.has(clientId)) removeIndFromChart(clientId); });
   }
@@ -1644,38 +1634,6 @@
   }
   function indLineOptions(ind) {
     return { color: indLineColor(ind), lineWidth: ind.lineWidth || 1, lineStyle: indLineStyleVal(ind.lineStyle), title: ind.display_name, priceFormat: cpPriceFormat() };
-  }
-
-  // GEÄNDERT: Touch-Punkte als nummerierte Marker über der Kerze. Jeder Indikator-Output, dessen
-  // Name auf "_touch" endet (z.B. dwsTrendlineTouch: short_touch/long_touch), trägt die laufende
-  // Berührungs-Nummer (1, 2, 3, ...) am Touch-Bar; daraus wird je Punkt ein Marker auf der
-  // Candle-Serie gezeichnet. targetSec != Basis-TF snappt die Zeiten auf das Anzeige-Raster
-  // (analog Trade-Marker, cpApplyMarkerFilter), sonst lägen die Roh-Zeiten zwischen den Bars.
-  function renderTouchMarkers(ind, targetSec) {
-    if (!state.candleSeries || !ind.outputs || ind.chartVisible === false) return;
-    if (typeof LightweightCharts.createSeriesMarkers !== 'function') return;
-    const baseSec = CHART_TF_SEC[document.getElementById('cpTimeframe').value];
-    const doSnap = targetSec && targetSec !== baseSec;
-    const touchKeys = Object.keys(ind.outputs).filter(
-      k => /_touch$/i.test(k) && ind.outputs[k] && ind.outputs[k].length
-    );
-    if (touchKeys.length === 0) return;
-    const markers = [];
-    touchKeys.forEach(k => {
-      ind.outputs[k].forEach(p => {
-        if (p.value == null || Number.isNaN(p.value)) return;
-        const t = doSnap ? Math.floor(p.time / targetSec) * targetSec : p.time;
-        markers.push({ time: t, position: 'aboveBar', color: indLineColor(ind), shape: 'circle', text: String(Math.round(p.value)) });
-      });
-    });
-    if (markers.length === 0) return;
-    // lightweight-charts erwartet aufsteigende Zeiten
-    markers.sort((a, b) => a.time - b.time);
-    // Doppelt absichern: ein evtl. noch hängendes Primitive dieses Indikators erst lösen,
-    // damit sich keine Marker-Schichten stapeln (sonst Flood über den ganzen Chart).
-    const prev = state.touchMarkersByClientId[ind.client_id];
-    if (prev) { try { prev.setMarkers([]); } catch (e) {} try { prev.detach(); } catch (e) {} }
-    state.touchMarkersByClientId[ind.client_id] = LightweightCharts.createSeriesMarkers(state.candleSeries, markers);
   }
 
   // GEÄNDERT: Display-Re-Render (Farbe/Linie/Sichtbarkeit/Plot) unter Berücksichtigung des aktiven
@@ -1910,7 +1868,6 @@
       const s = state.chart.addSeries(LightweightCharts.LineSeries, { ...indLineOptions(ind), lastValueVisible: true, priceLineVisible: false });
       s.setData(data);
       state.overlaySeriesByClientId[ind.client_id] = s;
-      renderTouchMarkers(ind, null);
     } else {
       const container = document.createElement('div');
       container.className = 'subplot-chart';
@@ -3644,7 +3601,6 @@
       const s = state.chart.addSeries(LightweightCharts.LineSeries, { ...indLineOptions(ind), lastValueVisible: true, priceLineVisible: false });
       s.setData(data);
       state.overlaySeriesByClientId[ind.client_id] = s;
-      renderTouchMarkers(ind, targetSec);
     } else {
       const container = document.createElement('div');
       container.className = 'subplot-chart';

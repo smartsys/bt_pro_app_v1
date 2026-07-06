@@ -50,7 +50,7 @@ OVERLAY_KEYWORDS = {
     'sma', 'ema', 'wma', 'vwma', 'bb', 'bbands', 'supertrend', 'ichimoku',
     'psar', 'sar', 'vwap', 'hull', 'kama', 'tema', 'dema', 'trima', 'ma',
     'bollinger', 'keltner', 'donchian', 'midpoint', 'midprice', 'pivotinfo',
-    'fastsma', 'slowsma', 'ht_trendline', 'linearreg', 'fastslow', 'trendline',
+    'fastsma', 'slowsma', 'ht_trendline', 'linearreg', 'fastslow',
 }
 SUBPLOT_KEYWORDS = {
     'rsi', 'macd', 'stoch', 'smi', 'adx', 'cci', 'atr', 'obv', 'mfi', 'williams',

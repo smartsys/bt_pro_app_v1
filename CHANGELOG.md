@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.55] - 06.07.2026
+
+### Removed
+- Custom-Indikator dwsTrendlineTouch (TAP-Trendlinien-Touch) vollständig entfernt
+  - Indikator-Definition dwsTrendlineTouch samt Helfern (trendline_touch_inc, _trendline_touch_side_nb, _kuhle_ok) und dem nur dafür genutzten pivot_info_1d_nb-Import aus custom.py entfernt; dwsSMI und die geteilte Pine-EMA _pine_ema_nb bleiben unversehrt
+  - Overlay-Heuristik-Keyword 'trendline' aus api_chart_playground.py entfernt (talib 'ht_trendline' bleibt)
+  - Zugehörige _touch-Marker-Logik im Chart-Playground-Template entfernt (renderTouchMarkers, State-Slot touchMarkersByClientId, Abraeum- und pruneOrphanSeries-Eintrag) — der Indikator war deren einziger Nutzer
+  - Testdatei tests/test_dws_trendline_touch.py entfernt
+  - Hintergrund: nie in einer gespeicherten Iteration/IndicatorConfig referenziert (DB-Scan verifiziert). Damit entfaellt die einzige Stelle mit stillen Factory-Defaults — fehlende Indikator-Parameter fuehren bei allen verbleibenden Custom-Indikatoren weiterhin zu einem lauten Fehler statt zu einem stillschweigend angenommenen Standardwert (fail-loud, gewollt; Audit-Befund 4)
+
+### Files
+- user_data/utils/indicators/custom.py
+- services/api/routes/api_chart_playground.py
+- services/frontend/templates/chart_playground/index.html
+- tests/test_dws_trendline_touch.py
+- documentation/todo/audit-rechenpfad-spec-runner-indikatoren.md
+
+
+
 ## [1.30.54] - 06.07.2026
 
 ### Fixed
