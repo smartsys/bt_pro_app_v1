@@ -1093,6 +1093,31 @@ def _entry_mask_to_series(mask: Any) -> pd.Series:
     return mask.astype(bool)
 
 
+def _apply_entry_date_window(
+    mask: pd.Series, start: Optional[Any], end: Optional[Any]
+) -> pd.Series:
+    """Maskiert eine Entry-Series auf das Handelsfenster [start, end].
+
+    Der echte Runner (evaluate_rules_native) maskiert Entries hart auf
+    start..end der BacktestConfig (rules_engine.py); das geladene OHLC-Fenster
+    reicht aber weiter (ohlc_start..ohlc_end inkl. Warmup). Ohne dieselbe Maske
+    würde der grüne Entry-Hintergrund Bars im Warmup-Bereich (vor start) und
+    nach end markieren, an denen der Backtest per Definition nie einsteigt.
+
+    Die Zeitgrenzen werden als UTC interpretiert — identisch zum Runner, dessen
+    OHLC-Index tz-aware (UTC) ist.
+    """
+    if start is None and end is None:
+        return mask
+    idx = mask.index
+    window = pd.Series(True, index=idx)
+    if start is not None:
+        window &= (idx >= pd.Timestamp(start, tz='UTC'))
+    if end is not None:
+        window &= (idx <= pd.Timestamp(end, tz='UTC'))
+    return mask & window
+
+
 @router.post('/entry-signals')
 def entry_signals(req: RunBacktestIn) -> dict:
     """Liefert die Bars, an denen die aktiven Entry-Bedingungen erfüllt sind.
@@ -1140,6 +1165,13 @@ def entry_signals(req: RunBacktestIn) -> dict:
     long_entries = _entry_mask_to_series(masks.long_entries)
     short_entries = _entry_mask_to_series(masks.short_entries)
     entry_mask = long_entries | short_entries
+
+    # GEÄNDERT: Befund 7 — dieselbe Date-Maske wie der Motor (start..end der Config)
+    # anwenden. Ohne sie markierte der grüne Hintergrund Bars im Warmup-Bereich und
+    # nach end, an denen der Backtest nie einsteigt.
+    entry_mask = _apply_entry_date_window(
+        entry_mask, backtest_config.get('start'), backtest_config.get('end')
+    )
 
     # Nur die erfüllten Bars als Zeitpunkte — das Frontend malt daraus grüne Bänder.
     signals = [

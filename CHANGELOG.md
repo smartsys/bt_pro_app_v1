@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.57] - 06.07.2026
+
+### Fixed
+- Playground: Grüner Entry-Hintergrund respektiert jetzt das Handelsfenster (start/end)
+  - Der /entry-signals-Endpunkt beschneidet die Entry-Maske auf das Fenster [start, end] der BacktestConfig - dieselbe Date-Maske wie der native Motor. Zuvor markierte der grüne Hintergrund auch Bars im Warmup-Bereich (vor start) und nach end, an denen der Backtest per Definition nie einsteigt.
+  - Neuer Helper _apply_entry_date_window (beide Grenzen inklusiv, UTC wie im Runner).
+  - Tests: tests/test_entry_signals_date_window.py (5 Fälle). Live gegen Setup mit Warmup verifiziert: Gegenprobe zeigt, dass die Warmup-Signale exakt weggeschnitten werden (642 -> 633).
+
+### Files
+- services/api/routes/api_chart_playground.py
+- tests/test_entry_signals_date_window.py
+
+
+
 ## [1.30.56] - 06.07.2026
 
 ### Removed
