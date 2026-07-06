@@ -975,13 +975,13 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
         _stops = req.indicators.get('_stops') if isinstance(req.indicators, dict) else None
         if not isinstance(_stops, dict):
             _stops = {}
-        # Defensiv: Range-Objekte (dict) als None behandeln — Playground-Stops sind skalar
-        tp_stop = _stops.get('tp_stop')
-        if isinstance(tp_stop, dict):
-            tp_stop = None
-        sl_stop = _stops.get('sl_stop')
-        if isinstance(sl_stop, dict):
-            sl_stop = None
+        # GEÄNDERT: Befund 8 — Sweep-foermige Stops (Range-Dict ODER Liste) auf die
+        # erste Kombi aufloesen, damit die Marker-Preislinie zeigt, was das Portfolio
+        # tatsaechlich gerechnet hat (Lite nimmt immer Kombi 1 = Startwert). Ohne die
+        # Aufloesung warf float() bei einer Liste im Trade-Loop, und das per-Trade-
+        # except verwarf still jeden Trade (Badge meldete Trades, Chart null Marker).
+        tp_stop = _coerce_param(_stops.get('tp_stop'))
+        sl_stop = _coerce_param(_stops.get('sl_stop'))
 
         for _, row in trades_records.iterrows():
             try:

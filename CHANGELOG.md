@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.58] - 07.07.2026
+
+### Fixed
+- Playground-Schnellbacktest: Listen-förmige Stops ließen alle Trade-Marker still verschwinden (Audit-Befund 8)
+  - Ein sweep-förmiger Stop (Liste wie tp_stop: [0.02, 0.04] oder Range-Dict) ließ float(stop) im Trade-Marker-Loop einen TypeError werfen; das per-Trade-except verwarf daraufhin jeden Trade — das Badge meldete Trades, der Chart zeigte null Marker, ohne Fehlermeldung.
+  - tp_stop/sl_stop laufen vor dem Marker-Loop jetzt durch _coerce_param: Liste wird auf das erste Element aufgelöst, Range-Dict auf den Startwert, Skalar bleibt. Das entspricht der Kombi, die der Lite-Backtest tatsächlich rechnet (immer Kombi 1 = Startwert), sodass die Marker-Preislinie zur Berechnung passt.
+  - Nebeneffekt (gewollt): Bei einem Range-Stop wird die TP/SL-Preislinie jetzt am Startwert gezeichnet — vorher entfiel sie ganz (dict-only-Check setzte auf None).
+  - Test: tests/test_playground_stop_marker_coercion.py (Skalar bleibt, Liste zu erstem Element, Range-Dict zu Startwert, leere Liste/None zu None).
+
+### Files
+- services/api/routes/api_chart_playground.py
+- tests/test_playground_stop_marker_coercion.py
+- documentation/todo/audit-rechenpfad-spec-runner-indikatoren.md
+
+
+
 ## [1.30.57] - 06.07.2026
 
 ### Fixed
