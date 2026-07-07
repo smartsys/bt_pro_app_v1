@@ -103,7 +103,34 @@ Ausführen (start — Schreib-Aktion, ID-basiert):
   python3 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973
   python3 toolbox.py walk-forward-start --result 2706026 --months 6
 
+Gezielt bearbeiten (Schreib-Aktion — GET, EINEN Teil ändern, zurückschreiben; der Rest
+bleibt bit-genau). Für den Alltagsfall "kopieren und einen Indikator/eine Regel/ein Feld
+ergänzen" — KEIN kompletter Body nötig:
+  Felder (Meta/flach):
+    concept-set --id N [--name --slug --category --description --status]
+    iteration-set --id N [--version-name --description --status]
+    backtest-config-set --id N [--symbol --exchange --timeframe --start --end --ohlc-start
+                                --ohlc-end --size --size-type --init-cash --fees --name --description]
+  Indikatoren (spec_json.indicators bzw. config_json):
+    iteration-indicator-set --id N --name <key> --file frag.json [--replace]
+    iteration-indicator-remove --id N --name <key>
+    indicator-config-indicator-set --id N --name <key> --file frag.json [--replace]
+    indicator-config-indicator-remove --id N --name <key>
+        frag.json = ein Indikator-Block, z.B. {"indicator":"talib:SMA","tf":"4h","close":"close","timeperiod":50}.
+        In der Config dürfen Param-Werte arange-Ranges sein (Multiparameter): "timeperiod":{"type":"arange",...}.
+  Stops (config_json._stops, einzeln):
+    indicator-config-stops-set --id N [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]
+        Zahlen/null werden gecastet, Format-Felder bleiben String; nicht genannte Stops bleiben.
+  Regeln (spec_json.rules):
+    iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json
+    iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]
+        cond.json = eine Bedingung, z.B. {"op":">","lhs":"close","rhs":"indicator:sma:real"} (opt. lhs_shift/rhs_shift).
+        Ohne --block hängt condition-add an Block 1 (UND-verknüpft); --new-block macht einen ODER-Block.
+
 Ändern (PUT, voller Body per --file): <bereich>-update --id <n> --file body.json
+  Voll-Replace für den ganzen Body. Für gezielte Teiländerungen die "Gezielt bearbeiten"-Verben
+  oben nehmen. Braucht man doch den rohen Ist-Body: `api GET <route>` (roher JSON-Dump), editieren,
+  per <bereich>-update --file zurück.
   concept-update · iteration-update · backtest-config-update · indicator-config-update ·
   strategy-config-update · testset-update · playground-setup-update
 
@@ -1940,6 +1967,348 @@ def data_delete_symbol(args: list) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Bearbeitungs-Verben (add/remove/change). Gemeinsames Muster: das aktuelle
+# Objekt per GET holen, gezielt EINEN Teil aendern (ein Feld, einen Indikator,
+# einen Stop, eine Regel-Bedingung) und zurueckschreiben. So muss nie der ganze
+# Body von Hand neu gebaut werden. Server-PUTs sind teils partiell (concept,
+# iteration), teils Voll-Replace (backtest-config) — der jeweilige Helfer kennt
+# das und macht das Richtige.
+# ---------------------------------------------------------------------------
+
+def _require_id(f: dict, verb: str) -> int:
+    """ID aus --id oder erstem Positional. Wirft, wenn keine da ist."""
+    pos = f.get("_positional", [])
+    val = f.get("id") or (pos[0] if pos else None)
+    if val is None or val is True:
+        raise ValueError(f"{verb}: ID fehlt (--id <n> oder als erstes Argument)")
+    return int(val)
+
+
+def _coerce_scalar(v: str):
+    """String-Flagwert -> passender JSON-Typ. 'null'->None, 'true'/'false'->bool,
+    ganze Zahl->int, Dezimal->float, sonst String. Fuer Feld-/Stop-Werte, deren
+    Typ am CLI nicht explizit angegeben wird."""
+    if v is True:
+        return True
+    s = str(v).strip()
+    low = s.lower()
+    if low in ("null", "none"):
+        return None
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    return s
+
+
+def _iteration_get_spec(iid: int) -> dict:
+    """spec_json einer Iteration holen (leeres Dict wenn None)."""
+    return fetch(f"/api/strategy/iterations/{iid}")["data"].get("spec_json") or {}
+
+
+def _iteration_put_spec(iid: int, spec: dict) -> dict:
+    """spec_json partiell zurueckschreiben (nur dieses Feld, PUT ist exclude_unset)."""
+    return request("PUT", f"/api/strategy/iterations/{iid}", {"spec_json": spec})["data"]
+
+
+def _indicator_config_get_json(cid: int) -> dict:
+    """config_json einer IndicatorConfig holen (leeres Dict wenn None)."""
+    return fetch(f"/api/config/indicator/{cid}")["data"].get("config_json") or {}
+
+
+def _indicator_config_patch_json(cid: int, cfg: dict) -> dict:
+    """config_json per PATCH zurueckschreiben (Teil-Update, Rest der Config bleibt)."""
+    return request("PATCH", f"/api/config/indicator/{cid}", {"config_json": cfg})["data"]
+
+
+# --- Feld-set (Meta/flache Felder) ---
+
+def concept_set(args: list) -> int:
+    """concept-set --id N [--name ... --slug ... --category ... --description ... --status ...]
+
+    Partieller PUT: nur gesetzte Felder werden geschrieben (Server: exclude_none).
+    """
+    f = _parse_flags(args)
+    cid = _require_id(f, "concept-set")
+    body = {k: f[k] for k in ("name", "slug", "category", "description", "status") if k in f and f[k] is not True}
+    if not body:
+        raise ValueError("concept-set: mindestens ein Feld noetig (--name | --slug | --category | --description | --status)")
+    d = request("PUT", f"/api/strategy/concepts/{cid}", body)["data"]
+    print(f"## concept-set: OK — Konzept {d['id']} ({d.get('name')}) aktualisiert: {', '.join(body)}\n")
+    return 0
+
+
+def iteration_set(args: list) -> int:
+    """iteration-set --id N [--version-name ... --description ... --status ...]
+
+    Partieller PUT (Server: exclude_unset). Nur Meta-Felder — Indikatoren/Regeln
+    laufen ueber die iteration-indicator-*/iteration-condition-*-Verben.
+    """
+    f = _parse_flags(args)
+    iid = _require_id(f, "iteration-set")
+    mapping = {"version-name": "version_name", "description": "description", "status": "status"}
+    body = {dst: f[src] for src, dst in mapping.items() if src in f and f[src] is not True}
+    if not body:
+        raise ValueError("iteration-set: mindestens ein Feld noetig (--version-name | --description | --status)")
+    d = request("PUT", f"/api/strategy/iterations/{iid}", body)["data"]
+    name = d.get("version_name") or d.get("version")
+    print(f"## iteration-set: OK — Iteration {d['id']} ({name}) aktualisiert: {', '.join(body)}\n")
+    return 0
+
+
+# Editierbare Felder der BacktestConfig (Voll-Replace-PUT -> GET, mergen, zurueck).
+_BACKTEST_FIELDS = (
+    "name", "description", "symbol", "exchange", "timeframe", "start", "end",
+    "ohlc_start", "ohlc_end", "size", "size_type", "init_cash", "fees",
+)
+# Kurz-Flags -> Feldname; numerische Felder werden gecastet.
+_BACKTEST_NUMERIC = {"size": float, "init_cash": float, "fees": float}
+
+
+def backtest_config_set(args: list) -> int:
+    """backtest-config-set --id N [--symbol ... --timeframe ... --fees ... --size ... --start ... --end ... --name ... ]
+
+    BacktestConfig-PUT ist Voll-Replace: aktuelle Config holen, gesetzte Felder
+    drueberlegen, kompletten Body zurueckschreiben. Stops liegen NICHT hier
+    (die stecken in der IndicatorConfig unter _stops).
+    """
+    f = _parse_flags(args)
+    cid = _require_id(f, "backtest-config-set")
+    # Flag-Wert holen: akzeptiert Feldnamen in Unterstrich- ODER Bindestrich-Form
+    # (--ohlc-start == ohlc_start), da _parse_flags die Bindestriche im Key belaesst.
+    def _flag(field):
+        for key in (field, field.replace("_", "-")):
+            if key in f and f[key] is not True:
+                return f[key]
+        return None
+    changed = {k for k in _BACKTEST_FIELDS if _flag(k) is not None}
+    if not changed:
+        opts = " | ".join("--" + x.replace("_", "-") for x in _BACKTEST_FIELDS)
+        raise ValueError(f"backtest-config-set: mindestens ein Feld noetig ({opts})")
+    cur = fetch(f"/api/config/backtest/{cid}")["data"]
+    body = {k: cur.get(k) for k in _BACKTEST_FIELDS}
+    for k in changed:
+        v = _flag(k)
+        body[k] = _BACKTEST_NUMERIC[k](v) if k in _BACKTEST_NUMERIC else v
+    d = request("PUT", f"/api/config/backtest/{cid}", body)["data"]
+    print(f"## backtest-config-set: OK — Backtest-Config {d['id']} ({d.get('name')}) aktualisiert: {', '.join(sorted(changed))}\n")
+    return 0
+
+
+# --- Indikatoren (dict-Sammlung) ---
+
+def iteration_indicator_set(args: list) -> int:
+    """iteration-indicator-set --id N --name <key> --file frag.json [--replace]
+
+    Fuegt einen Indikator in spec_json.indicators[key] ein oder ersetzt ihn
+    (nur mit --replace, sonst Fehler bei existierendem Key). frag.json ist der
+    Indikator-Block, z.B. {"indicator": "talib:SMA", "tf": "4h", "close": "close", "timeperiod": 50}.
+    """
+    f = _parse_flags(args)
+    iid = _require_id(f, "iteration-indicator-set")
+    name = _require(f, "name", "iteration-indicator-set")
+    frag = _read_json_file(_require(f, "file", "iteration-indicator-set"))
+    spec = _iteration_get_spec(iid)
+    inds = spec.setdefault("indicators", {})
+    existed = name in inds
+    if existed and not f.get("replace"):
+        raise ValueError(f"iteration-indicator-set: Indikator '{name}' existiert bereits — mit --replace ueberschreiben")
+    inds[name] = frag
+    _iteration_put_spec(iid, spec)
+    verb = "ersetzt" if existed else "hinzugefuegt"
+    print(f"## iteration-indicator-set: OK — Iteration {iid}: Indikator '{name}' {verb} ({frag.get('indicator')})\n")
+    return 0
+
+
+def iteration_indicator_remove(args: list) -> int:
+    """iteration-indicator-remove --id N --name <key>
+
+    Entfernt einen Indikator aus spec_json.indicators. Warnt, wenn Regeln ihn
+    noch referenzieren (indicator:<key>:...), bricht aber nicht ab.
+    """
+    f = _parse_flags(args)
+    iid = _require_id(f, "iteration-indicator-remove")
+    name = _require(f, "name", "iteration-indicator-remove")
+    spec = _iteration_get_spec(iid)
+    inds = spec.get("indicators", {})
+    if name not in inds:
+        raise ValueError(f"iteration-indicator-remove: Indikator '{name}' nicht vorhanden (da: {', '.join(inds) or '—'})")
+    del inds[name]
+    _iteration_put_spec(iid, spec)
+    ref = f"indicator:{name}:"
+    still = ref in json.dumps(spec.get("rules", {}))
+    warn = f"  WARNUNG: Regeln referenzieren '{name}' noch ({ref}...)\n" if still else ""
+    print(f"## iteration-indicator-remove: OK — Iteration {iid}: Indikator '{name}' entfernt\n{warn}")
+    return 0
+
+
+def indicator_config_indicator_set(args: list) -> int:
+    """indicator-config-indicator-set --id N --name <key> --file frag.json [--replace]
+
+    Fuegt einen Indikator in config_json[key] ein oder ersetzt ihn. frag.json ist
+    der Parameter-Block (Werte skalar ODER als arange-Range fuer Multiparameter),
+    z.B. {"indicator": "talib:SMA", "tf": "same", "close": "close",
+          "timeperiod": {"type":"arange","start":20,"stop":101,"step":10,"dtype":"int64"}}.
+    """
+    f = _parse_flags(args)
+    cid = _require_id(f, "indicator-config-indicator-set")
+    name = _require(f, "name", "indicator-config-indicator-set")
+    if name == "_stops":
+        raise ValueError("indicator-config-indicator-set: '_stops' ist reserviert — nutze indicator-config-stops-set")
+    frag = _read_json_file(_require(f, "file", "indicator-config-indicator-set"))
+    cfg = _indicator_config_get_json(cid)
+    existed = name in cfg
+    if existed and not f.get("replace"):
+        raise ValueError(f"indicator-config-indicator-set: Indikator '{name}' existiert bereits — mit --replace ueberschreiben")
+    cfg[name] = frag
+    _indicator_config_patch_json(cid, cfg)
+    verb = "ersetzt" if existed else "hinzugefuegt"
+    print(f"## indicator-config-indicator-set: OK — Config {cid}: Indikator '{name}' {verb} ({frag.get('indicator')})\n")
+    return 0
+
+
+def indicator_config_indicator_remove(args: list) -> int:
+    """indicator-config-indicator-remove --id N --name <key>
+
+    Entfernt einen Indikator aus config_json. '_stops' ist geschuetzt.
+    """
+    f = _parse_flags(args)
+    cid = _require_id(f, "indicator-config-indicator-remove")
+    name = _require(f, "name", "indicator-config-indicator-remove")
+    if name == "_stops":
+        raise ValueError("indicator-config-indicator-remove: '_stops' nicht ueber dieses Verb entfernen")
+    cfg = _indicator_config_get_json(cid)
+    if name not in cfg:
+        keys = [k for k in cfg if k != "_stops"]
+        raise ValueError(f"indicator-config-indicator-remove: Indikator '{name}' nicht vorhanden (da: {', '.join(keys) or '—'})")
+    del cfg[name]
+    _indicator_config_patch_json(cid, cfg)
+    print(f"## indicator-config-indicator-remove: OK — Config {cid}: Indikator '{name}' entfernt\n")
+    return 0
+
+
+# --- Stops (config_json._stops) ---
+
+# Kurz-Flag -> _stops-Feld. Werte gecastet (null/Zahl); Formate bleiben String.
+_STOP_FLAGS = {
+    "tp": "tp_stop", "sl": "sl_stop", "td": "td_stop", "tsl": "tsl_stop",
+    "tsl-th": "tsl_th", "delta-format": "delta_format", "time-delta-format": "time_delta_format",
+}
+_STOP_STRING_FIELDS = {"delta_format", "time_delta_format"}
+
+
+def indicator_config_stops_set(args: list) -> int:
+    """indicator-config-stops-set --id N [--tp .. --sl .. --td .. --tsl .. --tsl-th .. --delta-format .. --time-delta-format ..]
+
+    Setzt einzelne Werte in config_json._stops; nicht genannte Stops bleiben.
+    Zahlen/null werden gecastet, die Format-Felder bleiben String. 'null' loescht
+    einen Stop-Wert (setzt ihn auf None).
+    """
+    f = _parse_flags(args)
+    cid = _require_id(f, "indicator-config-stops-set")
+    changed = {flag: dst for flag, dst in _STOP_FLAGS.items() if flag in f}
+    if not changed:
+        raise ValueError(f"indicator-config-stops-set: mindestens ein Stop noetig ({' | '.join('--' + x for x in _STOP_FLAGS)})")
+    cfg = _indicator_config_get_json(cid)
+    stops = cfg.setdefault("_stops", {})
+    for flag, dst in changed.items():
+        v = f[flag]
+        stops[dst] = str(v) if dst in _STOP_STRING_FIELDS else _coerce_scalar(v)
+    _indicator_config_patch_json(cid, cfg)
+    print(f"## indicator-config-stops-set: OK — Config {cid}: _stops aktualisiert ({', '.join(changed[k] for k in changed)})\n")
+    return 0
+
+
+# --- Regeln (spec_json.rules) ---
+
+def _rules_side(spec: dict, exit_side: bool) -> tuple:
+    """Liefert (rules_dict, side_key). Legt rules/entry|exit-Geruest an, falls fehlt."""
+    rules = spec.setdefault("rules", {})
+    side = "exit" if exit_side else "entry"
+    if not isinstance(rules.get(side), dict):
+        rules[side] = {"blocks": []}
+    rules[side].setdefault("blocks", [])
+    return rules, side
+
+
+def iteration_condition_add(args: list) -> int:
+    """iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json
+
+    Haengt eine Bedingung an einen Regel-Block. Ohne --block: Block 1 (erster).
+    --new-block legt einen neuen ODER-Block an (--short markiert ihn als Short).
+    cond.json ist ein Bedingungs-Dict, z.B.
+    {"op": ">", "lhs": "close", "rhs": "indicator:sma:real"} (optional lhs_shift/rhs_shift).
+    """
+    f = _parse_flags(args)
+    iid = _require_id(f, "iteration-condition-add")
+    cond = _read_json_file(_require(f, "file", "iteration-condition-add"))
+    exit_side = bool(f.get("exit"))
+    spec = _iteration_get_spec(iid)
+    rules, side = _rules_side(spec, exit_side)
+    blocks = rules[side]["blocks"]
+    if f.get("new-block"):
+        new_block = {"conditions": [cond]}
+        if f.get("short"):
+            new_block["is_short"] = True
+        blocks.append(new_block)
+        pos = len(blocks)
+    else:
+        if not blocks:
+            blocks.append({"conditions": []})
+        idx = int(f["block"]) - 1 if f.get("block") and f["block"] is not True else 0
+        if idx < 0 or idx >= len(blocks):
+            raise ValueError(f"iteration-condition-add: Block {idx + 1} existiert nicht ({len(blocks)} Bloecke)")
+        blocks[idx].setdefault("conditions", []).append(cond)
+        pos = idx + 1
+    _iteration_put_spec(iid, spec)
+    print(f"## iteration-condition-add: OK — Iteration {iid}: Bedingung in {side}-Block {pos} ({fmt_cond(cond)})\n")
+    return 0
+
+
+def iteration_condition_remove(args: list) -> int:
+    """iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]
+
+    Entfernt eine Bedingung (--index J, 1-basiert) aus einem Block, oder mit
+    --remove-block den ganzen Block. Ohne --index und ohne --remove-block: Fehler.
+    """
+    f = _parse_flags(args)
+    iid = _require_id(f, "iteration-condition-remove")
+    exit_side = bool(f.get("exit"))
+    if not f.get("block") or f["block"] is True:
+        raise ValueError("iteration-condition-remove: --block K noetig")
+    bidx = int(f["block"]) - 1
+    spec = _iteration_get_spec(iid)
+    rules = spec.get("rules", {})
+    side = "exit" if exit_side else "entry"
+    blocks = (rules.get(side) or {}).get("blocks") or []
+    if bidx < 0 or bidx >= len(blocks):
+        raise ValueError(f"iteration-condition-remove: {side}-Block {bidx + 1} existiert nicht ({len(blocks)} Bloecke)")
+    if f.get("remove-block"):
+        blocks.pop(bidx)
+        _iteration_put_spec(iid, spec)
+        print(f"## iteration-condition-remove: OK — Iteration {iid}: {side}-Block {bidx + 1} entfernt ({len(blocks)} verbleiben)\n")
+        return 0
+    if not f.get("index") or f["index"] is True:
+        raise ValueError("iteration-condition-remove: --index J (1-basiert) oder --remove-block noetig")
+    cidx = int(f["index"]) - 1
+    conds = blocks[bidx].get("conditions") or []
+    if cidx < 0 or cidx >= len(conds):
+        raise ValueError(f"iteration-condition-remove: Bedingung {cidx + 1} in Block {bidx + 1} existiert nicht ({len(conds)} Bedingungen)")
+    removed = conds.pop(cidx)
+    _iteration_put_spec(iid, spec)
+    print(f"## iteration-condition-remove: OK — Iteration {iid}: Bedingung {cidx + 1} aus {side}-Block {bidx + 1} entfernt ({fmt_cond(removed)})\n")
+    return 0
+
+
 # Deklarative Tabelle: verb -> (METHOD, pfad_template, n_pfad_args, body_mode, use_query)
 TABLE_VERBS = {
     # Ändern (PUT, voller Body per --file)
@@ -2049,6 +2418,17 @@ SINGLE_VERBS = {
     "indicator-config-create": indicator_config_create,
     "indicator-config-set": indicator_config_set,
     "indicator-config-labels": indicator_config_labels,
+    # Bearbeitungs-Verben (add/remove/change): GET -> gezielt aendern -> zurueckschreiben
+    "concept-set": concept_set,
+    "iteration-set": iteration_set,
+    "backtest-config-set": backtest_config_set,
+    "iteration-indicator-set": iteration_indicator_set,
+    "iteration-indicator-remove": iteration_indicator_remove,
+    "indicator-config-indicator-set": indicator_config_indicator_set,
+    "indicator-config-indicator-remove": indicator_config_indicator_remove,
+    "indicator-config-stops-set": indicator_config_stops_set,
+    "iteration-condition-add": iteration_condition_add,
+    "iteration-condition-remove": iteration_condition_remove,
     "backtest-config-create": backtest_config_create,
     "testset-create": testset_create,
     "backtest-run-start": backtest_run_start,

@@ -170,8 +170,13 @@ toolbox.py iteration-create --concept 1 --file spec.json #   komplexe Payloads (
 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41  # Lauf starten
 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973  # 1 Run pro Config; Leaderboard nur bei leaderboard_enabled
 toolbox.py run-list --strategy teststrategie --version 1  # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
-toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body)
+toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body — für gezielte Teiländerungen die -set/-add-Verben unten)
 toolbox.py indicator-config-set --id 4 --concept 2 --iteration 2  # Teil-Update (PATCH): nur gesetzte Felder, config_json/_stops bleiben
+toolbox.py iteration-indicator-set --id 8 --name sma --file frag.json  # Indikator in spec_json.indicators ergänzen/ersetzen
+toolbox.py indicator-config-indicator-set --id 34 --name sma --file frag.json  # dito in config_json (Param-Werte dürfen arange-Range sein)
+toolbox.py iteration-condition-add --id 8 --block 1 --file cond.json   # Regel-Bedingung an Entry-Block anhängen (UND)
+toolbox.py indicator-config-stops-set --id 34 --tp 0.25 --sl 0.15      # einzelne Stops in _stops setzen
+toolbox.py backtest-config-set --id 552 --fees 0.0005 --timeframe 1h   # einzelne BacktestConfig-Felder ändern
 toolbox.py iteration-delete 26 --force --delete_vault    # löschen (--force bei Abhängigen)
 toolbox.py result-favorite 2706026                       # Aktionen: favorite, vault-create, run-restart, run-analyse-*, …
 toolbox.py indicator-config-generate-labels 2018         # Name+Beschreibung nach Notation setzen (überschreibt beide, ohne Freitext)
@@ -189,6 +194,19 @@ toolbox.py indicator-config-labels --id 2018 --name-freetext "BNB Plateau" --des
   - **Beschreibung:** Auflistung der Indikatoren mit Werten/Wertebereichen — `<name>: <param> <wert>, <param> <min-max (n)>; …` (z. B. `fast_sma: length 12, multiplier 9; vwma: length 3, below_pct 7`). Ein **Freitext** (`--desc-freetext`) steht **vor** der Auflistung, per ` | ` getrennt (`<Freitext> | <Auflistung>`).
   - **Freitext IMMER ausschreiben — keine kryptischen Kürzel.** Statt `v9 bp2 s5x8` sprechende Klartext-Erklärungen; deutsch formuliert (Eigenwörter wie `Total Return` bleiben englisch). Der Freitext ist das, was Titel/Beschreibung menschenlesbar unterscheidet — er muss ohne Vorwissen verständlich sein.
 - `iteration-delete`/`concept-delete` ohne `--force` → Backend meldet **409 mit Blocker-Zählern**: nachfragen, nicht blind forcen.
+
+### Gezielt bearbeiten (add / remove / change — der Alltagsfall)
+
+Für „kopieren und dann einen Indikator/eine Regel/ein Feld ergänzen oder entfernen" gibt es **gezielte Bearbeitungsverben**. Sie holen das Objekt, ändern **genau einen Teil** und schreiben zurück — der Rest bleibt bit-genau. **Kein** kompletter Body per `--file` nötig (das ist nur `-update`, der Voll-Replace). Jede Maßnahme ein Einzelaufruf.
+
+- **Felder (Meta/flach):** `concept-set` · `iteration-set` · `backtest-config-set` (partieller PUT; bei BacktestConfig GET→merge→PUT). Beispiel: `backtest-config-set --id 552 --fees 0.0005 --symbol ETHUSDT`.
+- **Indikatoren:** `iteration-indicator-set/-remove` (spec_json.indicators) · `indicator-config-indicator-set/-remove` (config_json). `--file` ist **nur der eine Indikator-Block** (z. B. `{"indicator":"talib:SMA","tf":"4h","close":"close","timeperiod":50}`); in der Config dürfen Werte arange-Ranges sein. Vorhandener Key nur mit `--replace`.
+- **Stops:** `indicator-config-stops-set --id N [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]` — einzelne Werte in `_stops`, Rest bleibt. `null` löscht einen Stop-Wert.
+- **Regeln:** `iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json` · `iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]`. `--file` ist **eine** Bedingung (`{"op":">","lhs":"close","rhs":"indicator:sma:real"}`). Ohne `--block` an Block 1 (UND); `--new-block` erzeugt einen ODER-Block.
+
+**Wichtig — Laufzeit-Zuordnung (am Code belegt, `worker_tasks.py`):** Bei einem Backtest kommen die **Indikatoren aus der IndicatorConfig** (`config_json`), die **Regeln aus der Iteration** (`spec_json.rules`). Wer also einen Indikator ergänzt, der logik-wirksam werden soll, muss ihn in die **Config** (mit Range, `indicator-config-indicator-set`) UND die referenzierende Regel in die **Iteration** (`iteration-condition-add`) legen. `spec_json.indicators` ist die kanonische Iterations-Definition, wird beim Run aber nicht als Indikator-Quelle genutzt.
+
+**Immutability ist Konvention, kein Gate:** Der Server editiert Iterationen in-place (kein Run-/Result-Check). Struktur-Änderungen trotzdem per `copy` auf eine frische Iteration und dort bearbeiten — das schützt gelaufene Stände. Die Edit-Verben wirken technisch auf jede ID.
 
 ### Auswertung eines Multiparameter-Laufs — die vier Bestwerte
 
@@ -218,7 +236,8 @@ Manueller Unterbau (nur für Ad-hoc-Kontrolle einzelner Kriterien): `run-top-res
 ### Vollständige Referenz (Detail-Flags, alle Routen)
 
 - **Syntax/Flags je Aktion** (inkl. aller Anlege-, Listen-, Lösch- und sonstigen Aktionen und Defaults): `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py --help`
-Keine eigenen Curl-Calls "zur Sicherheit". Zeigt das Skript ein Feld/Verb nicht, das du brauchst, fehlt es im Briefing — **nicht per Roh-API umgehen, sondern die Lücke in `documentation/todo/todo-toolbox.md` eintragen** (unter `## Offen`, nächste freie Nummer).
+
+**Kein fabrizierter Curl / kein `sys.path`-Import des Skripts.** Wenn du den **rohen** Ist-Body eines Objekts brauchst (z. B. um einen `-update --file` zu bauen), nimm den vorhandenen generischen Verb `api GET <route>` — der gibt das rohe JSON aus (z. B. `toolbox.py api GET /api/strategy/iterations/8`). Für gezielte Teiländerungen die `-set`/`-indicator-set`/`-condition-add`/`-stops-set`-Verben oben — die machen GET→ändern→zurück selbst. **Erst wenn wirklich ein Verb/Feld fehlt**, das weder ein Bearbeitungsverb noch `api GET/PUT/PATCH/POST/DELETE` abdeckt, die Lücke in `documentation/todo/todo-toolbox.md` eintragen (unter `## Offen`, nächste freie Nummer).
 
 **Eintrags-Qualität (Pflicht):** Der Eintrag muss **für sich allein verständlich** sein — ein frischer Chat ohne den heutigen Gesprächskontext muss ihn nachvollziehen und umsetzen können. Also nicht der knappe Einzeiler, der nur im Moment Sinn ergibt („Feld X fehlt"), sondern:
 - **Ziel** — was soll gehen, das heute nicht geht.

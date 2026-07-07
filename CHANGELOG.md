@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.59] - 07.07.2026
+
+### Added
+- Toolbox (ds-strategie-session): gezielte Bearbeitungsverben für Konzept, Iteration, IndicatorConfig und BacktestConfig (add/remove/change ohne kompletten Body)
+  - Neue Verben (rein client-seitig, GET->einen Teil ändern->zurückschreiben, kein Server-Change): concept-set, iteration-set, backtest-config-set (Felder); iteration-indicator-set/-remove und indicator-config-indicator-set/-remove (Indikatoren, in der Config mit arange-Ranges); indicator-config-stops-set (einzelne _stops, null-fähig); iteration-condition-add/-remove (Regel-Blöcke/Bedingungen)
+  - backtest-config-set akzeptiert Feldnamen in Bindestrich- und Unterstrich-Form (--ohlc-start == ohlc_start); BacktestConfig-PUT ist Voll-Replace, daher GET->merge->PUT
+  - Doku: Toolbox-Docstring (--help) um Abschnitt 'Gezielt bearbeiten' plus api-GET-Hinweis für rohe Bodys ergänzt; SKILL.md um neue Rubrik und korrigierte no-raw-curl-Passage (Laufzeit-Zuordnung Indikatoren<-Config / Regeln<-Iteration, Immutability=Konvention) erweitert; handbuch.md um Rubrik 'Gezielt bearbeiten' ergänzt; todo-toolbox.md Punkt 13
+  - Verifiziert per selbst-aufräumendem Regressionslauf über alle Verben
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- documentation/project/handbuch.md
+- documentation/todo/todo-toolbox.md
+
+
+
 ## [1.30.58] - 07.07.2026
 
 ### Fixed
