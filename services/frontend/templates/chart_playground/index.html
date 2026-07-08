@@ -252,7 +252,7 @@
                   <!-- GEÄNDERT: Spec speichern (neues Konzept ODER neue Iteration) + Überschreiben der gewählten Iteration -->
                   <div class="d-flex align-items-center gap-2" id="cpIterActions">
                     <span id="cpIterStatus" class="cp-status small me-auto"></span>
-                    <button class="btn btn-sm btn-outline-success" id="cpIterSaveBtn" title="Überschreibt die oben gewählte Konzept-Iteration" style="display:none">Speichern</button>
+                    <button class="btn btn-sm btn-outline-success" id="cpIterSaveBtn" title="Bestehende Spec überschreiben — Konzept und Iteration im Dialog wählbar (aktuell geladene vorausgewählt)">Speichern</button>
                     <button class="btn btn-sm btn-outline-success" id="cpIterSaveAsBtn" title="Spec als neue Iteration eines bestehenden Konzepts oder als neues Konzept speichern">Spec speichern…</button>
                   </div>
                 </div>
@@ -365,6 +365,27 @@
     <div class="cp-modal-foot">
       <button class="btn btn-secondary" data-cp-close="cpIterSaveModal">Abbrechen</button>
       <button class="btn btn-success" id="cpIterSaveConfirmBtn">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEÄNDERT: Custom Modal — bestehende Spec (Iteration) überschreiben (Konzept + Iteration wählbar, aktuell geladene vorausgewählt) -->
+<div class="cp-modal-backdrop" id="cpIterOverwriteModal">
+  <div class="cp-modal-box">
+    <div class="cp-modal-head">
+      <h5>Spec überschreiben</h5>
+      <button type="button" class="btn-close" data-cp-close="cpIterOverwriteModal"></button>
+    </div>
+    <div class="cp-modal-body">
+      <label class="form-label">Konzept</label>
+      <select class="form-select mb-2" id="cpIterOverwriteConcept" title="Konzept der zu überschreibenden Iteration"></select>
+      <label class="form-label">Iteration</label>
+      <select class="form-select" id="cpIterOverwriteIter" title="Zu überschreibende Iteration"></select>
+      <div class="text-muted small mt-2" id="cpIterOverwriteInfo"></div>
+    </div>
+    <div class="cp-modal-foot">
+      <button class="btn btn-secondary" data-cp-close="cpIterOverwriteModal">Abbrechen</button>
+      <button class="btn btn-success" id="cpIterOverwriteConfirmBtn">Überschreiben</button>
     </div>
   </div>
 </div>
@@ -3209,13 +3230,6 @@
     setStatus(msg, kind);
   }
 
-  // GEÄNDERT: „Spec speichern…" ist immer verfügbar; der Überschreiben-Button erscheint nur,
-  // wenn eine bestehende Iteration ausgewählt ist (sonst gibt es kein Überschreib-Ziel).
-  function refreshIterActions() {
-    const iterId = document.getElementById('cpIterationSelect').value;
-    document.getElementById('cpIterSaveBtn').style.display = iterId ? '' : 'none';
-  }
-
   // GEÄNDERT: aktuelles Konzept-Objekt (inkl. iteration_counter) anhand des gewählten Slugs
   function currentConcept() {
     const slug = document.getElementById('cpConceptSlug').value;
@@ -3228,13 +3242,55 @@
     return { indicators: payload.indicators, rules: payload.rules };
   }
 
-  // GEÄNDERT: Überschreibt die gewählte Iteration (forceNew=false) bzw. öffnet das „Spec speichern"-Modal (forceNew=true).
-  async function saveIteration(forceNew) {
-    if (forceNew) { openSpecSaveModal(); return; }
-    const concept = currentConcept();
-    if (!concept) { setIterStatus('Kein Konzept gewählt', 'err'); return; }
-    const iterId = parseInt(document.getElementById('cpIterationSelect').value, 10) || null;
-    if (!iterId) { setIterStatus('Keine Iteration gewählt — nutze „Spec speichern…"', 'err'); return; }
+  // GEÄNDERT: Modal „Spec überschreiben" öffnen — Konzept + Iteration wählbar, aktuell geladene vorausgewählt.
+  async function openIterOverwriteModal() {
+    const concepts = state.concepts || [];
+    if (concepts.length === 0) { setIterStatus('Keine Konzepte vorhanden — nutze „Spec speichern…"', 'err'); return; }
+    const selC = document.getElementById('cpIterOverwriteConcept');
+    selC.innerHTML = '';
+    concepts.forEach(c => {
+      const o = document.createElement('option');
+      o.value = String(c.id);
+      o.textContent = c.name || c.slug;
+      selC.appendChild(o);
+    });
+    // Aktuell geladenes Konzept vorauswählen (sonst erstes), dann dessen Iterationen laden.
+    const cur = currentConcept();
+    selC.value = cur ? String(cur.id) : selC.options[0].value;
+    const curIterId = document.getElementById('cpIterationSelect').value || null;
+    await loadOverwriteIterations(curIterId);
+    openModal('cpIterOverwriteModal');
+  }
+
+  // GEÄNDERT: Iterationen des im Überschreiben-Modal gewählten Konzepts laden (optional preselectId vorauswählen).
+  async function loadOverwriteIterations(preselectId) {
+    const conceptId = parseInt(document.getElementById('cpIterOverwriteConcept').value, 10);
+    const selI = document.getElementById('cpIterOverwriteIter');
+    const info = document.getElementById('cpIterOverwriteInfo');
+    selI.innerHTML = '';
+    info.textContent = '';
+    if (!conceptId) return;
+    try {
+      const r = await fetch('/api/strategy/iterations?concept_id=' + conceptId);
+      const j = await r.json();
+      const items = ((j.data && j.data.items) || [])
+        .filter(it => it.status !== 'draft')
+        .sort((a, b) => (a.version || 0) - (b.version || 0));
+      if (items.length === 0) { info.textContent = 'Dieses Konzept hat keine überschreibbare Iteration.'; return; }
+      items.forEach(it => {
+        const o = document.createElement('option');
+        o.value = String(it.id);
+        o.textContent = it.version_name ? (it.version + ' — ' + it.version_name) : String(it.version);
+        selI.appendChild(o);
+      });
+      if (preselectId && items.some(it => String(it.id) === String(preselectId))) {
+        selI.value = String(preselectId);
+      }
+    } catch (e) { info.textContent = 'Iterationen laden fehlgeschlagen: ' + e.message; }
+  }
+
+  // GEÄNDERT: gewählte Iteration mit dem aktuellen Playground-Spec (Indikatoren + Rules) überschreiben.
+  async function overwriteIteration(iterId) {
     try {
       const r = await fetch('/api/strategy/iterations/' + iterId, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -3242,8 +3298,6 @@
       });
       const j = await r.json();
       if (!r.ok || j.error) { setIterStatus('Fehler beim Speichern: ' + (j.error || r.status), 'err'); return; }
-      await loadIterationsForConcept(concept.slug);
-      document.getElementById('cpIterationSelect').value = String(iterId);
       setIterStatus('Iteration ' + (j.data ? j.data.version : iterId) + ' überschrieben', 'ok');
     } catch (e) { setIterStatus('Fehler beim Speichern: ' + e.message, 'err'); }
   }
@@ -3335,7 +3389,6 @@
       await loadIterationsForConcept(conceptSlug || '');
       document.getElementById('cpIterationSelect').value = String(j.data.id);
       refreshIndCfgOptions();
-      refreshIterActions();
       closeModal('cpIterSaveModal');
       setIterStatus((isNew ? 'Neues Konzept + Iteration ' : 'Neue Iteration ') + j.data.version + ' gespeichert', 'ok');
     } catch (e) { setStatus('Fehler beim Speichern: ' + e.message, 'err'); }
@@ -3837,12 +3890,20 @@
     await overwriteIndicatorConfig(id);
     closeModal('cpIndCfgOverwriteModal');
   });
-  // GEÄNDERT: Speichern/Speichern unter für die Konzept-Iteration
-  document.getElementById('cpIterSaveBtn').addEventListener('click', () => saveIteration(false));
-  document.getElementById('cpIterSaveAsBtn').addEventListener('click', () => saveIteration(true));
+  // GEÄNDERT: Speichern (überschreiben, Modal) / Spec speichern (neu, Modal) für die Konzept-Iteration
+  document.getElementById('cpIterSaveBtn').addEventListener('click', openIterOverwriteModal);
+  document.getElementById('cpIterSaveAsBtn').addEventListener('click', openSpecSaveModal);
   document.getElementById('cpIterSaveConfirmBtn').addEventListener('click', saveIterationConfirm);
   // GEÄNDERT: Konzept-Auswahl im Modal schaltet Neues-Konzept-Felder + Info um
   document.getElementById('cpIterSaveConcept').addEventListener('change', refreshSpecSaveModal);
+  // GEÄNDERT: Überschreiben-Modal — Konzept-Wechsel lädt dessen Iterationen; Bestätigen überschreibt die gewählte Iteration
+  document.getElementById('cpIterOverwriteConcept').addEventListener('change', () => loadOverwriteIterations());
+  document.getElementById('cpIterOverwriteConfirmBtn').addEventListener('click', async () => {
+    const id = parseInt(document.getElementById('cpIterOverwriteIter').value, 10);
+    if (!id) { setIterStatus('Keine Iteration gewählt', 'err'); return; }
+    await overwriteIteration(id);
+    closeModal('cpIterOverwriteModal');
+  });
 
   document.querySelectorAll('[data-cp-close]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.cpClose));
@@ -3922,13 +3983,10 @@
   document.getElementById('cpConceptSlug').addEventListener('change', async (e) => {
     await loadIterationsForConcept(e.target.value);
     refreshIndCfgOptions();
-    refreshIterActions();
   });
 
   document.getElementById('cpIterationSelect').addEventListener('change', () => {
     refreshIndCfgOptions();
-    // GEÄNDERT: Überschreiben-Button an die Iterations-Auswahl koppeln
-    refreshIterActions();
     // GEÄNDERT: Rules aus spec_json der gewählten Iteration laden
     const id = parseInt(document.getElementById('cpIterationSelect').value, 10) || null;
     if (!id) return;
@@ -4162,7 +4220,6 @@
     renderPortfolio();
     renderStops();  // GEÄNDERT: Schritt 4c — Stops-Sektion rendern
     renderTfButtons();
-    refreshIterActions();
 
     // GEÄNDERT: Misch-URL-Guard — setupid (persistent) und resultid (flüchtig) schließen sich aus.
     // Sind beide vorhanden, gewinnt das Setup; resultid wird verworfen und kanonisch umgeleitet.

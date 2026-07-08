@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.61] - 09.07.2026
+
+### Added
+- Chart-Playground: Bestehende Spec (Iteration) über einen Auswahl-Dialog überschreiben
+  - Die Entry/Exit-Logik-Card hat rechts jetzt einen immer sichtbaren Button Speichern, der ein Popup Spec überschreiben öffnet — analog zum Speichern-Button der Indikatoren-Card links.
+  - Das Popup bietet zwei Dropdowns (Konzept + Iteration); beim Öffnen sind das aktuell geladene Konzept und dessen gewählte Iteration vorausgewählt, ein Konzept-Wechsel lädt dessen Iterationen nach.
+  - Bestätigen ruft PUT /api/strategy/iterations/{id} mit dem aktuellen Playground-Spec — kein Backend-Umbau nötig.
+  - Aufgeräumt: die überflüssig gewordene refreshIterActions() (inkl. aller Aufrufe) und die alte saveIteration()-Funktion entfernt; Spec speichern öffnet openSpecSaveModal() jetzt direkt.
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.60] - 09.07.2026
 
 ### Fixed
