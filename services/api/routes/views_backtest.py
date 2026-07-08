@@ -18,6 +18,48 @@ from user_data.utils.database.models import BacktestRun, BacktestResult
 router = APIRouter(prefix='/backtest', tags=['views'])
 
 
+# GEÄNDERT: Ticket 53 — Dual-Präfix (Klasse UND Spec-Key), analog zur bereits
+# robusten Logik in repository.py:_build_resolved_config (Zeile ~563-565). Seit
+# Ticket 53 benennt indicator_factory.build_indicators die Param-Level jeder
+# Indikator-Instanz auf den Spec-ID-Namen um (z.B. 'fast_sma_length' statt
+# 'dwsfastsma_length'). Ein rein klassenbasiertes Präfix (Klassenname aus
+# cfg['indicator']) matcht bei Custom-Indikatoren (Spec-Key != Klasse) dann nicht
+# mehr — das Panel zeigt still keine Werte (kein Crash). Beide Präfixe parallel
+# zu prüfen heilt zugleich einen Bestandsdefekt: direkt referenzierte Custom-
+# Indikatoren wurden schon vor Ticket 53 von _uniquify_param_levels (rules_engine)
+# auf den Spec-Key umbenannt, das Klassen-Präfix matchte also auch dort nie.
+def _resolve_ind_params(ind_config: dict, actual_params: dict) -> dict:
+    """Ordnet persistierte Parameter (actual_params) den Indikatoren im Chart-Panel zu.
+
+    actual_params trägt flache Keys im Schema `<präfix>_<param>`. Das Präfix ist je
+    nach Alter des Results entweder der Klassenname (z.B. `dwsfastsma_`, alte/getragene
+    Results vor Ticket 53) oder der Spec-Key (z.B. `fast_sma_`/`vwma_`, seit Ticket 53
+    bzw. schon vorher bei direkt referenzierten Custom-Indikatoren). Beide Präfixe
+    werden geprüft, damit das Panel für jeden Indikator unabhängig vom Alter des
+    Results Werte anzeigt.
+
+    Args:
+        ind_config: Indikator-Config-Block des Runs (Spec-Key -> Spec-Eintrag).
+        actual_params: Flache, persistierte Parameter eines Results.
+
+    Returns:
+        dict: Spec-Key -> {param_name: value} für jeden Indikator mit Treffern.
+    """
+    ind_params: dict = {}
+    for ind_name, cfg in ind_config.items():
+        cls = str(cfg.get('indicator', '')).split(':')[-1].lower()
+        prefixes = [p for p in {cls, str(ind_name).lower()} if p]
+        params: dict = {}
+        for prefix in prefixes:
+            full_prefix = prefix + '_'
+            for k, v in actual_params.items():
+                if k.startswith(full_prefix):
+                    params[k[len(full_prefix):]] = v
+        if params:
+            ind_params[ind_name] = params
+    return ind_params
+
+
 @router.get('/start', response_class=HTMLResponse)
 def backtest_start_page(request: Request) -> HTMLResponse:
     """Backtest starten — Backtest-Config + Indicator-Config auswählen."""
@@ -169,21 +211,11 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
             'end_date': run.end_date,
         }
 
-        # GEÄNDERT: aufgelöste Parameter je Indikator generisch zuordnen, damit die
-        # generischen Chart-Panels die vollständige Konfiguration anzeigen können.
-        # actual_params hält flache Keys im Schema "{indicator_class_lower}_{param}"
-        # (z.B. sma_length, ema_period). Über den Klassennamen aus
-        # cfg["indicator"] werden sie dem jeweiligen Indikator zugeordnet.
+        # GEÄNDERT: Ticket 53 — aufgelöste Parameter je Indikator generisch zuordnen,
+        # damit die generischen Chart-Panels die vollständige Konfiguration anzeigen
+        # können. Dual-Präfix (Klasse UND Spec-Key), siehe _resolve_ind_params.
         actual_params = result_data['actual_params']
-        ind_params: dict = {}
-        for ind_name, cfg in ind_config.items():
-            cls = str(cfg.get('indicator', '')).split(':')[-1].lower()
-            if not cls:
-                continue
-            prefix = cls + '_'
-            params = {k[len(prefix):]: v for k, v in actual_params.items() if k.startswith(prefix)}
-            if params:
-                ind_params[ind_name] = params
+        ind_params = _resolve_ind_params(ind_config, actual_params)
     finally:
         session.close()
 

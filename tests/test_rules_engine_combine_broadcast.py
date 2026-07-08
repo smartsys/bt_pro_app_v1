@@ -729,6 +729,100 @@ class TestEvaluateRulesIntegration:
 
 
 # ============================================================================
+# Testfall (g): Ticket 53 — Reproduktions-Anker "72 vs 24 vs 9"
+#
+# Belegter Befund (documentation/tickets/53-...): ein Indikator (fast_sma), der
+# zugleich Chain-Input eines anderen (vwma) UND direkt referenziert ist, blaeht das
+# Portfolio auf, wenn die getragene fast_sma-Achse in vwma unter dem Factory-Namen
+# ('dwsfastsma_length') statt dem Spec-ID-Namen ('fast_sma_length') gefuehrt wird —
+# _combine_broadcast haelt die beiden Achsen dann fuer disjunkt und kreuzt sie
+# zusaetzlich zum eigentlichen Kreuzprodukt der drei Bloecke.
+#
+# Dieser Test fixiert exakt die im Ticket per VBT-MCP empirisch belegten Zahlen:
+#   Namen inkonsistent (IST vor Ticket 53):  72 Spalten (= 24 x 3, fast_sma kreuzt erneut)
+#   Namen konsistent (fast_sma_* ueberall):   24 Spalten (fast_sma-Achse gefaltet)
+#   Zwei disjunkte Instanzen gleicher Breite:  9 Spalten (3 x 3, kein cross_indexes-Crash)
+#
+# WICHTIG: _combine_broadcast selbst wird von Ticket 53 NICHT angefasst (Anforderung 3)
+# — dieser Test dokumentiert/fixiert lediglich den Broadcast-Mechanismus, auf dem der
+# eigentliche Fix (konsistente Level-Benennung in indicator_factory.build_indicators)
+# aufbaut. Der Fix selbst wird in tests/test_indicator_factory_id_naming.py verifiziert.
+# ============================================================================
+
+class TestCarriedChainAxisConsistency:
+    """72 (inkonsistente Namen) vs 24 (konsistente Namen) vs 9 (zwei Instanzen)."""
+
+    @pytest.fixture
+    def time_idx(self) -> pd.DatetimeIndex:
+        return _make_index(40)
+
+    def _make_blocks(self, time_idx: pd.DatetimeIndex, fast_sma_level_in_vwma: str):
+        """Baut die drei Bloecke: vwma (traegt fast_sma-Achse), sma, fast_sma (direkt)."""
+        vwma_df = _make_multiindex_df(
+            time_idx,
+            level_names=['vwma_length', fast_sma_level_in_vwma],
+            level_values=[[10, 20, 30, 40], [5, 10, 15]],  # 4 x 3 = 12 private Combos
+            seed=100,
+        )
+        sma_df = _make_multiindex_df(
+            time_idx,
+            level_names=['sma_timeperiod'],
+            level_values=[[7, 14]],  # 2 private Combos
+            seed=101,
+        )
+        fast_sma_direct_df = _make_multiindex_df(
+            time_idx,
+            level_names=['fast_sma_length'],
+            level_values=[[5, 10, 15]],  # 3 private Combos, identisch zur getragenen Achse
+            seed=102,
+        )
+        return vwma_df, sma_df, fast_sma_direct_df
+
+    def test_inconsistent_names_blow_up_to_72(self, time_idx: pd.DatetimeIndex) -> None:
+        """IST-Zustand (vor Ticket 53): fast_sma-Achse heisst in vwma 'dwsfastsma_length'
+        (Factory-Name) statt 'fast_sma_length' -> gilt als disjunkt -> kreuzt erneut.
+
+        12 (vwma-privat) x 2 (sma) x 3 (fast_sma direkt, jetzt disjunkt) = 72.
+        """
+        vwma_df, sma_df, fast_sma_df = self._make_blocks(time_idx, 'dwsfastsma_length')
+        result = _combine_broadcast([vwma_df, sma_df, fast_sma_df])
+        assert result[0].shape[1] == 72, (
+            f"Erwartet 72 Spalten (Blowup durch inkonsistente Namen), erhalten {result[0].shape[1]}"
+        )
+
+    def test_consistent_names_fold_to_24(self, time_idx: pd.DatetimeIndex) -> None:
+        """Nach Ticket 53: fast_sma-Achse heisst ueberall 'fast_sma_length' -> faltet.
+
+        12 (vwma-privat, inkl. fast_sma-Achse) x 2 (sma) = 24 — die direkt referenzierte
+        fast_sma-Achse (Teilmenge von vwma) traegt KEINEN weiteren Faktor bei.
+        """
+        vwma_df, sma_df, fast_sma_df = self._make_blocks(time_idx, 'fast_sma_length')
+        result = _combine_broadcast([vwma_df, sma_df, fast_sma_df])
+        assert result[0].shape[1] == 24, (
+            f"Erwartet 24 Spalten (fast_sma-Achse gefaltet), erhalten {result[0].shape[1]}"
+        )
+        for r in result:
+            assert r.shape[1] == 24
+
+    def test_two_disjoint_instances_equal_width_cross_to_9_no_crash(
+        self, time_idx: pd.DatetimeIndex
+    ) -> None:
+        """Zwei disjunkte Instanzen derselben Klasse (z.B. zweimal dwsConst), gleiche
+        Breite (3) -> volles Kreuzprodukt 3x3=9, kein cross_indexes-Crash (Ticket 49)."""
+        const_value_df = _make_multiindex_df(
+            time_idx, level_names=['const_value'], level_values=[[1.0, 2.0, 3.0]], seed=110,
+        )
+        const_dd_value_df = _make_multiindex_df(
+            time_idx, level_names=['const_dd_value'], level_values=[[10.0, 20.0, 30.0]], seed=111,
+        )
+        result = _combine_broadcast([const_value_df, const_dd_value_df])
+        assert result[0].shape[1] == 9, (
+            f"Erwartet 9 Spalten (3x3 Kreuz), erhalten {result[0].shape[1]}"
+        )
+        assert result[0].columns.equals(result[1].columns)
+
+
+# ============================================================================
 # Testfall (f): _describe_operand liefert brauchbare Struktur-Beschreibungen
 #
 # _broadcast_explained nutzt _describe_operand im Fehlerfall. Wir testen

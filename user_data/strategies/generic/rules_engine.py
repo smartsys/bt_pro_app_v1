@@ -538,6 +538,12 @@ def _uniquify_param_levels(obj: Any, inst: Any, ind_id: str) -> Any:
     Nur echte Param-Level werden umbenannt (aus `inst.param_names` abgeleitet);
     Carrier-Level wie `symbol` bleiben unberuehrt. Reine Werte/Series (kein
     Param-Level) bleiben unveraendert.
+
+    GEÄNDERT: Ticket 53 — seit `indicator_factory.build_indicators` jede Instanz beim
+    Bauen bereits auf `<ind_id>_<param>` umbenennt (getragene Ketten-Level eingeschlossen),
+    findet dieser Rename hier in der Praxis keinen `<short_name>_<param>`-Namen mehr vor
+    (die Columns sind schon id-benannt) und wird zum No-op. Bleibt als idempotentes
+    Sicherheitsnetz bestehen.
     """
     if not isinstance(obj, pd.DataFrame):
         return obj

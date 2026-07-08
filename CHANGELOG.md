@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.60] - 09.07.2026
+
+### Fixed
+- Getragene Ketten-Param-Level konsistent id-benennen — behebt 7x-Blowup der Portfolio-Spaltenzahl bei zugleich verkettetem und direkt referenziertem Indikator (Ticket 53)
+  - Ursache: Ein Indikator, der einen anderen als Chain-Input traegt, fuehrte dessen Param-Level unter dem Factory-Namen (dwsfastsma_length) statt dem Spec-ID-Namen (fast_sma_length) mit. Wurde derselbe Indikator zugleich direkt in einer Regel referenziert (dort bereits auf den ID-Namen umbenannt), galten die beiden Achsen als disjunkt und wurden von _combine_broadcast gekreuzt statt gefaltet — die Portfolio-Spaltenzahl blaehte sich um den Faktor der geteilten Achse auf (Run 219/iteration 7: 148.960 statt 21.280 Spalten). Belegt: frischer Run 219 meldet jetzt 21.280 Kombis (Chunks je 4480 statt 31.360).
+  - Fix (Variante A): indicator_factory.build_indicators benennt jede Indikator-Instanz direkt beim Bauen auf <spec-id>_<param> um (neue Helfer _rename_indicator_instance fuer den Basis-tf-Zweig, _rename_realigned_output fuer den Per-tf-_RealignedIndicator-Wrapper), bevor sie als Chain-Input oder Direkt-Referenz konsumiert wird. Der ID-Name propagiert damit natuerlich in jeden Downstream (auch ueber mehrere Kettenstufen A->B->C).
+  - VBTs eingebautes IndicatorBase.rename()/.rename_levels() ist nicht nutzbar: es bricht bei Indikatoren mit genau einem Parameter (z.B. dwsConst, dwsVWMABand) mit IndexError, weil level_names dort strukturell leer ist (empirisch per VBT-MCP verifiziert). _rename_indicator_instance baut die Umbenennung robust ueber param_names auf.
+  - _combine_broadcast, _pairwise_alignable_names, _cross_target_from_indexes bleiben unveraendert (kein Eingriff ins Broadcasting). Der Ticket-49-Crash-Schutz (zwei Instanzen derselben Klasse kreuzen korrekt, kein cross_indexes-Crash) bleibt erhalten.
+  - views_backtest.py: Result-Chart-Param-Panel von klassenbasiertem Praefix auf Dual-Praefix (Klasse UND Spec-Key) umgestellt (_resolve_ind_params), damit fuer jeden Indikator weiter Param-Werte erscheinen; heilt zugleich einen Bestandsdefekt fuer direkt referenzierte Custom-Indikatoren (Spec-Key != Klasse).
+  - Sauberer Schnitt (nur neue Laeufe): persistierte Param-Namen getragener Indikatoren heissen ab dem Fix neu (dwsfastsma_length -> fast_sma_length). Alt-/Neu-Results matchen an dieser Grenze im Cross-Run-Combo-Tracking (lookup_results_across_runs) und in den ?param=value-Filtern nicht mehr namensgleich — bewusster No-Match, kein Bug. Lookups NICHT dual-praefix gemacht, alte Results nicht zurueckgeschrieben. Dokumentiert in indicators.md 6.5.
+  - Verifiziert: pytest 593 passed/11 skipped; Run 220/iteration 2 (ohne Doppel-Referenz) nach frischem Rerun bit-identisch zum Vor-Fix-Stand (33.813/33.813 Kombis, 0 Abweichungen, gematcht ueber Param-Werte); Chart-Param-Panel zeigt fuer fast_sma/vwma/sma weiter Werte.
+
+### Files
+- user_data/strategies/generic/indicator_factory.py
+- user_data/strategies/generic/rules_engine.py
+- services/api/routes/views_backtest.py
+- tests/test_indicator_factory_id_naming.py
+- tests/test_rules_engine_combine_broadcast.py
+- tests/test_views_backtest_ind_params.py
+- documentation/knowledge/indicators.md
+
+
+
 ## [1.30.59] - 07.07.2026
 
 ### Added

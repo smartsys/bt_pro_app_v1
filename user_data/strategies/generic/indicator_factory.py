@@ -8,8 +8,9 @@ Der Generic Spec Runner nutzt dieses Modul um:
 
 Für sehr große Multiparameter-Läufe (> chunk_size Kombis) stellt
 `split_indicators_json_chunks` eine Chunking-Funktion bereit, die den
-Parameter-Grid entlang der ersten variierenden Achse aufteilt. Jeder
-Block ist ein gültiges kartesisches Sub-Produkt.
+Parameter-Grid mehrdimensional (über alle variierenden Achsen) so aufteilt,
+dass jeder Block höchstens chunk_size Kombis trägt und ein gültiges
+kartesisches Sub-Produkt bleibt.
 
 Spec-Format (flach, ohne 'inputs'-Wrapper):
   {
@@ -241,6 +242,100 @@ def run_indicator_nan_safe(factory: Any, *args: Any, **run_kwargs: Any) -> Any:
     return factory.run(*args, skipna=True, split_columns=True, **run_kwargs)
 
 
+# GEÄNDERT: Ticket 53 — Getragene Ketten-Param-Level id-benennen (7x-Blowup-Fix).
+# Ein Indikator, der einen anderen als Chain-Input traegt, fuehrte dessen Param-Level
+# bisher unter dem Factory-Namen (z.B. 'dwsfastsma_length') statt dem Spec-ID-Namen
+# ('fast_sma_length') mit. Wird derselbe Indikator zugleich direkt referenziert (dort
+# von _uniquify_param_levels bereits auf den ID-Namen umbenannt), gelten die beiden
+# Achsen als disjunkt und werden von _combine_broadcast gekreuzt statt gefaltet — die
+# Portfolio-Spaltenzahl blaeht sich um den Faktor der geteilten Achse auf. Fix: die
+# Instanz wird direkt beim Bauen umbenannt (Variante A), bevor sie als Chain-Input
+# oder Direkt-Referenz konsumiert wird. VBT stapelt Input-Columns unveraendert unter
+# die neuen Param-Level (build_columns/stack_indexes), der ID-Name propagiert also
+# natuerlich durch jede weitere Kettenstufe.
+def _rename_indicator_instance(inst: Any, ind_id: str) -> Any:
+    """Benennt die Param-Level-Namen einer Indikator-Instanz auf `<ind_id>_<param>` um.
+
+    Ersetzt NICHT `IndicatorBase.rename()`/`.rename_levels()`: beide brechen empirisch
+    (per VBT-MCP `run_code` verifiziert) mit `IndexError: tuple index out of range`
+    bei Indikatoren mit genau EINEM Parameter (z.B. dwsConst, dwsVWMABand) — VBTs
+    `_tuple_mapper` liefert nur ab zwei Params ein MultiIndex, sonst `None`, wodurch
+    `level_names` dort strukturell leer bleibt. Beide rename-Methoden indizieren aber
+    blind ueber `param_names` in das leere `level_names`-Tupel. Diese Funktion baut die
+    Umbenennung stattdessen direkt aus `param_names` + den echten Param-Mapper-Namen auf
+    (robust unabhaengig von der Parameterzahl).
+
+    Instanz ist immutable (VBT) — `.replace(...)` gibt eine neue Instanz zurueck, die
+    gespeicherte Instanz muss also ersetzt werden (`results[ind_id] = ...`).
+
+    Args:
+        inst: Frisch gebaute VBT-Indikator-Instanz (aus `factory.run(...)`).
+        ind_id: Spec-Key des Indikators (z.B. 'fast_sma').
+
+    Returns:
+        Neue Instanz mit umbenannten Param-Leveln; die uebergebene Instanz unveraendert,
+        wenn der Indikator keine Parameter hat oder die Level schon passend benannt sind.
+    """
+    param_names = tuple(getattr(inst, 'param_names', ()) or ())
+    if not param_names:
+        return inst
+
+    mappers = {name: getattr(inst, f"_{name}_mapper") for name in param_names}
+    rename_map = {
+        mapper.name: f"{ind_id}_{name}"
+        for name, mapper in mappers.items()
+        if mapper.name != f"{ind_id}_{name}"
+    }
+    if not rename_map:
+        return inst
+
+    new_mapper_list = [
+        mappers[name].rename(rename_map[mappers[name].name])
+        if mappers[name].name in rename_map else mappers[name]
+        for name in param_names
+    ]
+
+    old_columns = inst.wrapper.columns
+    if isinstance(old_columns, pd.MultiIndex):
+        new_columns = old_columns.rename(rename_map)
+    else:
+        # Einzel-Param-Indikator: flacher Index, kein Dict-Rename moeglich (pandas
+        # verlangt einen hashable Namen statt Dict) -> den einen Namen direkt ersetzen.
+        new_columns = old_columns.rename(rename_map.get(old_columns.name, old_columns.name))
+
+    new_wrapper = inst.wrapper.replace(columns=new_columns)
+    return inst.replace(wrapper=new_wrapper, mapper_list=new_mapper_list, short_name=ind_id)
+
+
+def _rename_realigned_output(df: Any, short_name: Optional[str], param_names: tuple,
+                             ind_id: str) -> Any:
+    """Benennt Param-Level eines realignten Per-tf-Outputs `<short_name>_<param>` -> `<ind_id>_<param>` um.
+
+    Plain-Pandas-Variante fuer den Per-Indikator-tf-Zweig (`_RealignedIndicator`): die
+    dort gehaltenen Outputs sind bereits realignte DataFrames, keine VBT-Instanz mehr —
+    `.rename()`/`.rename_levels()` (IndicatorBase-API) greifen hier nicht. Nur tatsaechlich
+    vorhandene Level werden umbenannt (analog `_uniquify_param_levels` in rules_engine.py).
+
+    Args:
+        df: Realignter Output (DataFrame oder Series) eines Per-tf-Indikators.
+        short_name: Factory-Kurzname der inneren Instanz (z.B. 'dwsfastsma').
+        param_names: Param-Namen der inneren Instanz.
+        ind_id: Spec-Key des Indikators (z.B. 'fast_sma').
+
+    Returns:
+        DataFrame mit umbenannten Param-Leveln; unveraendert bei Series oder wenn kein
+        Level zum Umbenennen vorhanden ist.
+    """
+    if not isinstance(df, pd.DataFrame) or not short_name or not param_names:
+        return df
+    current = set(df.columns.names)
+    mapping = {f"{short_name}_{p}": f"{ind_id}_{p}"
+               for p in param_names if f"{short_name}_{p}" in current}
+    if not mapping:
+        return df
+    return df.rename_axis(columns=mapping)
+
+
 def build_indicators(indicators_json: dict, ohlc_data: Any,
                      base_tf: Optional[str] = None) -> dict[str, Any]:
     """Baut alle Indikatoren aus dem Spec in Abhängigkeits-Reihenfolge.
@@ -280,9 +375,13 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
         if target_tf is None:
             # Basis-Timeframe: unveraendert (kein Resampling).
             inputs_kwargs = _resolve_inputs(entry, factory, ohlc_data, results, ind_id)
-            results[ind_id] = run_indicator_nan_safe(
+            inst = run_indicator_nan_safe(
                 factory, **inputs_kwargs, **params_kwargs, param_product=True
             )
+            # GEÄNDERT: Ticket 53 — Param-Level auf den ID-Namen umbenennen, BEVOR die
+            # Instanz als Chain-Input oder Direkt-Referenz konsumiert wird (Instanz
+            # ersetzen, nicht mutieren — VBT-Instanzen sind immutable).
+            results[ind_id] = _rename_indicator_instance(inst, ind_id)
             continue
 
         # Per-Indikator-tf: auf groeberem Raster rechnen, Outputs auf Basis realignen.
@@ -293,12 +392,18 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
         )
         inst = run_indicator_nan_safe(factory, **inputs_kwargs, **params_kwargs, param_product=True)
 
+        # GEÄNDERT: Ticket 53 — dieselbe ID-Umbenennung fuer den Per-tf-Zweig, plain-pandas
+        # auf den realignten DataFrames (die innere Instanz bleibt unveraendert, siehe
+        # _rename_realigned_output-Docstring).
+        short_name = getattr(inst, 'short_name', None)
+        param_names = tuple(getattr(inst, 'param_names', ()) or ())
         realigned: dict[str, Any] = {}
         for oname in (getattr(inst, 'output_names', ()) or ()):
             out = getattr(inst, oname, None)
             if out is None:
                 continue
-            realigned[oname] = realign_to_index(out, base_index, freq=base_freq)
+            out = realign_to_index(out, base_index, freq=base_freq)
+            realigned[oname] = _rename_realigned_output(out, short_name, param_names, ind_id)
         results[ind_id] = _RealignedIndicator(inst, realigned)
 
     return results
@@ -643,120 +748,131 @@ def split_indicators_json_chunks(
     indicators_json: dict,
     chunk_size: int = 5000,
 ) -> list[dict]:
-    """Teilt indicators_json in Blöcke entlang der ersten variierenden Parameterachse.
+    """Teilt indicators_json in kartesische Sub-Grids mit je hoechstens chunk_size Kombis.
 
-    Chunking geschieht entlang der ersten variierenden Achse (topologisch +
-    dict-Reihenfolge), sodass jeder Block ein gültiges kartesisches Sub-Produkt
-    bleibt. Alle anderen Achsen bleiben vollständig erhalten.
+    Chunking geschieht mehrdimensional: alle variierenden Achsen (Indikator-Parameter
+    plus unabhaengige Stop-Sweeps und das gekoppelte TSL-Paar) werden in zusammen-
+    haengende Teil-Listen zerlegt, sodass das Produkt der Teil-Laengen pro Block
+    hoechstens chunk_size ergibt. Jeder Block bleibt ein gueltiges kartesisches
+    Sub-Produkt; alle Bloecke zusammen decken das volle Grid genau einmal ab.
+
+    GEÄNDERT: Mehrdimensionales Chunking. Die fruehere Fassung teilte nur entlang der
+    ERSTEN Achse — reichte deren innerer Rest (Produkt aller uebrigen Achsen) schon
+    ueber chunk_size, blieb der Block zu gross und riss den Worker per OOM ab. Die
+    mehrdimensionale Aufteilung deckelt jeden Block hart auf chunk_size Kombis.
 
     Args:
-        indicators_json: Indikator-Spec mit Range-Parametern.
+        indicators_json: Indikator-Spec mit Range-/Listen-Parametern (optional '_stops').
         chunk_size: Maximale Kombi-Zahl pro Block (Default: 5000).
 
     Returns:
-        Liste von sub-indicators_json-Dicts. Länge 1, wenn n_combos <= chunk_size
-        oder keine variierenden Parameter vorhanden sind.
+        Liste von sub-indicators_json-Dicts. Genau ein Element (das Original, ohne Kopie),
+        wenn n_combos <= chunk_size oder keine variierenden Achsen vorhanden sind.
 
     Raises:
-        ValueError: Bei TSL-Paar-Längen-Mismatch (über count_stop_combos).
+        ValueError: Bei TSL-Paar-Laengen-Mismatch (ueber count_stop_combos/expand_stop_values).
     """
     import copy
+    import itertools
 
-    # Variierende Indikator-Achsen über den gemeinsamen Sammler (kein Duplikat).
     varying = _collect_varying_axes(indicators_json)
-
-    # GEÄNDERT: Schritt 2 — Stop-Sweep-Achsen zählen mit. n_combos ist die echte
-    # Spaltenzahl pro from_signals-Aufruf = Indikator-Kombis x Stop-Kombis. Das
-    # gekoppelte TSL-Paar zählt als EINE Achse (count_stop_combos kapselt das).
-    stops_cfg = indicators_json.get('_stops', {})
+    stops_cfg = indicators_json.get('_stops', {}) or {}
     n_stop_combos = count_stop_combos(stops_cfg)
 
-    # Indikator-Kombizahl getrennt halten (fürs Chunking der Indikator-Achse).
     n_indicator_combos = 1
     for _, _, vals in varying:
         n_indicator_combos *= len(vals)
-
     n_combos = n_indicator_combos * n_stop_combos
 
     if n_combos <= chunk_size:
         return [indicators_json]
 
-    # GEÄNDERT: Schritt 2 — Primär entlang der ersten variierenden Indikator-Achse
-    # chunken (das '_stops'-Dict wird unverändert mitkopiert, sodass das gekoppelte
-    # TSL-Paar je Chunk intakt bleibt). inner_size = Spalten je outer-Wert =
-    # n_combos / len(outer_vals) — schließt die Stop-Kombis ein, damit auch
-    # "wenige Indikator-Kombis x viele Stops > chunk_size" korrekt gechunkt wird.
-    if varying:
-        outer_ind_id, outer_param, outer_vals = varying[0]
-        inner_size = n_combos // len(outer_vals)
-        step = max(1, chunk_size // inner_size)
+    # Einheitliche Achsenliste (Laenge, Setter). Indikator-Achsen sind 'aeusser'
+    # (zuerst), Stop-Achsen 'inner' (danach) — das haelt die Stops moeglichst
+    # vollstaendig (bisheriges Verhalten) und splittet zusaetzlich, wenn ein innerer
+    # Rest allein schon ueber chunk_size laege.
+    axes = _build_chunk_axes(varying, stops_cfg)
 
-        chunks: list[dict] = []
-        for start in range(0, len(outer_vals), step):
-            sub_vals = outer_vals[start:start + step]
-            sub = copy.deepcopy(indicators_json)
-            sub[outer_ind_id][outer_param] = sub_vals
-            chunks.append(sub)
-        return chunks
+    # Slice-Laenge (step) je Achse greedy von innen nach aussen: die inneren Achsen
+    # zuerst moeglichst voll auffuellen, die aeusseren mit dem Restbudget. Die
+    # Invariante prod(step) <= chunk_size gilt konstruktionsbedingt — jeder Faktor
+    # ist <= chunk_size // (Produkt der bereits gewaehlten inneren Steps).
+    steps = [1] * len(axes)
+    running = 1
+    for i in range(len(axes) - 1, -1, -1):
+        room = max(1, chunk_size // running)
+        steps[i] = min(axes[i][0], room)
+        running *= steps[i]
 
-    # GEÄNDERT: Schritt 2 — Kein variierender Indikator, aber Stop-Sweep > chunk_size:
-    # eine UNABHAENGIGE Stop-Achse chunken (niemals das gekoppelte TSL-Paar zerreißen).
-    return _split_along_stop_axis(indicators_json, stops_cfg, n_stop_combos, chunk_size)
+    # Pro Achse die Slice-Grenzen (start, stop) auflisten, dann das kartesische Produkt
+    # aller Achsen-Slices als Chunks materialisieren.
+    per_axis_slices = []
+    for (length, _setter), step in zip(axes, steps):
+        per_axis_slices.append(
+            [(start, min(start + step, length)) for start in range(0, length, step)]
+        )
+
+    chunks: list[dict] = []
+    for slice_combo in itertools.product(*per_axis_slices):
+        sub = copy.deepcopy(indicators_json)
+        for (_length, setter), (start, stop) in zip(axes, slice_combo):
+            setter(sub, start, stop)
+        chunks.append(sub)
+    return chunks
 
 
-def _split_along_stop_axis(
-    indicators_json: dict,
-    stops_cfg: dict,
-    n_stop_combos: int,
-    chunk_size: int,
-) -> list[dict]:
-    """Chunkt entlang einer unabhängigen Stop-Achse (kein variierender Indikator).
+def _build_chunk_axes(varying: list, stops_cfg: dict) -> list:
+    """Baut die einheitliche Achsenliste fuers mehrdimensionale Chunking.
 
-    Wählt die erste unabhängige Stop-Sweep-Achse (NICHT das gekoppelte TSL-Paar)
-    und teilt deren Werteliste auf, sodass jeder Chunk ein gültiges Sub-Grid mit
-    intaktem '_stops'-Block bleibt. Gibt es nur das gekoppelte TSL-Paar als Achse,
-    wird es als ganze (unteilbare) Achse belassen — ein Auseinanderreißen würde
-    die Paar-Kopplung zerstören.
+    Jede Achse ist ein Tupel (length, setter). ``setter(sub, start, stop)`` schreibt den
+    Slice [start:stop] der Achsenwerte in das Chunk-Dict ``sub``. Reihenfolge: erst die
+    variierenden Indikator-Achsen (topologisch), dann die Stop-Achsen. Das gekoppelte
+    TSL-Paar bildet EINE Achse ueber die Paar-Position — ein Slice trifft tsl_th und
+    tsl_stop synchron, die zip-Kopplung bleibt intakt (das Paar IST entlang seiner
+    Position teilbar, es muss nicht als ganzer Block bleiben).
 
     Args:
-        indicators_json: Vollständige Indikator-Spec (mit '_stops').
-        stops_cfg: Das '_stops'-Dict.
-        n_stop_combos: Bereits berechnete Stop-Kombizahl.
-        chunk_size: Maximale Spaltenzahl pro Chunk.
+        varying: (ind_id, param, values)-Achsen aus _collect_varying_axes.
+        stops_cfg: Das '_stops'-Dict der Spec.
 
     Returns:
-        Liste von sub-indicators_json-Dicts (jeweils mit angepasstem '_stops').
+        Liste von (length, setter)-Tupeln.
     """
-    import copy
+    axes: list = []
 
+    # Indikator-Achsen (aeusser).
+    for ind_id, param, values in varying:
+        def _make_ind_setter(ind_id=ind_id, param=param, values=values):
+            def _set(sub, start, stop):
+                sub[ind_id][param] = values[start:stop]
+            return _set
+        axes.append((len(values), _make_ind_setter()))
+
+    # Stop-Achsen (inner). Gekoppeltes TSL-Paar als EINE Achse, sonst unabhaengige Achsen.
     tsl_pair_swept = (
         is_stop_sweep(stops_cfg.get('tsl_th'))
         and is_stop_sweep(stops_cfg.get('tsl_stop'))
     )
+    if tsl_pair_swept:
+        th_vals = expand_stop_values(stops_cfg.get('tsl_th'), 'tsl_th')
+        stop_vals = expand_stop_values(stops_cfg.get('tsl_stop'), 'tsl_stop')
+        # count_stop_combos hat die Laengengleichheit des Paares bereits geprueft.
+        def _set_tsl(sub, start, stop, th_vals=th_vals, stop_vals=stop_vals):
+            s = sub.setdefault('_stops', {})
+            s['tsl_th'] = th_vals[start:stop]
+            s['tsl_stop'] = stop_vals[start:stop]
+        axes.append((len(th_vals), _set_tsl))
 
-    # Erste unabhängige Stop-Sweep-Achse wählen (TSL-Paar ausklammern).
-    outer_key = None
     for key in STOP_PARAM_KEYS:
         if key in _TSL_PAIR_KEYS and tsl_pair_swept:
             continue
-        if is_stop_sweep(stops_cfg.get(key)):
-            outer_key = key
-            break
+        if not is_stop_sweep(stops_cfg.get(key)):
+            continue
+        vals = expand_stop_values(stops_cfg.get(key), key)
+        def _make_stop_setter(key=key, vals=vals):
+            def _set(sub, start, stop):
+                sub.setdefault('_stops', {})[key] = vals[start:stop]
+            return _set
+        axes.append((len(vals), _make_stop_setter()))
 
-    if outer_key is None:
-        # Nur das gekoppelte TSL-Paar ist die Achse — nicht teilbar ohne Kopplung
-        # zu zerstören. Als ein Block belassen (ehrliche Grenze: ein einzelnes
-        # from_signals mit n_stop_combos Spalten).
-        return [indicators_json]
-
-    outer_vals = expand_stop_values(stops_cfg.get(outer_key), outer_key)
-    inner_size = n_stop_combos // len(outer_vals)
-    step = max(1, chunk_size // inner_size)
-
-    chunks: list[dict] = []
-    for start in range(0, len(outer_vals), step):
-        sub_vals = outer_vals[start:start + step]
-        sub = copy.deepcopy(indicators_json)
-        sub.setdefault('_stops', {})[outer_key] = sub_vals
-        chunks.append(sub)
-    return chunks
+    return axes

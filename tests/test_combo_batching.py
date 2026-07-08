@@ -314,18 +314,22 @@ class TestSplitIndicatorsJsonChunksProductIntegrity:
 
 
 class TestSplitIndicatorsJsonChunksMinStep:
-    """Grenzfälle wenn inner_size >= chunk_size (step = 1)."""
+    """Grenzfälle wenn eine einzelne innere Achse allein schon chunk_size sprengt."""
 
-    def test_step_one_when_inner_exceeds_chunk_size(self):
-        """inner_size > chunk_size → step=1, jeder outer-Wert bekommt eigenen Chunk."""
+    def test_inner_axis_gets_split_when_exceeds_chunk_size(self):
+        """GEÄNDERT: Mehrdimensionales Chunking. Reicht die innere Achse allein über
+        chunk_size, wird sie selbst gesplittet, statt einen zu großen Block zu bilden.
+
+        param_a=[1,2,3] (outer), param_b=100 Werte (inner), chunk_size=50.
+        Alt: 3 Chunks à 100 Kombis (> chunk_size → OOM). Neu: param_b wird in 2x50
+        geteilt, param_a auf je 1 → 3*2 = 6 Chunks à genau 50 Kombis.
+        """
         indicators_json = {
             'ind': {
                 'indicator': 'custom:IND',
                 'enabled': True,
-                'param_a': [1, 2, 3],    # outer, 3 Werte
-                'param_b': list(range(1, 101)),  # inner, 100 Werte → inner_size=100
-                # n_combos = 300, chunk_size = 50
-                # step = max(1, 50 // 100) = max(1, 0) = 1
+                'param_a': [1, 2, 3],
+                'param_b': list(range(1, 101)),
             }
         }
         factory_mock = _make_factory_mock(input_names=(), param_names=('param_a', 'param_b'))
@@ -335,11 +339,102 @@ class TestSplitIndicatorsJsonChunksMinStep:
             from user_data.strategies.generic.indicator_factory import split_indicators_json_chunks
             chunks = split_indicators_json_chunks(indicators_json, chunk_size=50)
 
-        # step=1 → 3 Chunks (je 1 param_a-Wert)
-        assert len(chunks) == 3
+        # Kern-Garantie: KEIN Chunk überschreitet chunk_size.
         for chunk in chunks:
-            assert len(chunk['ind']['param_a']) == 1
-            assert len(chunk['ind']['param_b']) == 100
+            n = len(chunk['ind']['param_a']) * len(chunk['ind']['param_b'])
+            assert n <= 50, f"Chunk mit {n} Kombis überschreitet chunk_size=50"
+
+        # 6 Chunks (3 param_a-Slices x 2 param_b-Slices).
+        assert len(chunks) == 6
+
+        # Vollständigkeit + Dublettenfreiheit: alle 300 (a, b)-Paare genau einmal.
+        seen = []
+        for chunk in chunks:
+            for a in chunk['ind']['param_a']:
+                for b in chunk['ind']['param_b']:
+                    seen.append((a, b))
+        expected = [(a, b) for a in [1, 2, 3] for b in range(1, 101)]
+        assert sorted(seen) == sorted(expected)
+        assert len(seen) == len(set(seen)), "Doppelte Kombis über Chunks"
+
+
+class TestSplitIndicatorsJsonChunksSizeGuarantee:
+    """Harte Garantie: kein Chunk trägt mehr als chunk_size Kombis (OOM-Schutz)."""
+
+    def test_no_chunk_exceeds_chunk_size_multi_axis(self):
+        """Drei Achsen, alle deutlich über chunk_size im Produkt — jeder Chunk ≤ chunk_size
+        und das volle Grid ist genau einmal abgedeckt.
+        """
+        indicators_json = {
+            'a': {'indicator': 'custom:A', 'enabled': True, 'p': list(range(1, 20))},   # 19
+            'b': {'indicator': 'custom:B', 'enabled': True, 'p': list(range(1, 13))},   # 12
+            'c': {'indicator': 'custom:C', 'enabled': True, 'p': list(range(1, 6))},    # 5
+            # 19 * 12 * 5 = 1140 Kombis
+        }
+        factory_mock = _make_factory_mock(input_names=(), param_names=('p',))
+
+        with patch('user_data.strategies.generic.indicator_factory.resolve_indicator_factory',
+                   return_value=factory_mock):
+            from user_data.strategies.generic.indicator_factory import split_indicators_json_chunks
+            chunks = split_indicators_json_chunks(indicators_json, chunk_size=100)
+
+        # Kern-Garantie über alle drei Achsen.
+        for chunk in chunks:
+            n = len(chunk['a']['p']) * len(chunk['b']['p']) * len(chunk['c']['p'])
+            assert n <= 100, f"Chunk mit {n} Kombis überschreitet chunk_size=100"
+
+        # Vollständigkeit + Dublettenfreiheit über das 3D-Grid.
+        seen = []
+        for chunk in chunks:
+            for a in chunk['a']['p']:
+                for b in chunk['b']['p']:
+                    for c in chunk['c']['p']:
+                        seen.append((a, b, c))
+        expected = [
+            (a, b, c)
+            for a in range(1, 20)
+            for b in range(1, 13)
+            for c in range(1, 6)
+        ]
+        assert len(seen) == 1140
+        assert sorted(seen) == sorted(expected)
+        assert len(seen) == len(set(seen)), "Doppelte Kombis über Chunks"
+
+
+class TestSplitIndicatorsJsonChunksStops:
+    """Stop-Sweep-Achsen werden mitgechunkt — inkl. gekoppeltem TSL-Paar."""
+
+    def test_tsl_pair_split_keeps_coupling(self):
+        """GEÄNDERT: Mehrdimensionales Chunking. Das gekoppelte TSL-Paar wird entlang
+        seiner Paar-Position gesplittet (nicht mehr als ganzer Block belassen). Jeder
+        Chunk hält tsl_th und tsl_stop gleich lang und in Reihenfolge — die zip-Kopplung
+        (th_i gehört zu stop_i) bleibt über alle Chunks exakt erhalten.
+        """
+        n = 120
+        th_all = [round(0.01 * i, 4) for i in range(1, n + 1)]
+        stop_all = [round(0.005 * i, 4) for i in range(1, n + 1)]
+        indicators_json = {
+            'sma': {'indicator': 'custom:SMA', 'enabled': True, 'length': 20},  # skalar
+            '_stops': {'tsl_th': list(th_all), 'tsl_stop': list(stop_all)},
+        }
+        factory_mock = _make_factory_mock(input_names=('source',), param_names=('length',))
+
+        with patch('user_data.strategies.generic.indicator_factory.resolve_indicator_factory',
+                   return_value=factory_mock):
+            from user_data.strategies.generic.indicator_factory import split_indicators_json_chunks
+            chunks = split_indicators_json_chunks(indicators_json, chunk_size=50)
+
+        seen_pairs = []
+        for chunk in chunks:
+            th = chunk['_stops']['tsl_th']
+            stop = chunk['_stops']['tsl_stop']
+            # Kern-Garantie + Kopplungs-Invariante pro Chunk.
+            assert len(th) == len(stop), "TSL-Paar im Chunk unterschiedlich lang"
+            assert len(th) <= 50, f"TSL-Chunk mit {len(th)} Kombis über chunk_size=50"
+            seen_pairs.extend(zip(th, stop))
+
+        # Alle 120 Paare exakt einmal, Reihenfolge und Kopplung erhalten.
+        assert seen_pairs == list(zip(th_all, stop_all))
 
 
 # ===========================================================================
