@@ -953,7 +953,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
 
     # GEÄNDERT: Startwert-Reduktion VOR dem Runner-Aufruf — der Schnellbacktest
     # rechnet genau eine Kombination (Startwerte aller Parameter und Stops),
-    # nie das Raster. Siehe documentation/todo/schnellbacktest-playground-fehler.md.
+    # nie das Raster.
     indicators_with_stops = _reduce_to_start_values(req.indicators)
 
     t_start = time.monotonic()

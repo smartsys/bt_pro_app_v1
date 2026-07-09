@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.64] - 09.07.2026
+
+### Removed
+- Frontend-Timeout des Schnellbacktests ersatzlos entfernt — das Frontend wartet auf die Server-Antwort
+  - CP_BACKTEST_TIMEOUT_MS (90 s), AbortController samt fetch-signal, clearTimeout und der AbortError-Zweig aus runBacktestLite entfernt — der Client brach bisher nur die HTTP-Verbindung ab, während der Server weiterrechnete; jetzt zeigt das Frontend ausschließlich, was der Server wirklich meldet (Ergebnis oder echter Fehler)
+  - Verifiziert im echten Browser: kalter Numba-JIT-Lauf (59 s) läuft vollständig durch und rendert das Badge; warmer Lauf unverändert im Sekundenbruchteil
+  - Wissens-Doku an vier Stellen korrigiert (strategy-development: _inject.md, begriffe-und-modi.md, code-referenz.md, workflows/neue-strategie.md): spec_json.indicators ist eine vollständige Selbstbeschreibung (Werte wie eingetragen inkl. _stops, vom Playground-Speichern gewollt so geschrieben); laufzeit-wirksam aus der Iteration sind nur die rules — Indikator-Werte und Stops liefert die IndicatorConfig; die bisherige Behauptung „ohne _stops/Raster“ war falsch
+  - documentation/todo/schnellbacktest-playground-fehler.md gelöscht — alle Befunde erledigt oder als gewolltes Verhalten geklärt; Code-Verweis auf das Dokument entfernt
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+- services/api/routes/api_chart_playground.py
+- documentation/knowledge/strategy-development/_inject.md
+- documentation/knowledge/strategy-development/begriffe-und-modi.md
+- documentation/knowledge/strategy-development/code-referenz.md
+- documentation/knowledge/strategy-development/workflows/neue-strategie.md
+
+
+
 ## [1.30.63] - 09.07.2026
 
 ### Fixed

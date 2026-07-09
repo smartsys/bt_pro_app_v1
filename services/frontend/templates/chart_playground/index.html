@@ -2576,9 +2576,6 @@
   // ========= Run Backtest =========
   // GEÄNDERT: Ticket 17 — Inline-Result-Panel, Trade-Marker, Equity-Sub-Chart
 
-  // Konfigurierbarer Timeout (90s gemäß Ticket)
-  const CP_BACKTEST_TIMEOUT_MS = 90000;
-
   // Zustand des aktuellen Results
   let cpCurrentResultId = null;
   let cpCurrentOrderPrimitive = null;
@@ -2790,18 +2787,13 @@
       cpCurrentTrades = null;
     }
 
-    const abortCtrl = new AbortController();
-    const timeoutId = setTimeout(() => abortCtrl.abort(), CP_BACKTEST_TIMEOUT_MS);
-
     try {
       const payload = buildBacktestPayload();
       const r = await fetch('/api/chart-playground/run-backtest-lite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: abortCtrl.signal,
       });
-      clearTimeout(timeoutId);
       const j = await r.json();
       if (!r.ok || j.error || !j.data) {
         const msg = j.detail || j.error || (r.ok ? 'unbekannt' : `HTTP ${r.status}`);
@@ -2861,12 +2853,7 @@
         cpFitChartDeferred();
       }
     } catch (e) {
-      clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        showToast('Schnellbacktest-Timeout — bitte erneut versuchen.', 'err');
-      } else {
-        showToast('Fehler: ' + e.message, 'err');
-      }
+      showToast('Fehler: ' + e.message, 'err');
     } finally {
       btn.disabled = false; btn.textContent = 'Schnellbacktest';
       // GEÄNDERT: Restore-Modus in jedem Fall beenden, damit ein fehlgeschlagener Lauf ihn nicht in den naechsten loadChart traegt
