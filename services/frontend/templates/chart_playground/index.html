@@ -922,15 +922,16 @@
       const items = (j.data && j.data.items) || [];
       // GEÄNDERT: Iterations-Objekte cachen damit der Change-Handler spec_json.rules lesen kann
       state.iterations = items;
-      // GEÄNDERT: version ist jetzt eine Integer-Nummer — Drafts (Auto-Registrierungen) ausblenden,
-      // numerisch nach version sortieren und die fortlaufende Nummer als Label zeigen.
+      // GEÄNDERT: Drafts (Auto-Registrierungen) ausblenden, absteigend nach version sortieren
+      // (neueste Iteration zuerst) und als Label die Iterations-ID plus Versionsname zeigen.
       items
         .filter(it => it.status !== 'draft')
-        .sort((a, b) => (a.version || 0) - (b.version || 0))
+        .sort((a, b) => (b.version || 0) - (a.version || 0))
         .forEach(it => {
           const o = document.createElement('option');
           o.value = it.id;
-          o.textContent = it.version;
+          const name = (it.version_name || '').trim();
+          o.textContent = name ? it.id + ' — ' + name : String(it.id);
           sel.appendChild(o);
         });
     } catch (e) { console.warn('Iterationen laden fehlgeschlagen', e); }
@@ -3260,14 +3261,16 @@
     try {
       const r = await fetch('/api/strategy/iterations?concept_id=' + conceptId);
       const j = await r.json();
+      // GEÄNDERT: absteigend nach version sortieren (neueste zuerst), Label = Iterations-ID plus Versionsname
       const items = ((j.data && j.data.items) || [])
         .filter(it => it.status !== 'draft')
-        .sort((a, b) => (a.version || 0) - (b.version || 0));
+        .sort((a, b) => (b.version || 0) - (a.version || 0));
       if (items.length === 0) { info.textContent = 'Dieses Konzept hat keine überschreibbare Iteration.'; return; }
       items.forEach(it => {
         const o = document.createElement('option');
         o.value = String(it.id);
-        o.textContent = it.version_name ? (it.version + ' — ' + it.version_name) : String(it.version);
+        const name = (it.version_name || '').trim();
+        o.textContent = name ? it.id + ' — ' + name : String(it.id);
         selI.appendChild(o);
       });
       if (preselectId && items.some(it => String(it.id) === String(preselectId))) {

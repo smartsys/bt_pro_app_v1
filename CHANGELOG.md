@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.65] - 09.07.2026
+
+### Changed
+- Chart-Playground: Iterations-Dropdowns absteigend sortiert und mit ID plus Versionsname beschriftet
+  - Iterations-Auswahl im Playground zeigt statt der reinen fortlaufenden Nummer jetzt die Iterations-ID und den Versionsnamen
+  - Sortierung von aufsteigend auf absteigend gedreht - die neueste Iteration steht oben
+  - Gleiches Verhalten im Modal 'Spec ueberschreiben', damit beide Dropdowns identisch aussehen
+  - Ohne gesetzten Versionsnamen wird nur die ID angezeigt
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.64] - 09.07.2026
 
 ### Removed
