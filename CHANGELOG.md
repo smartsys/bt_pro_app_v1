@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.62] - 09.07.2026
+
+### Fixed
+- Indicator-Configs-Tabelle sortiert wieder absteigend nach ID
+  - Die Standard-Sortierung zeigte auf Spalte 0 (Checkbox-Spalte, orderable: false) und lief daher ins Leere
+  - Sortierung auf Spalte 1 (ID) umgestellt, Richtung absteigend
+
+### Files
+- services/frontend/templates/config/indicator_configs.html
+
+
+
 ## [1.30.61] - 09.07.2026
 
 ### Added
