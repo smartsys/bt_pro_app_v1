@@ -27,7 +27,10 @@ import vectorbtpro as vbt
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from user_data.strategies.generic.indicator_factory import run_indicator_nan_safe
+from user_data.strategies.generic.indicator_factory import (
+    STOP_PARAM_KEYS,
+    run_indicator_nan_safe,
+)
 from user_data.strategies.generic.tf_resample import (
     normalize_tf,
     realign_to_index,
@@ -852,7 +855,9 @@ def get_result_config(result_id: int) -> dict:
 # Run Backtest (Generic Spec Runner über Playground-State)
 # ---------------------------------------------------------------------------
 class RunBacktestIn(BaseModel):
-    indicators: dict      # {name -> {indicator, tf, inputs, enabled, <params>}, _stops: {tp_stop, sl_stop, ...}}
+    # GEÄNDERT: Wire-Format-Doku korrigiert — Flat-Spec: Inputs liegen direkt am
+    # Top-Level des Eintrags (kein 'inputs'-Wrapper), siehe buildBacktestPayload().
+    indicators: dict      # {name -> {indicator, tf, enabled, <inputs>, <params>}, _stops: {tp_stop, sl_stop, ...}}
     rules: dict           # {entry: {...}, exit: None|{...}}
     portfolio: dict       # {size, size_type, init_cash, fees, stop_exit_price, stop_order_type}
     data: dict            # {exchange, symbols, timeframe, start, end, ohlc_start, ohlc_end}
@@ -882,15 +887,49 @@ def _build_backtest_config(req: RunBacktestIn) -> dict:
     }
 
 
-def _indicators_with_stops(req: "RunBacktestIn") -> dict:
-    """Liefert die Indikator-Config inkl. '_stops'-Meta-Key (Schritt 4d).
+def _is_sweep_value(value: Any) -> bool:
+    """True, wenn ein Wert eine Sweep-Achse beschreibt (Liste oder Range-Dict).
 
-    Der Spec-Runner liest die Stops aus indicators_json['_stops']. Das Frontend
-    sendet '_stops' jetzt bereits in req.indicators (Wire-Format-Vertrag) — daher
-    wird die Config nur durchgereicht. Fehlt '_stops' (direkter API-Call), werden
-    KEINE Stops ergänzt (kein Fallback); der Spec-Runner liest dann keine Stops.
+    Andere Dicts (weder 'start' noch 'value') gelten nicht als Sweep — sie bleiben
+    unangetastet und schlagen später sichtbar in der Indikator-Factory fehl,
+    statt hier still zu None zu werden.
     """
-    return dict(req.indicators)
+    if isinstance(value, (list, tuple)):
+        return True
+    return isinstance(value, dict) and ('start' in value or 'value' in value)
+
+
+def _reduce_to_start_values(indicators: dict) -> dict:
+    """Reduziert alle Sweep-Achsen der Indikator-Config auf ihren Startwert.
+
+    Der Schnellbacktest (und die Entry-Signal-Vorschau) rechnet immer genau EINE
+    Kombination: die Startwerte aller eingetragenen Werte — für jeden Parameter
+    jedes Indikators und genauso für die Stops unter '_stops'. Range-Dicts werden
+    auf 'start', Listen auf ihr erstes Element reduziert (_coerce_param), BEVOR
+    die Config an den Runner geht. Eine Kombinatorik findet nicht statt.
+
+    Der Wertebereich selbst bleibt unangetastet — reduziert wird eine Kopie;
+    Oberfläche und Setup behalten die Ranges für den Multiparameter-Lauf.
+
+    Fehlt '_stops' (direkter API-Call), werden KEINE Stops ergänzt (kein
+    Fallback); der Spec-Runner liest dann keine Stops.
+    """
+    reduced: dict = {}
+    for name, entry in indicators.items():
+        if not isinstance(entry, dict):
+            reduced[name] = entry
+            continue
+        if name == '_stops':
+            reduced[name] = {
+                key: (_coerce_param(val) if key in STOP_PARAM_KEYS and _is_sweep_value(val) else val)
+                for key, val in entry.items()
+            }
+            continue
+        reduced[name] = {
+            key: (_coerce_param(val) if _is_sweep_value(val) else val)
+            for key, val in entry.items()
+        }
+    return reduced
 
 
 @router.post('/run-backtest-lite')
@@ -912,8 +951,10 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f'OHLC-Daten laden fehlgeschlagen: {e}')
 
-    # GEÄNDERT: Schritt 1 — Stops als '_stops'-Meta-Key in die Indikator-Config spiegeln
-    indicators_with_stops = _indicators_with_stops(req)
+    # GEÄNDERT: Startwert-Reduktion VOR dem Runner-Aufruf — der Schnellbacktest
+    # rechnet genau eine Kombination (Startwerte aller Parameter und Stops),
+    # nie das Raster. Siehe documentation/todo/schnellbacktest-playground-fehler.md.
+    indicators_with_stops = _reduce_to_start_values(req.indicators)
 
     t_start = time.monotonic()
     try:
@@ -925,7 +966,15 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
         raise HTTPException(status_code=500, detail=f'{e}')
     duration_ms = int((time.monotonic() - t_start) * 1000)
 
-    portfolios = strategy_results['portfolios']
+    # GEÄNDERT: Gechunkte Läufe (metrics_table statt portfolios) kann der Lite-Pfad
+    # nicht verarbeiten — nach der Startwert-Reduktion tritt der Fall nicht mehr auf,
+    # der Zugriff bleibt trotzdem mit klarer Meldung abgesichert (kein KeyError).
+    portfolios = strategy_results.get('portfolios')
+    if portfolios is None:
+        raise HTTPException(
+            status_code=500,
+            detail='Lite-Backtest lieferte kein Portfolio — erwartet wird genau eine Kombination.',
+        )
 
     # GEÄNDERT: Auf erste Kombi reduzieren — analog save_strategy_results, damit pf.value
     # eine Series statt einer mehrspaltigen DataFrame ist (sonst iteriert .items() Spalten).
@@ -971,17 +1020,14 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
         except Exception:
             pass
 
-        # GEÄNDERT: Schritt 4d — Stops liegen jetzt in req.indicators._stops (nicht mehr im Portfolio)
-        _stops = req.indicators.get('_stops') if isinstance(req.indicators, dict) else None
+        # GEÄNDERT: Stops für die Marker-Preislinien aus der REDUZIERTEN Config lesen —
+        # exakt die Werte, mit denen das Portfolio gerechnet hat (Startwert-Kombi).
+        # Die frühere Doppel-Coercion an dieser Stelle entfällt.
+        _stops = indicators_with_stops.get('_stops')
         if not isinstance(_stops, dict):
             _stops = {}
-        # GEÄNDERT: Befund 8 — Sweep-foermige Stops (Range-Dict ODER Liste) auf die
-        # erste Kombi aufloesen, damit die Marker-Preislinie zeigt, was das Portfolio
-        # tatsaechlich gerechnet hat (Lite nimmt immer Kombi 1 = Startwert). Ohne die
-        # Aufloesung warf float() bei einer Liste im Trade-Loop, und das per-Trade-
-        # except verwarf still jeden Trade (Badge meldete Trades, Chart null Marker).
-        tp_stop = _coerce_param(_stops.get('tp_stop'))
-        sl_stop = _coerce_param(_stops.get('sl_stop'))
+        tp_stop = _stops.get('tp_stop')
+        sl_stop = _stops.get('sl_stop')
 
         for _, row in trades_records.iterrows():
             try:
@@ -1150,7 +1196,9 @@ def entry_signals(req: RunBacktestIn) -> dict:
     if not active_blocks:
         return {'data': {'signals': []}, 'error': None}
 
-    indicators_json = _indicators_with_stops(req)
+    # GEÄNDERT: Startwert-Reduktion auch hier — die Entry-Signal-Vorschau baute sonst
+    # das volle Parameter-Raster (build_indicators mit param_product) pro Block-Aufruf.
+    indicators_json = _reduce_to_start_values(req.indicators)
 
     try:
         indicators = build_indicators(

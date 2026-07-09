@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.63] - 09.07.2026
+
+### Fixed
+- Schnellbacktest rechnet genau eine Kombination: Startwert-Reduktion vor dem Runner-Aufruf
+  - Neue Reduktion _reduce_to_start_values() in api_chart_playground.py: arange-Dicts auf den Startwert, Listen auf das erste Element — für alle Parameter aller Indikatoren und die Stops unter _stops, auf einer Kopie (Wertebereiche bleiben in Oberfläche und Setup erhalten)
+  - Reduktion läuft VOR run_spec_strategy in /run-backtest-lite und vor build_indicators in /entry-signals — vorher expandierte der Lite-Pfad das volle Parameter-Raster (Setup 5: 21.280 Kombinationen, 8 Minuten, dann KeyError) und der Entry-Hintergrund baute das Raster einmal pro Regelblock
+  - portfolios-Zugriff im Lite-Endpunkt abgesichert: gechunkter Rückgabewert (metrics_table statt portfolios) gibt jetzt eine klare 500-Meldung statt KeyError
+  - Marker-Preislinien (TP/SL) lesen die Stops aus der reduzierten Config — exakt die Werte, mit denen das Portfolio gerechnet hat
+  - Neue Input-Vertrags-Tests tests/test_playground_startwert_reduktion.py: das an Runner/Indikator-Bau übergebene Dict enthält keine arange-Dicts und keine Listen mehr; genau dieser Vertrag fehlte, weil die bestehenden Lite-Tests den Runner mocken
+  - Test-Payload in test_run_backtest_lite.py auf das echte Wire-Format gebracht (Flat-Spec ohne inputs-Wrapper, Block-Rules, _stops statt Stops im Portfolio) und veraltete Fehlertext-Assertion korrigiert
+  - Verifiziert gegen Voll-Lauf 219: Startwert-Kombination bit-identisch (0 Trades, 0 %); warmer Schnellbacktest 0,11 s statt Timeout
+
+### Files
+- services/api/routes/api_chart_playground.py
+- tests/test_playground_startwert_reduktion.py
+- tests/test_run_backtest_lite.py
+- documentation/todo/schnellbacktest-playground-fehler.md
+
+
+
 ## [1.30.62] - 09.07.2026
 
 ### Fixed

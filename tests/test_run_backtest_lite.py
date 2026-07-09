@@ -16,18 +16,30 @@ import pytest
 # Gemeinsame Test-Fixtures / Payload
 # ---------------------------------------------------------------------------
 
+# GEÄNDERT: Payload auf das echte Wire-Format gebracht (buildBacktestPayload):
+# Flat-Spec (Inputs direkt am Top-Level, kein 'inputs'-Wrapper), Rules im
+# Block-Format (DNF), Stops im Sonderschlüssel '_stops' statt im Portfolio.
 _SAMPLE_INDICATORS = {
     'fast_sma': {
         'indicator': 'dwsFastSMA',
         'tf': '4h',
-        'inputs': {'src': 'close'},
+        'src': 'close',
         'length': {'type': 'arange', 'start': 6, 'stop': 7, 'step': 1, 'dtype': 'int64'},
         'multiplier': {'type': 'arange', 'start': 6, 'stop': 7, 'step': 1, 'dtype': 'int64'},
+    },
+    '_stops': {
+        'tp_stop': 0.3,
+        'sl_stop': 0.15,
+        'tsl_th': None,
+        'tsl_stop': None,
+        'td_stop': 8,
+        'delta_format': 'percent',
+        'time_delta_format': 'rows',
     },
 }
 
 _SAMPLE_RULES = {
-    'entry': {'logic': 'AND', 'conditions': []},
+    'entry': {'blocks': []},
     'exit': None,
 }
 
@@ -36,13 +48,6 @@ _SAMPLE_PORTFOLIO = {
     'size_type': 'value',
     'init_cash': 100,
     'fees': 0.001,
-    'tp_stop': 0.3,
-    'sl_stop': 0.15,
-    'tsl_th': None,
-    'tsl_stop': None,
-    'td_stop': 8,
-    'delta_format': 'percent',
-    'time_delta_format': 'rows',
     'stop_exit_price': None,
     'stop_order_type': None,
     'direction': 'longonly',
@@ -151,7 +156,9 @@ def test_lite_endpoint_run_fehler_gibt_500():
             run_backtest_lite(req)
 
     assert exc_info.value.status_code == 500
-    assert 'Lite-Backtest fehlgeschlagen' in exc_info.value.detail
+    # GEÄNDERT: Der Endpunkt liefert bewusst den reinen Fehlertext — das Quell-Label
+    # ("Schnellbacktest: ") setzt das Frontend-Banner. Assertion war veraltet.
+    assert exc_info.value.detail == 'Backtest-Fehler'
 
 
 # ---------------------------------------------------------------------------
