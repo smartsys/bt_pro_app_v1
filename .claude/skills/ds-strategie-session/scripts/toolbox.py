@@ -117,6 +117,9 @@ ergänzen" — KEIN kompletter Body nötig:
     indicator-config-indicator-set --id N --name <key> --file frag.json [--replace]
     indicator-config-indicator-remove --id N --name <key>
         frag.json = ein Indikator-Block, z.B. {"indicator":"talib:SMA","tf":"4h","close":"close","timeperiod":50}.
+        Existiert der Key, wird gemergt: nur die genannten Parameter ändern sich, der Rest
+        des Blocks bleibt bit-genau. Einzelnen Wert ändern: --file {"timeperiod":50}.
+        --replace ersetzt den Block komplett (alles Nicht-Genannte fällt weg).
         In der Config dürfen Param-Werte arange-Ranges sein (Multiparameter): "timeperiod":{"type":"arange",...}.
   Stops (config_json._stops, einzeln):
     indicator-config-stops-set --id N [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]
@@ -290,7 +293,9 @@ def render_spec(spec: dict) -> None:
     if inds:
         print("- Indikatoren:")
         for name, p in inds.items():
-            params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "tf", "indicator"))
+            # GEÄNDERT: tf nicht mehr filtern — der Rechen-Timeframe ist laufzeit-wirksam
+            # (fehlt er beim Zurückschreiben, bricht der Lauf mit ValueError ab)
+            params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "indicator"))
             # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
             tag = "" if p.get("enabled", True) else " [deaktiviert]"
             print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
@@ -347,7 +352,9 @@ def indicator_config_read(i: int) -> None:
     if d.get("description"):
         print(f"- {d['description']}")
     for name, p in (d.get("config_json") or {}).items():
-        params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "tf", "indicator"))
+        # GEÄNDERT: tf nicht mehr filtern — der Rechen-Timeframe ist laufzeit-wirksam
+        # (fehlt er beim Zurückschreiben, bricht der Lauf mit ValueError ab)
+        params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "indicator"))
         # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
         tag = "" if p.get("enabled", True) else " [deaktiviert]"
         print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
@@ -2106,12 +2113,39 @@ def backtest_config_set(args: list) -> int:
 
 # --- Indikatoren (dict-Sammlung) ---
 
+def _merge_indicator_block(coll: dict, name: str, frag: dict, replace: bool) -> tuple:
+    """Schreibt frag in coll[name] — als Merge (Default) oder Vollersatz (replace).
+
+    Merge aktualisiert nur die im Fragment genannten Parameter; alles andere im
+    bestehenden Block bleibt unangetastet. Damit verliert ein unvollstaendiges
+    Fragment keine laufzeit-wirksamen Felder (z.B. tf, dessen Fehlen den Lauf mit
+    ValueError abbricht). Neue Keys werden schlicht eingefuegt.
+
+    Returns:
+        (verb, block): verb beschreibt die Aktion fuer die Ausgabe, block ist der
+        geschriebene Indikator-Block.
+    """
+    if name not in coll:
+        coll[name] = frag
+        return "hinzugefuegt", frag
+    if replace:
+        coll[name] = frag
+        return "ersetzt", frag
+    block = dict(coll[name])
+    block.update(frag)
+    coll[name] = block
+    geaendert = ", ".join(sorted(frag))
+    return f"aktualisiert ({geaendert})", block
+
+
 def iteration_indicator_set(args: list) -> int:
     """iteration-indicator-set --id N --name <key> --file frag.json [--replace]
 
-    Fuegt einen Indikator in spec_json.indicators[key] ein oder ersetzt ihn
-    (nur mit --replace, sonst Fehler bei existierendem Key). frag.json ist der
-    Indikator-Block, z.B. {"indicator": "talib:SMA", "tf": "4h", "close": "close", "timeperiod": 50}.
+    Schreibt einen Indikator nach spec_json.indicators[key]. Existiert der Key,
+    werden nur die im Fragment genannten Parameter aktualisiert, der Rest des
+    Blocks bleibt bit-genau (Merge, wie indicator-config-stops-set). Mit --replace
+    wird der Block komplett ersetzt. frag.json ist der Indikator-Block bzw. der zu
+    aendernde Ausschnitt, z.B. {"timeperiod": 50} oder ein voller Block.
     """
     f = _parse_flags(args)
     iid = _require_id(f, "iteration-indicator-set")
@@ -2119,13 +2153,11 @@ def iteration_indicator_set(args: list) -> int:
     frag = _read_json_file(_require(f, "file", "iteration-indicator-set"))
     spec = _iteration_get_spec(iid)
     inds = spec.setdefault("indicators", {})
-    existed = name in inds
-    if existed and not f.get("replace"):
-        raise ValueError(f"iteration-indicator-set: Indikator '{name}' existiert bereits — mit --replace ueberschreiben")
-    inds[name] = frag
+    # GEÄNDERT: Merge statt Vollersatz — ein unvollstaendiges Fragment darf keine
+    # bestehenden Parameter (z.B. tf) still verlieren. --replace erzwingt Vollersatz.
+    verb, block = _merge_indicator_block(inds, name, frag, bool(f.get("replace")))
     _iteration_put_spec(iid, spec)
-    verb = "ersetzt" if existed else "hinzugefuegt"
-    print(f"## iteration-indicator-set: OK — Iteration {iid}: Indikator '{name}' {verb} ({frag.get('indicator')})\n")
+    print(f"## iteration-indicator-set: OK — Iteration {iid}: Indikator '{name}' {verb} ({block.get('indicator')})\n")
     return 0
 
 
@@ -2154,10 +2186,12 @@ def iteration_indicator_remove(args: list) -> int:
 def indicator_config_indicator_set(args: list) -> int:
     """indicator-config-indicator-set --id N --name <key> --file frag.json [--replace]
 
-    Fuegt einen Indikator in config_json[key] ein oder ersetzt ihn. frag.json ist
-    der Parameter-Block (Werte skalar ODER als arange-Range fuer Multiparameter),
-    z.B. {"indicator": "talib:SMA", "tf": "same", "close": "close",
-          "timeperiod": {"type":"arange","start":20,"stop":101,"step":10,"dtype":"int64"}}.
+    Schreibt einen Indikator nach config_json[key]. Existiert der Key, werden nur
+    die im Fragment genannten Parameter aktualisiert, der Rest des Blocks bleibt
+    bit-genau (Merge); --replace ersetzt den Block komplett. frag.json ist der
+    Parameter-Block bzw. der zu aendernde Ausschnitt (Werte skalar ODER als
+    arange-Range fuer Multiparameter), z.B. {"indicator": "talib:SMA", "tf": "same",
+    "close": "close", "timeperiod": {"type":"arange","start":20,"stop":101,"step":10,"dtype":"int64"}}.
     """
     f = _parse_flags(args)
     cid = _require_id(f, "indicator-config-indicator-set")
@@ -2166,13 +2200,10 @@ def indicator_config_indicator_set(args: list) -> int:
         raise ValueError("indicator-config-indicator-set: '_stops' ist reserviert — nutze indicator-config-stops-set")
     frag = _read_json_file(_require(f, "file", "indicator-config-indicator-set"))
     cfg = _indicator_config_get_json(cid)
-    existed = name in cfg
-    if existed and not f.get("replace"):
-        raise ValueError(f"indicator-config-indicator-set: Indikator '{name}' existiert bereits — mit --replace ueberschreiben")
-    cfg[name] = frag
+    # GEÄNDERT: Merge statt Vollersatz — siehe _merge_indicator_block
+    verb, block = _merge_indicator_block(cfg, name, frag, bool(f.get("replace")))
     _indicator_config_patch_json(cid, cfg)
-    verb = "ersetzt" if existed else "hinzugefuegt"
-    print(f"## indicator-config-indicator-set: OK — Config {cid}: Indikator '{name}' {verb} ({frag.get('indicator')})\n")
+    print(f"## indicator-config-indicator-set: OK — Config {cid}: Indikator '{name}' {verb} ({block.get('indicator')})\n")
     return 0
 
 

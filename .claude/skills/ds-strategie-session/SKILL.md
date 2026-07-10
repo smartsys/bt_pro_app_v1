@@ -172,7 +172,7 @@ toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 197
 toolbox.py run-list --strategy teststrategie --version 1  # Runs zu Strategie+Version (nach Testset-Lauf gruppiert, zeigt Auftrags-ID testset-run)
 toolbox.py iteration-update --id 26 --file body.json     # ändern (voller PUT-Body — für gezielte Teiländerungen die -set/-add-Verben unten)
 toolbox.py indicator-config-set --id 4 --concept 2 --iteration 2  # Teil-Update (PATCH): nur gesetzte Felder, config_json/_stops bleiben
-toolbox.py iteration-indicator-set --id 8 --name sma --file frag.json  # Indikator in spec_json.indicators ergänzen/ersetzen
+toolbox.py iteration-indicator-set --id 8 --name sma --file frag.json  # Indikator in spec_json.indicators anlegen/mergen (--replace = Vollersatz)
 toolbox.py indicator-config-indicator-set --id 34 --name sma --file frag.json  # dito in config_json (Param-Werte dürfen arange-Range sein)
 toolbox.py iteration-condition-add --id 8 --block 1 --file cond.json   # Regel-Bedingung an Entry-Block anhängen (UND)
 toolbox.py indicator-config-stops-set --id 34 --tp 0.25 --sl 0.15      # einzelne Stops in _stops setzen
@@ -200,7 +200,8 @@ toolbox.py indicator-config-labels --id 2018 --name-freetext "BNB Plateau" --des
 Für „kopieren und dann einen Indikator/eine Regel/ein Feld ergänzen oder entfernen" gibt es **gezielte Bearbeitungsverben**. Sie holen das Objekt, ändern **genau einen Teil** und schreiben zurück — der Rest bleibt bit-genau. **Kein** kompletter Body per `--file` nötig (das ist nur `-update`, der Voll-Replace). Jede Maßnahme ein Einzelaufruf.
 
 - **Felder (Meta/flach):** `concept-set` · `iteration-set` · `backtest-config-set` (partieller PUT; bei BacktestConfig GET→merge→PUT). Beispiel: `backtest-config-set --id 552 --fees 0.0005 --symbol ETHUSDT`.
-- **Indikatoren:** `iteration-indicator-set/-remove` (spec_json.indicators) · `indicator-config-indicator-set/-remove` (config_json). `--file` ist **nur der eine Indikator-Block** (z. B. `{"indicator":"talib:SMA","tf":"4h","close":"close","timeperiod":50}`); in der Config dürfen Werte arange-Ranges sein. Vorhandener Key nur mit `--replace`.
+- **Indikatoren:** `iteration-indicator-set/-remove` (spec_json.indicators) · `indicator-config-indicator-set/-remove` (config_json). `--file` ist **nur der eine Indikator-Block** (z. B. `{"indicator":"talib:SMA","tf":"4h","close":"close","timeperiod":50}`); in der Config dürfen Werte arange-Ranges sein. Existiert der Key, wird **gemergt**: nur die genannten Parameter ändern sich, der Rest des Blocks bleibt bit-genau — einen einzelnen Wert ändert man also mit `--file {"timeperiod":50}`. `--replace` ersetzt den Block komplett (alles Nicht-Genannte fällt weg, auch `tf`).
+  - **`tf` ist Pflicht und laufzeit-wirksam** (`indicator_factory.py`: fehlender/leerer `tf` → ValueError). Es steht in jeder Lese-Ausgabe der Toolbox mit drin. Bei `--replace` gehört es in den Block; beim Merge bleibt es von allein erhalten.
 - **Stops:** `indicator-config-stops-set --id N [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]` — einzelne Werte in `_stops`, Rest bleibt. `null` löscht einen Stop-Wert.
 - **Regeln:** `iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json` · `iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]`. `--file` ist **eine** Bedingung (`{"op":">","lhs":"close","rhs":"indicator:sma:real"}`). Ohne `--block` an Block 1 (UND); `--new-block` erzeugt einen ODER-Block.
 

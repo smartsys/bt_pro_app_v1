@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.66] - 10.07.2026
+
+### Fixed
+- Toolbox: Indikator-Timeframe (tf) wird angezeigt, -indicator-set mergt statt zu ersetzen
+  - Lesen: render_spec und indicator_config_read filterten tf aus der Parameter-Anzeige. Der Rechen-Timeframe war damit in keiner Toolbox-Ausgabe sichtbar, obwohl er laufzeit-wirksam ist. Gefiltert werden jetzt nur noch enabled und indicator, die beide anderswo dargestellt werden (Tag bzw. Klammer).
+  - Schreiben: iteration-indicator-set und indicator-config-indicator-set ersetzten den kompletten Indikator-Block durch das übergebene Fragment. Beide mergen jetzt über den gemeinsamen Helfer _merge_indicator_block: nur die im Fragment genannten Parameter ändern sich, der Rest des Blocks bleibt bit-genau. Einen einzelnen Wert ändert man also mit --file {"timeperiod": 50}.
+  - --replace ersetzt den Block weiterhin komplett (bewusster Vollersatz, Nicht-Genanntes fällt weg). Der bisherige Fehler 'existiert bereits — mit --replace überschreiben' entfällt, da der Merge selbst vor Datenverlust schützt.
+  - Zusammenwirken beider Fehler: Wer einen Parameter ändern wollte, baute den Block aus der Toolbox-Ausgabe nach — ohne tf, weil es nicht angezeigt wurde — und schrieb ihn per Vollersatz zurück. Der folgende Backtest brach in indicator_factory.normalize_tf mit ValueError ab (fehlender tf ist kein implizites 'gleich').
+  - Ausgabe von -indicator-set nennt jetzt die Aktion präzise: 'aktualisiert (timeperiod)' statt pauschal 'ersetzt'.
+  - Tests: tests/test_toolbox_indicator_block_write.py mit 11 Fällen (Merge erhält tf, arange-Ranges als Wert, --replace-Vollersatz, Insert neuer Keys, keine In-place-Mutation des Bestandsblocks, tf-Anzeige in render_spec). Zusammen mit den bestehenden Toolbox-Tests 20 grün.
+  - Doku: SKILL.md (Regel 'Vorhandener Key nur mit --replace' war falsch geworden, plus neuer Hinweis zur tf-Pflicht), handbuch.md (Toolbox-Werkzeuge), --help und Docstrings in toolbox.py.
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- documentation/project/handbuch.md
+- tests/test_toolbox_indicator_block_write.py
+
+
+
 ## [1.30.65] - 09.07.2026
 
 ### Changed

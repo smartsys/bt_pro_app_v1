@@ -284,9 +284,9 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 | `concept-set --id <n> [--name --slug --category --description --status]` | Ändert einzelne Konzept-Felder (partieller PUT). |
 | `iteration-set --id <n> [--version-name --description --status]` | Ändert einzelne Iterations-Meta-Felder (partieller PUT). |
 | `backtest-config-set --id <n> [--symbol --exchange --timeframe --start --end --ohlc-start --ohlc-end --size --size-type --init-cash --fees --name --description]` | Ändert einzelne Backtest-Config-Felder (GET→merge→voller PUT, da der Endpoint Voll-Replace ist). Stops liegen hier nicht. |
-| `iteration-indicator-set --id <n> --name <key> --file frag.json [--replace]` | Fügt einen Indikator in `spec_json.indicators[key]` ein/ersetzt ihn (`--file` = ein Indikator-Block). |
+| `iteration-indicator-set --id <n> --name <key> --file frag.json [--replace]` | Schreibt einen Indikator nach `spec_json.indicators[key]` (`--file` = ein Indikator-Block). Neuer Key: einfügen. Vorhandener Key: **mergen** — nur die genannten Parameter ändern sich, der Rest (auch `tf`) bleibt bit-genau. `--replace` ersetzt den Block komplett. |
 | `iteration-indicator-remove --id <n> --name <key>` | Entfernt einen Indikator aus `spec_json.indicators` (warnt, wenn Regeln ihn noch referenzieren). |
-| `indicator-config-indicator-set --id <n> --name <key> --file frag.json [--replace]` | Fügt einen Indikator in `config_json[key]` ein/ersetzt ihn; Param-Werte dürfen arange-Ranges (Multiparameter) sein. |
+| `indicator-config-indicator-set --id <n> --name <key> --file frag.json [--replace]` | Wie oben, für `config_json[key]`; Param-Werte dürfen arange-Ranges (Multiparameter) sein. |
 | `indicator-config-indicator-remove --id <n> --name <key>` | Entfernt einen Indikator aus `config_json` (`_stops` geschützt). |
 | `indicator-config-stops-set --id <n> [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]` | Setzt einzelne Werte in `config_json._stops`; Zahlen/`null` werden gecastet, Format-Felder bleiben String, nicht genannte Stops bleiben. |
 | `iteration-condition-add --id <n> [--exit] [--block K \| --new-block [--short]] --file cond.json` | Hängt eine Regel-Bedingung an einen Block (ohne `--block` an Block 1, UND-verknüpft; `--new-block` erzeugt einen ODER-Block). |
