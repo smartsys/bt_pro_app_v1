@@ -156,7 +156,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     # N BacktestRuns anlegen und enqueuen
     # rq lazy importieren — nicht verfügbar im Test-Kontext
     from rq import Queue
-    from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME
+    from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME, BACKTEST_JOB_TIMEOUT
     # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
     from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
 
@@ -207,7 +207,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             indicator_config_id=payload.indicator_config_id,
         )
         run_ids.append(run_id)
-        q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=3600)
+        q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=BACKTEST_JOB_TIMEOUT)
 
     logger.info(
         '[TESTSET-RUN] TestSetRun #%d gestartet: %d Runs enqueued (TestSet #%d)',

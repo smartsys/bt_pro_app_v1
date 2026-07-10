@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.69] - 10.07.2026
+
+### Fixed
+- Backtest-Jobs ohne Zeitlimit einreihen (job_timeout=-1), damit große Multiparameter-Läufe nicht mehr am RQ-Timeout scheitern
+  - Große Läufe (z.B. 371943 Kombinationen, 143 Chunks) wurden nach 3600 Sekunden von RQ hart abgebrochen (Task exceeded maximum timeout value) und verloren alle bereits gerechneten Chunks
+  - Neue Konstante BACKTEST_JOB_TIMEOUT=-1 in redis_conn.py ersetzt das hartcodierte 3600 an allen fünf run_backtest_job-Enqueues (api_backtest.py, api_testset_runs.py, recovery_oneshot.py)
+  - OHLC-Download- und Delete-All-Jobs behalten bewusst ihr 3600-Limit
+  - Der Speicherbedarf ist über das Chunking gedeckelt, nicht über die Laufzeit - deshalb ist ein Zeitlimit hier der falsche Hebel
+
+### Files
+- services/api/redis_conn.py
+- services/api/routes/api_backtest.py
+- services/api/routes/api_testset_runs.py
+- services/api/recovery_oneshot.py
+
+
+
 ## [1.30.68] - 10.07.2026
 
 ### Added

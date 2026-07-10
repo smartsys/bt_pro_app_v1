@@ -26,7 +26,12 @@ from sqlalchemy import func, cast, String, Float, Text, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from services.api.recompute import recompute_single_result
-from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME, RECOMPUTE_QUEUE_NAME
+from services.api.redis_conn import (
+    get_redis_connection,
+    BACKTEST_QUEUE_NAME,
+    RECOMPUTE_QUEUE_NAME,
+    BACKTEST_JOB_TIMEOUT,
+)
 from services.api.schemas import ApiResponse, PaginatedData, BacktestRunOut, BacktestResultOut
 from user_data.utils.database.db import get_session, get_engine
 from user_data.utils.database.models import (
@@ -197,7 +202,7 @@ def start_backtest(request_body: dict):
 
     # Job in RQ-Queue einreihen — Worker braucht nur die run_id
     q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
-    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=3600)
+    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=BACKTEST_JOB_TIMEOUT)
 
     return {'data': {'run_id': run_id}, 'error': None}
 
@@ -264,7 +269,7 @@ def start_walk_forward(request_body: dict):
     )
 
     q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
-    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=3600)
+    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=BACKTEST_JOB_TIMEOUT)
 
     return {
         'data': {
@@ -1300,7 +1305,7 @@ def restart_run(run_id: int) -> JSONResponse:
 
     # Neuen Job einreihen
     q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
-    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=3600)
+    q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=BACKTEST_JOB_TIMEOUT)
 
     return JSONResponse({'status': 'ok', 'run_id': run_id, 'message': 'Run neugestartet'})
 

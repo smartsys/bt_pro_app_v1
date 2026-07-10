@@ -41,3 +41,10 @@ def get_redis_connection() -> Redis:
 RECOMPUTE_QUEUE_NAME: str = 'recompute'
 BACKTEST_QUEUE_NAME: str = 'backtest'
 OHLC_DOWNLOAD_QUEUE_NAME: str = 'ohlc_download'
+
+# Zeitlimit für Backtest-Jobs: -1 = kein Limit. Die Laufzeit eines Runs hängt
+# an der Zahl der Kombinationen und kann Stunden betragen; ein festes Limit
+# killt den Worker mitten im Raster und verwirft alle bereits gerechneten
+# Chunks. Der Speicherbedarf ist über das Chunking gedeckelt, nicht über die
+# Laufzeit — deshalb wird hier nicht begrenzt.
+BACKTEST_JOB_TIMEOUT: int = -1

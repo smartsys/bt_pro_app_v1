@@ -18,7 +18,7 @@ sys.path.insert(0, os.environ.get('PROJECT_ROOT', '/app'))
 
 from rq import Queue
 
-from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME
+from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME, BACKTEST_JOB_TIMEOUT
 from user_data.utils.database.db import get_session
 from user_data.utils.database.models import BacktestRun
 
@@ -57,7 +57,7 @@ def recover_stale_runs() -> None:
             q.enqueue(
                 'services.api.worker_tasks.run_backtest_job',
                 run_id=run.id,
-                job_timeout=3600,
+                job_timeout=BACKTEST_JOB_TIMEOUT,
             )
             logger.info("[RECOVERY] Run #%d neu eingereiht", run.id)
 
