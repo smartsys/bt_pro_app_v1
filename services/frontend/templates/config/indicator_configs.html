@@ -16,6 +16,67 @@
     gap: 4px;
     justify-content: center;
   }
+  /* Vergleichs-Modal: nur EIN Scroll-Container (das Modal selbst scrollt nicht),
+     damit die Matrix möglichst weit ohne Scrollen sichtbar ist. */
+  .compare-scroll {
+    max-height: calc(100vh - 14rem);
+    overflow: auto;
+  }
+  /* Bewusst eng: Tablers `.table>:not(caption)>*>*` erzwingt .75rem Zellpadding und
+     bläht die Matrix auf Scrollhöhe auf. Der Kind-Pfad schlägt diese Regel ohne !important. */
+  .compare-table > thead > tr > th,
+  .compare-table > tbody > tr > td {
+    white-space: nowrap;
+    padding: 0.15rem 0.75rem;
+    line-height: 1.4;
+    font-size: 0.8125rem;
+  }
+  .compare-table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--tblr-bg-surface);
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    /* Lange Config-Namen umbrechen lassen — sonst erzwingen sie Querscrollen */
+    white-space: normal;
+    vertical-align: bottom;
+  }
+  .compare-table .compare-field {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--tblr-bg-surface);
+    width: 1%;
+  }
+  .compare-table thead .compare-field {
+    z-index: 3;
+  }
+  /* Gruppenkopf je Indikator — kräftige obere Kante, damit der Anfang eines
+     Indikators sofort erkennbar ist; die letzte Zeile einer Gruppe schließt
+     mit der Kante der nächsten Gruppe ab. */
+  .compare-table > tbody > tr.compare-group > td {
+    font-weight: 600;
+    background: var(--tblr-bg-surface-tertiary);
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    border-top: 2px solid var(--tblr-primary);
+    letter-spacing: 0.02em;
+  }
+  /* Erste Gruppe braucht keine Kante — der Tabellenkopf grenzt bereits ab */
+  .compare-table > tbody > tr.compare-group:first-child > td {
+    border-top: 0;
+  }
+  /* Zeilen einer Gruppe leicht einrücken, damit die Zugehörigkeit sichtbar wird */
+  .compare-table > tbody > tr:not(.compare-group) > td.compare-field {
+    padding-left: 1.75rem;
+  }
+
+  /* Hervorhebung hängt am Schalter „Abweichungen zeigen": ohne ihn bleibt die
+     Matrix ruhig und ununterbrochen lesbar. */
+  .compare-highlight .compare-table > tbody > tr.compare-differs > td {
+    background: var(--tblr-warning-lt);
+  }
 </style>
 {% endblock %}
 
@@ -28,6 +89,10 @@
         <div class="page-pretitle">Konfiguration</div>
       </div>
       <div class="col-auto ms-auto d-flex gap-2">
+        <button id="btn-compare-configs" class="btn btn-outline-primary" disabled title="Mindestens zwei Configs markieren">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M21 17l-18 0"/><path d="M6 10l-3 -3l3 -3"/><path d="M3 7l18 0"/><path d="M18 20l3 -3l-3 -3"/></svg>
+          Vergleichen<span id="compare-count" class="badge bg-primary-lt ms-2 d-none">0</span>
+        </button>
         <button id="btn-import-config" class="btn btn-outline-primary">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M9 11l3 3l3 -3"/><path d="M12 4l0 10"/></svg>
           Importieren
@@ -45,6 +110,35 @@
 {% block content %}
 {# Versteckter Datei-Dialog für den Config-Import #}
 <input type="file" id="config-import-file" accept=".json,application/json" style="display:none">
+
+<!-- Modal: Config-Vergleich (eine Spalte je markierter Config, gleiche Indikatoren untereinander) -->
+<div class="modal modal-blur fade" id="modal-compare" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document" id="compare-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Configs vergleichen</h5>
+        <label class="form-check form-switch mb-0 ms-4 text-nowrap">
+          <input class="form-check-input" type="checkbox" id="compare-highlight-diffs">
+          <span class="form-check-label">Abweichungen zeigen</span>
+        </label>
+        <label class="form-check form-switch mb-0 ms-3 me-auto text-nowrap">
+          <input class="form-check-input" type="checkbox" id="compare-only-diffs">
+          <span class="form-check-label">Nur Änderungen zeigen</span>
+        </label>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <div id="compare-body">
+          <div class="text-secondary">Wird geladen...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Schließen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-header">
     <h3 class="card-title">Alle Configs (<span id="configs-total">...</span>)</h3>
@@ -89,6 +183,11 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 
+  /* Markierte Config-IDs. Wahrheit liegt hier, nicht im DOM — sonst verwirft
+     jeder Seitenwechsel/Redraw die Auswahl und ein Vergleich zweier Configs
+     auf verschiedenen Seiten wäre unmöglich. */
+  var selectedIds = new Set();
+
   var table = new DataTable("#configs-table", {
     ajax: {
       url: "/api/config/indicator",
@@ -103,7 +202,8 @@ document.addEventListener("DOMContentLoaded", function() {
         orderable: false,
         searchable: false,
         render: function(data) {
-          return '<input class="form-check-input row-select" type="checkbox" value="' + data + '">';
+          var checked = selectedIds.has(data) ? ' checked' : '';
+          return '<input class="form-check-input row-select" type="checkbox" value="' + data + '"' + checked + '>';
         }
       },
       { data: "id", className: "text-center" },
@@ -284,38 +384,58 @@ document.addEventListener("DOMContentLoaded", function() {
     var id = btn.getAttribute("data-id");
     if (!confirm("Config #" + id + " wirklich löschen?")) return;
     fetch('/api/config/indicator/' + id, { method: 'DELETE' })
-      .then(function() { table.ajax.reload(); updateBulkBtn(); });
+      .then(function() {
+        selectedIds.delete(parseInt(id));
+        table.ajax.reload();
+        updateSelectionUi();
+      });
   });
 
-  /* Select-All */
+  /* Select-All — wirkt auf die sichtbaren Zeilen der aktuellen Seite */
   document.getElementById("select-all").addEventListener("change", function() {
     var checked = this.checked;
-    document.querySelectorAll(".row-select").forEach(function(cb) { cb.checked = checked; });
-    updateBulkBtn();
+    document.querySelectorAll(".row-select").forEach(function(cb) {
+      cb.checked = checked;
+      if (checked) { selectedIds.add(parseInt(cb.value)); } else { selectedIds.delete(parseInt(cb.value)); }
+    });
+    updateSelectionUi();
   });
 
   /* Einzelne Checkbox */
   document.getElementById("configs-table").addEventListener("change", function(e) {
     if (!e.target.classList.contains("row-select")) return;
-    // Select-All Zustand aktualisieren
+    var id = parseInt(e.target.value);
+    if (e.target.checked) { selectedIds.add(id); } else { selectedIds.delete(id); }
+    updateSelectionUi();
+  });
+
+  /* Nach jedem Redraw (Seitenwechsel, Suche, Sortierung) den Select-All-Haken
+     an den sichtbaren Zeilen ausrichten; die Zeilen-Haken setzt bereits der Renderer. */
+  table.on("draw", updateSelectionUi);
+
+  function updateSelectionUi() {
     var all = document.querySelectorAll(".row-select");
     var allChecked = document.querySelectorAll(".row-select:checked");
     document.getElementById("select-all").checked = all.length > 0 && all.length === allChecked.length;
-    updateBulkBtn();
-  });
 
-  function updateBulkBtn() {
-    var selected = document.querySelectorAll(".row-select:checked");
-    var btn = document.getElementById("btn-bulk-delete");
-    document.getElementById("bulk-delete-count").textContent = selected.length;
-    if (selected.length > 0) { btn.classList.remove("d-none"); } else { btn.classList.add("d-none"); }
+    var count = selectedIds.size;
+
+    var delBtn = document.getElementById("btn-bulk-delete");
+    document.getElementById("bulk-delete-count").textContent = count;
+    if (count > 0) { delBtn.classList.remove("d-none"); } else { delBtn.classList.add("d-none"); }
+
+    /* Vergleichen braucht mindestens zwei Configs */
+    var cmpBtn = document.getElementById("btn-compare-configs");
+    var cmpBadge = document.getElementById("compare-count");
+    cmpBtn.disabled = count < 2;
+    cmpBtn.title = count < 2 ? "Mindestens zwei Configs markieren" : count + " Configs vergleichen";
+    cmpBadge.textContent = count;
+    if (count > 0) { cmpBadge.classList.remove("d-none"); } else { cmpBadge.classList.add("d-none"); }
   }
 
   /* Bulk-Delete */
   document.getElementById("btn-bulk-delete").addEventListener("click", function() {
-    var selected = document.querySelectorAll(".row-select:checked");
-    var ids = [];
-    selected.forEach(function(cb) { ids.push(parseInt(cb.value)); });
+    var ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     if (!confirm(ids.length + " Configs wirklich löschen?")) return;
     fetch('/api/config/indicator/bulk-delete', {
@@ -325,9 +445,104 @@ document.addEventListener("DOMContentLoaded", function() {
     })
       .then(function(r) { return r.json(); })
       .then(function(json) {
+        selectedIds.clear();
         document.getElementById("select-all").checked = false;
-        updateBulkBtn();
+        updateSelectionUi();
         table.ajax.reload();
+      });
+  });
+
+  /* Vergleichen — Zeilen-Matrix der markierten Configs im Modal */
+  function escapeHtml(value) {
+    var div = document.createElement("div");
+    div.textContent = value == null ? "" : String(value);
+    return div.innerHTML;
+  }
+
+  function renderCompareCell(value) {
+    if (value === "fehlt") { return '<td class="text-danger fw-bold">fehlt</td>'; }
+    if (value === "—" || value === "nicht gesetzt") {
+      return '<td class="text-muted">' + escapeHtml(value) + '</td>';
+    }
+    return '<td>' + escapeHtml(value) + '</td>';
+  }
+
+  function renderCompareTable(data) {
+    var head = '<th class="compare-field">Feld</th>';
+    data.columns.forEach(function(col) {
+      var sub = col.strategy_concept_name || '';
+      if (col.strategy_iteration_number != null) { sub += ' · Iteration ' + col.strategy_iteration_number; }
+      head += '<th><div><span class="badge bg-blue-lt me-1">' + escapeHtml(col.id) + '</span>' +
+        escapeHtml(col.name) + '</div>' +
+        (sub ? '<div class="text-muted fw-normal">' + escapeHtml(sub) + '</div>' : '') +
+        '</th>';
+    });
+
+    var span = data.columns.length + 1;
+    var body = '';
+    data.groups.forEach(function(group) {
+      body += '<tr class="compare-group" data-differs="' + group.differs + '"><td colspan="' + span + '">' +
+        escapeHtml(group.name) + '</td></tr>';
+      group.rows.forEach(function(row) {
+        body += '<tr class="' + (row.differs ? 'compare-differs' : '') + '" data-differs="' + row.differs + '">' +
+          '<td class="compare-field text-secondary">' + escapeHtml(row.label) + '</td>' +
+          row.cells.map(renderCompareCell).join('') +
+          '</tr>';
+      });
+    });
+
+    /* Bewusst ohne `table-vcenter`: dessen Regel `.table.table-vcenter > tbody > tr > td`
+       erzwingt .875rem Zellpadding und schlägt die kompakte Darstellung. */
+    return '<div class="compare-scroll"><table class="table compare-table">' +
+      '<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  /* Zwei unabhängige Schalter:
+     - „Abweichungen zeigen" färbt abweichende Zeilen ein (rein CSS).
+     - „Nur Änderungen zeigen" blendet gleiche Zeilen und komplett gleiche Gruppen aus.
+     Die Daten bleiben in beiden Fällen im DOM — die Schalter nehmen nur die Sicht zurück. */
+  function applyCompareView() {
+    var body = document.getElementById("compare-body");
+    body.classList.toggle("compare-highlight", document.getElementById("compare-highlight-diffs").checked);
+
+    var onlyDiffs = document.getElementById("compare-only-diffs").checked;
+    body.querySelectorAll("tbody tr").forEach(function(tr) {
+      tr.classList.toggle("d-none", onlyDiffs && tr.dataset.differs !== "true");
+    });
+  }
+  document.getElementById("compare-highlight-diffs").addEventListener("change", applyCompareView);
+  document.getElementById("compare-only-diffs").addEventListener("change", applyCompareView);
+
+  document.getElementById("btn-compare-configs").addEventListener("click", function() {
+    if (selectedIds.size < 2) return;
+    var ids = Array.from(selectedIds).sort(function(a, b) { return a - b; });
+
+    var body = document.getElementById("compare-body");
+    body.innerHTML = '<div class="text-secondary">Wird geladen...</div>';
+    body.classList.remove("compare-highlight");
+    document.getElementById("compare-highlight-diffs").checked = false;
+    document.getElementById("compare-only-diffs").checked = false;
+
+    /* Breite wächst mit der Spaltenzahl: zwei Configs passen in modal-xl,
+       ab drei braucht die Matrix die volle Fensterbreite. */
+    var dialog = document.getElementById("compare-dialog");
+    dialog.classList.toggle("modal-xl", ids.length <= 2);
+    dialog.classList.toggle("modal-full-width", ids.length > 2);
+
+    new tabler.Modal(document.getElementById("modal-compare")).show();
+
+    fetch('/api/config/indicator/compare?ids=' + ids.join(','))
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, json: j }; }); })
+      .then(function(res) {
+        if (!res.ok || !res.json.data) {
+          body.innerHTML = '<div class="alert alert-danger">Vergleich fehlgeschlagen: ' +
+            escapeHtml((res.json && (res.json.detail || res.json.error)) || 'Unbekannter Fehler') + '</div>';
+          return;
+        }
+        body.innerHTML = renderCompareTable(res.json.data);
+      })
+      .catch(function(err) {
+        body.innerHTML = '<div class="alert alert-danger">Fehler: ' + escapeHtml(err) + '</div>';
       });
   });
 

@@ -54,6 +54,7 @@ from user_data.utils.database.models import (
 # in die IndicatorConfig zu übernehmen (Snapshot führt sie nur im backtest_config).
 from user_data.strategies.generic.indicator_factory import stops_from_portfolio, describe_combos
 # GEÄNDERT: Single-Source-Notation für Name/Beschreibung einer Indicator-Config
+from services.api.utils.indicator_compare import build_indicator_config_comparison
 from services.api.utils.indicator_labels import build_indicator_config_labels
 # GEÄNDERT: Export/Import von Indicator-Configs als eigenständige JSON-Dateien
 from services.api.utils.strategy_io import export_indicator_config, import_indicator_config
@@ -508,6 +509,43 @@ def list_indicator_configs(
             _enrich_indicator_config_dict(item, concept_map, iteration_map)
 
         return {'data': items, 'error': None}
+    finally:
+        session.close()
+
+
+@router.get('/indicator/compare')
+def compare_indicator_configs(ids: str = Query(..., description='Config-IDs, kommagetrennt')):
+    """Mehrere Indicator-Configs als Zeilen-Matrix gegenüberstellen.
+
+    Muss vor der Route ``/indicator/{config_id}`` stehen, sonst greift die ID-Route.
+    Die Spalten-Reihenfolge folgt der übergebenen ID-Reihenfolge.
+    """
+    try:
+        wanted = [int(part) for part in ids.split(',') if part.strip()]
+    except ValueError:
+        return JSONResponse({'data': None, 'error': 'Ungültige ID-Liste'}, status_code=400)
+    if len(wanted) < 2:
+        return JSONResponse({'data': None, 'error': 'Mindestens zwei Configs auswählen'}, status_code=400)
+
+    session = get_session()
+    try:
+        rows = session.query(IndicatorConfig).filter(IndicatorConfig.id.in_(wanted)).all()
+        by_id = {c.id: c for c in rows}
+        missing = [cid for cid in wanted if cid not in by_id]
+        if missing:
+            return JSONResponse(
+                {'data': None, 'error': f'Config nicht gefunden: {", ".join(str(m) for m in missing)}'},
+                status_code=404,
+            )
+
+        concept_map, iteration_map = _load_concept_iteration_maps(session)
+        items = []
+        for cid in wanted:
+            item = IndicatorConfigOut.model_validate(by_id[cid]).model_dump(mode='json')
+            _enrich_indicator_config_dict(item, concept_map, iteration_map)
+            items.append(item)
+
+        return {'data': build_indicator_config_comparison(items), 'error': None}
     finally:
         session.close()
 

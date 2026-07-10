@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.67] - 10.07.2026
+
+### Added
+- Vergleich mehrerer Indicator-Configs als Zeilen-Matrix im Modal
+  - Button "Vergleichen" im Page Header der Seite /config/indicator, aktiv ab zwei markierten Configs
+  - Neuer Endpunkt GET /api/config/indicator/compare?ids=... liefert eine Spalte je Config und eine Zeilengruppe je Indikator (Stops als letzte Gruppe); die Route muss vor /indicator/{config_id} stehen, sonst greift die ID-Route
+  - Neues Modul indicator_compare.py stellt die Configs gegenüber; die Wertformatierung delegiert an die kanonischen Formatierer aus indicator_labels.py, damit keine zweite Sweep-Mathematik im Frontend entsteht
+  - Der Vergleich blendet nichts aus: auch indicator, tf, enabled, Inputs und Quellen-Verkettungen sind sichtbar; ein Indikator, den eine Config nicht hat, erscheint dort als "fehlt"
+  - Modal-Breite wächst mit der Spaltenzahl (modal-xl bis zwei Configs, ab drei modal-full-width); Tabellenkopf und Feld-Spalte bleiben beim Scrollen stehen, lange Config-Namen im Kopf brechen um statt quer zu scrollen
+  - Zwei unabhängige Schalter im Modal-Header: "Abweichungen zeigen" färbt abweichende Zeilen ein, "Nur Änderungen zeigen" blendet gleiche Zeilen und komplett gleiche Gruppen aus; beide stehen beim Öffnen auf aus
+  - Indikator-Gruppen durch kräftige Oberkante und eingerückte Feldnamen klar voneinander abgegrenzt; die Vergleichstabelle läuft bewusst ohne table-vcenter, dessen Regel .table.table-vcenter > tbody > tr > td erzwingt 0.875rem Zellpadding
+  - Zeilenauswahl der Config-Liste liegt jetzt in einem Set statt im DOM und überlebt Seitenwechsel, Suche und Sortierung — ohne das wäre ein Vergleich zweier Configs auf verschiedenen Seiten nicht möglich; der Bulk-Delete profitiert mit
+  - Sieben Unit-Tests, darunter der Nachweis, dass ein still beschnittener Wertebereich als Abweichung auffällt
+
+### Files
+- services/api/utils/indicator_compare.py
+- services/api/routes/api_config.py
+- services/api/tests/test_indicator_compare.py
+- services/frontend/templates/config/indicator_configs.html
+
+
+
 ## [1.30.66] - 10.07.2026
 
 ### Fixed
