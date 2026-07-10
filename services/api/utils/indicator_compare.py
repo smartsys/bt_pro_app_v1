@@ -7,7 +7,13 @@ entfernt oder ein Stop verändert?
 
 Formatierung delegiert vollständig an ``indicator_labels`` bzw. die Expander der
 ``indicator_factory`` — es gibt hier bewusst keine zweite Sweep-Mathematik. Ein
-Wertebereich erscheint als ``min-max (n)``, ein Skalar als Wert.
+Wertebereich erscheint als ``min-max (n) s: schritt``, ein Skalar als Wert.
+
+Der Schrittwert wird nur hier angehängt, nicht in ``indicator_labels``: Dort ist die
+Notation die Single Source für Config-Namen und -Beschreibungen, die durch einen
+zusätzlichen Schritt ihre Bedeutung ändern würden. Für den Vergleich ist der Schritt
+dagegen wesentlich — zwei Bereiche mit gleichem Minimum und Maximum können sich allein
+im Raster unterscheiden.
 
 Anders als die Config-Beschreibung blendet der Vergleich nichts aus: Auch Inputs
 (``close``, ``volume``), Quellen-Verkettungen (``source``), Meta-Keys (``indicator``,
@@ -22,6 +28,7 @@ from user_data.strategies.generic.indicator_factory import (
 )
 
 from services.api.utils.indicator_labels import (
+    _clean_num,
     _fmt_param_axis,
     _fmt_pct,
     _fmt_scalar,
@@ -52,23 +59,64 @@ _PCT_STOPS = {'tp_stop', 'sl_stop', 'tsl_th', 'tsl_stop'}
 _INDICATOR_HEAD_KEYS = ['indicator', 'tf', 'enabled']
 
 
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _range_step(value) -> Optional[float]:
+    """Schrittweite einer Sweep-Achse, oder ``None``, wenn es keine gibt.
+
+    Beim arange-Dict steht der Schritt direkt drin. Eine Liste hat nur dann einen
+    Schritt, wenn ihre numerischen Werte gleichmäßig verteilt sind — sonst gibt es
+    schlicht keinen, und die Zelle bleibt bei ``min-max (n)``.
+    """
+    if isinstance(value, dict):
+        step = value.get('step')
+        return step if _is_number(step) else None
+
+    if isinstance(value, (list, tuple)) and len(value) > 1 and all(_is_number(v) for v in value):
+        steps = {round(b - a, 6) for a, b in zip(value, value[1:])}
+        if len(steps) == 1:
+            return steps.pop()
+
+    return None
+
+
+def _append_step(text: str, step_label: Optional[str]) -> str:
+    """Hängt den Schritt an die Bereichs-Notation an: ``10-50 (5)`` -> ``10-50 (5) s: 10``.
+
+    Skalare tragen keine ``(n)``-Klammer und bleiben unverändert.
+    """
+    if step_label is None or ' (' not in text:
+        return text
+    return f"{text} s: {step_label}"
+
+
 def _format_value(value, ind_id: str, key: str) -> str:
-    """Einen Config-Wert lesbar machen: Wertebereich als ``min-max (n)``, sonst Skalar."""
+    """Einen Config-Wert lesbar machen: Wertebereich als ``min-max (n) s: schritt``, sonst Skalar."""
     if value is None:
         return 'nicht gesetzt'
     if isinstance(value, bool):
         return 'ja' if value else 'nein'
-    return _fmt_param_axis(_expand_range(value, ind_id, key))
+
+    text = _fmt_param_axis(_expand_range(value, ind_id, key))
+    step = _range_step(value)
+    return _append_step(text, _clean_num(step) if step is not None else None)
 
 
 def _format_stop(value, key: str) -> str:
-    """Einen Stop-Wert in der Notation der Config-Namen darstellen."""
+    """Einen Stop-Wert in der Notation der Config-Namen darstellen, Sweeps mit Schritt."""
     if value is None:
         return 'nicht gesetzt'
+
+    step = _range_step(value)
     if key in _PCT_STOPS:
-        return _fmt_pct(value, key)
+        # Prozent-Stops werden ×100 angezeigt — der Schritt muss dieselbe Skala tragen.
+        label = _clean_num(step * 100) + '%' if step is not None else None
+        return _append_step(_fmt_pct(value, key), label)
     if key == 'td_stop':
-        return _fmt_td(value, key)
+        label = _clean_num(step) if step is not None else None
+        return _append_step(_fmt_td(value, key), label)
     return _fmt_scalar(value)
 
 

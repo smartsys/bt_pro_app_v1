@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.68] - 10.07.2026
+
+### Added
+- Config-Vergleich zeigt die Schrittweite von Wertebereichen
+  - Wertebereiche erscheinen in der Vergleichsansicht jetzt als 'min-max (n) s: schritt' statt nur 'min-max (n)' — zwei Bereiche mit gleichem Minimum und Maximum, aber unterschiedlichem Raster waren bisher nicht unterscheidbar
+  - Schritt kommt beim arange-Dict direkt aus 'step'; bei Listen nur, wenn die Werte gleichmäßig verteilt sind — ungleichmäßige Listen bleiben ohne Schritt
+  - Prozent-Stops (TP/SL/TSL) tragen den Schritt auf derselben Skala wie den Wert (10-30% (5) s: 5%), Skalare bleiben unverändert
+  - Formatierung bewusst lokal in indicator_compare.py, nicht in indicator_labels.py: dort ist die Notation Single Source für die generierten Config-Namen und -Beschreibungen, die sich sonst alle geändert hätten
+  - Vier neue Tests: abweichendes Raster bei gleichen Grenzen, Stop-Sweeps mit Prozent-Schritt, gleichmäßige und ungleichmäßige Listen
+
+### Files
+- services/api/utils/indicator_compare.py
+- services/api/tests/test_indicator_compare.py
+
+
+
 ## [1.30.67] - 10.07.2026
 
 ### Added

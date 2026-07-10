@@ -84,7 +84,7 @@ def test_zusaetzlicher_indikator_wird_als_fehlt_markiert(fast_sma, sma, stops):
     assert group['present'] == [False, True]
     assert group['differs'] is True
     assert _find_row(group, 'indicator')['cells'] == ['fehlt', 'talib:SMA']
-    assert _find_row(group, 'timeperiod')['cells'] == ['fehlt', '10-90 (9)']
+    assert _find_row(group, 'timeperiod')['cells'] == ['fehlt', '10-90 (9) s: 10']
     assert result['differs'] is True
 
 
@@ -99,8 +99,50 @@ def test_beschnittener_wertebereich_wird_erkannt(fast_sma, stops):
     ])
 
     row = _find_row(_find_group(result, 'fast_sma'), 'length')
-    assert row['cells'] == ['2-14 (13)', '2-8 (7)']
+    assert row['cells'] == ['2-14 (13) s: 1', '2-8 (7) s: 1']
     assert row['differs'] is True
+
+
+def test_gleiche_grenzen_mit_anderem_schritt_weichen_ab(fast_sma, stops):
+    """Gleiches Minimum und Maximum, gröberes Raster: nur der Schritt verrät die Abweichung."""
+    grober = dict(fast_sma)
+    grober['length'] = {'type': 'arange', 'start': 2, 'stop': 14.01, 'step': 2, 'dtype': 'int64'}
+
+    result = build_indicator_config_comparison([
+        _config(4, 'A', {'fast_sma': fast_sma, '_stops': stops}),
+        _config(33, 'B', {'fast_sma': grober, '_stops': stops}),
+    ])
+
+    row = _find_row(_find_group(result, 'fast_sma'), 'length')
+    assert row['cells'] == ['2-14 (13) s: 1', '2-14 (7) s: 2']
+    assert row['differs'] is True
+
+
+def test_liste_ohne_gleichmaessiges_raster_zeigt_keinen_schritt(fast_sma, stops):
+    """Eine ungleichmäßige Werteliste hat keinen Schritt — die Zelle bleibt bei ``min-max (n)``."""
+    liste = dict(fast_sma)
+    liste['length'] = [2, 3, 8]
+
+    result = build_indicator_config_comparison([
+        _config(4, 'A', {'fast_sma': liste, '_stops': stops}),
+        _config(33, 'B', {'fast_sma': liste, '_stops': stops}),
+    ])
+
+    row = _find_row(_find_group(result, 'fast_sma'), 'length')
+    assert row['cells'] == ['2-8 (3)', '2-8 (3)']
+
+
+def test_gleichmaessige_liste_zeigt_ihren_schritt(fast_sma, stops):
+    """Eine Liste mit konstantem Abstand wird wie ein arange-Dict dargestellt."""
+    liste = dict(fast_sma)
+    liste['length'] = [2, 4, 6, 8]
+
+    result = build_indicator_config_comparison([
+        _config(4, 'A', {'fast_sma': liste, '_stops': stops}),
+        _config(33, 'B', {'fast_sma': liste, '_stops': stops}),
+    ])
+
+    assert _find_row(_find_group(result, 'fast_sma'), 'length')['cells'] == ['2-8 (4) s: 2', '2-8 (4) s: 2']
 
 
 def test_stops_werden_in_der_namens_notation_dargestellt(fast_sma, stops):
@@ -115,6 +157,24 @@ def test_stops_werden_in_der_namens_notation_dargestellt(fast_sma, stops):
     assert _find_row(group, 'SL')['cells'] == ['15%', '15%']
     assert _find_row(group, 'TD')['cells'] == ['8', '8']
     assert _find_row(group, 'TSL')['cells'] == ['nicht gesetzt', 'nicht gesetzt']
+
+
+def test_stop_sweeps_zeigen_ihren_schritt(fast_sma, stops):
+    """Prozent-Stops zeigen den Schritt in Prozent, TD-Stops als ganze Zahl."""
+    sweep_stops = dict(stops)
+    sweep_stops['tp_stop'] = {'type': 'arange', 'start': 0.1, 'stop': 0.31, 'step': 0.05, 'dtype': 'float64'}
+    sweep_stops['td_stop'] = {'type': 'arange', 'start': 4, 'stop': 12.01, 'step': 4, 'dtype': 'int64'}
+
+    result = build_indicator_config_comparison([
+        _config(4, 'A', {'fast_sma': fast_sma, '_stops': sweep_stops}),
+        _config(33, 'B', {'fast_sma': fast_sma, '_stops': sweep_stops}),
+    ])
+
+    group = _find_group(result, 'Stops')
+    assert _find_row(group, 'TP')['cells'] == ['10-30% (5) s: 5%', '10-30% (5) s: 5%']
+    assert _find_row(group, 'TD')['cells'] == ['4-12 (3) s: 4', '4-12 (3) s: 4']
+    # Skalare Stops bleiben ohne Schritt.
+    assert _find_row(group, 'SL')['cells'] == ['15%', '15%']
 
 
 def test_abweichende_stops_werden_markiert(fast_sma, stops):
