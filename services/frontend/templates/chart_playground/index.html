@@ -923,7 +923,7 @@
       // GEÄNDERT: Iterations-Objekte cachen damit der Change-Handler spec_json.rules lesen kann
       state.iterations = items;
       // GEÄNDERT: Drafts (Auto-Registrierungen) ausblenden, absteigend nach version sortieren
-      // (neueste Iteration zuerst) und als Label die Iterations-ID plus Versionsname zeigen.
+      // (neueste Iteration zuerst) und als Label die Version plus Versionsname zeigen (nicht die ID).
       items
         .filter(it => it.status !== 'draft')
         .sort((a, b) => (b.version || 0) - (a.version || 0))
@@ -931,7 +931,7 @@
           const o = document.createElement('option');
           o.value = it.id;
           const name = (it.version_name || '').trim();
-          o.textContent = name ? it.id + ' — ' + name : String(it.id);
+          o.textContent = name ? it.version + ' - ' + name : String(it.version);
           sel.appendChild(o);
         });
     } catch (e) { console.warn('Iterationen laden fehlgeschlagen', e); }
@@ -2999,7 +2999,10 @@
   }
 
   // GEÄNDERT: Ticket 15 — nimmt das komplette SetupOut-Objekt (vier _json-Felder); paramsMeta/inputs/outputs werden aus dem Katalog rekonstruiert
-  async function applySetupConfig(data) {
+  async function applySetupConfig(data, opts) {
+    // GEÄNDERT: hideIndicators erzwingt beim Result-Ladepfad, dass alle Indikatoren zunächst
+    // ausgeblendet sind (Anzeige-Checkboxen nicht angehakt) — der Nutzer blendet gezielt ein.
+    const hideIndicators = !!(opts && opts.hideIndicators);
     await loadCatalog();
     const bt = (data && data.backtest_config_json) || {};
     const indCfg = (data && data.indicators_config_json) || {};
@@ -3077,7 +3080,7 @@
         timeframe: normalizeLoadedTf(entry.tf, tfNormalized, name),
         color: uiInd.color || nextColor(),
         plot_type: uiInd.plot_type || meta.plot_type || 'subplot',
-        chartVisible: uiInd.chart_visible !== false,
+        chartVisible: hideIndicators ? false : (uiInd.chart_visible !== false),
         // GEÄNDERT: Linien-Settings laden (Fallback-Defaults für Alt-Setups)
         opacity: (uiInd.opacity == null) ? 1 : uiInd.opacity,
         lineWidth: uiInd.line_width || 1,
@@ -3261,7 +3264,7 @@
     try {
       const r = await fetch('/api/strategy/iterations?concept_id=' + conceptId);
       const j = await r.json();
-      // GEÄNDERT: absteigend nach version sortieren (neueste zuerst), Label = Iterations-ID plus Versionsname
+      // GEÄNDERT: absteigend nach version sortieren (neueste zuerst), Label = Version plus Versionsname (nicht die ID)
       const items = ((j.data && j.data.items) || [])
         .filter(it => it.status !== 'draft')
         .sort((a, b) => (b.version || 0) - (a.version || 0));
@@ -3270,7 +3273,7 @@
         const o = document.createElement('option');
         o.value = String(it.id);
         const name = (it.version_name || '').trim();
-        o.textContent = name ? it.id + ' — ' + name : String(it.id);
+        o.textContent = name ? it.version + ' - ' + name : String(it.version);
         selI.appendChild(o);
       });
       if (preselectId && items.some(it => String(it.id) === String(preselectId))) {
@@ -4247,7 +4250,7 @@
         if (j.error) {
           setStatus('Result laden fehlgeschlagen: ' + j.error, 'err');
         } else if (j.data) {
-          await applySetupConfig(j.data);
+          await applySetupConfig(j.data, { hideIndicators: true });
           setStatus('Result ' + urlResultId + ' geladen (flüchtig — kein Setup gespeichert)', 'ok');
           runBacktestLite({ fitAfter: true });
         }

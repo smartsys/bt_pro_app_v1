@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.71] - 11.07.2026
+
+### Changed
+- Chart-Playground: Iteration-Dropdown zeigt Version statt ID; Indikatoren beim Result-Laden ausgeblendet
+  - Iteration-Dropdown (Haupt-Auswahl und Überschreiben-Modal) zeigt jetzt die Version statt der internen Iterations-ID als Label; der interne value bleibt die ID
+  - Label-Trenner von Gedankenstrich auf Bindestrich umgestellt
+  - Beim Laden eines Results über ?resultid= sind die Indikator-Anzeige-Checkboxen zunächst nicht angehakt (chartVisible=false via neuem hideIndicators-Flag in applySetupConfig); der normale Setup-Ladepfad behält die gespeicherte Sichtbarkeit
+
+### Files
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.70] - 11.07.2026
 
 ### Changed
