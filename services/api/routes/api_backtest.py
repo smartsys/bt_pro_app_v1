@@ -391,6 +391,11 @@ def get_runs(
                 item['result_count'] = None
             # GEÄNDERT: Name der Indikator-Config (None wenn keine/gelöscht)
             item['indicator_config_name'] = ind_cfg_names.get(run_to_ind_cfg.get(item['id']))
+            # GEÄNDERT: Size-Type aus dem eingefrorenen Backtest-Config-Block (unter 'portfolio';
+            # None wenn nicht gesetzt)
+            item['size_type'] = (
+                (item.get('backtest_config_json') or {}).get('portfolio') or {}
+            ).get('size_type')
             js = job_stats.get(item['id'], {})
             item['jobs_queued'] = js.get('queued', 0)
             item['jobs_running'] = js.get('running', 0)

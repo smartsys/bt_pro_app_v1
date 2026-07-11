@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.73] - 11.07.2026
+
+### Added
+- Runs-Tabelle: Filterzeile (Symbol/TF/Zeitraum/Size Type) und Size Type an der Indikator-Config
+  - Neue Filterzeile auf /backtest/runs zum clientseitigen Filtern nach Symbol, TF, Zeitraum (Backtest-Fenster Von-Bis) und Size Type; Werte aus den geladenen Runs abgeleitet, sofort wirksam, mit Reset
+  - Size Type (aus dem eingefrorenen Backtest-Config-Block portfolio.size_type) wird hinten an die Indikator-Config-Spalte als Fliesstext angehaengt
+  - Spaltenkopf TR in TSR umbenannt (Testset-Run-ID)
+  - get_runs liefert zusaetzlich ein size_type-Feld je Run
+
+### Files
+- services/api/routes/api_backtest.py
+- services/frontend/templates/backtest/runs.html
+
+
+
 ## [1.30.72] - 11.07.2026
 
 ### Added

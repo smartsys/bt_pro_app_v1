@@ -25,6 +25,44 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  /* GEÄNDERT: Filter-Dropdowns auf die Höhe der Input-Boxen bringen (Tabler-Padding-Diff) */
+  #runs-filter-card .form-select-sm { padding-top: 4px; padding-bottom: 4px; }
+</style>
+<!-- Filter-Leiste -->
+<div class="card mb-3" id="runs-filter-card">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Symbol</label>
+        <select id="filter-symbol" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">TF</label>
+        <select id="filter-timeframe" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Zeitraum</label>
+        <select id="filter-period" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Size Type</label>
+        <select id="filter-size_type" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button id="filter-reset" class="btn btn-sm btn-outline-secondary">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="card">
   <div class="card-header">
     <h3 class="card-title">Alle Runs (<span id="runs-total">...</span>)</h3>
@@ -45,7 +83,7 @@
           <tr>
             <th class="w-1"></th>
             <th class="w-1"><input type="checkbox" id="runs-select-all" class="form-check-input" title="Alle auf dieser Seite auswählen"></th>
-            <th class="text-nowrap text-center" title="Testset-Run-ID (gemeinsame Klammer aller Runs eines Testset-Laufs)">TR</th>
+            <th class="text-nowrap text-center" title="Testset-Run-ID (gemeinsame Klammer aller Runs eines Testset-Laufs)">TSR</th>
             <th class="text-nowrap text-center">ID</th>
             <th class="text-nowrap">Strategie</th>
             <th class="text-nowrap">Symbol</th>
@@ -108,6 +146,7 @@ document.addEventListener("DOMContentLoaded", function() {
       url: "/api/backtest/runs?limit=10000",
       dataSrc: function(json) {
         document.getElementById("runs-total").textContent = json.data.total;
+        populateFilters(json.data.items);
         return json.data.items;
       }
     },
@@ -154,8 +193,13 @@ document.addEventListener("DOMContentLoaded", function() {
       {
         // GEÄNDERT: Name der verknüpften Indikator-Config, falls vorhanden
         data: "indicator_config_name",
-        render: function(data) {
-          return data ? data : '<span class="text-muted">-</span>';
+        render: function(data, type, row) {
+          var name = data ? data : '<span class="text-muted">-</span>';
+          // GEÄNDERT: Size-Type (aus dem Backtest-Config-Block) hinten als Fließtext anhängen
+          if (row.size_type) {
+            name += ' <span class="text-muted">' + row.size_type + '</span>';
+          }
+          return name;
         }
       },
       {
@@ -299,6 +343,65 @@ document.addEventListener("DOMContentLoaded", function() {
       zeroRecords: "Keine passenden Einträge gefunden",
       paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
     }
+  });
+
+  /* Filter (clientseitig): Symbol / TF / Zeitraum / Size Type */
+  function periodOf(it) {
+    var s = it.start_date ? it.start_date.substring(0, 10) : '';
+    var e = it.end_date ? it.end_date.substring(0, 10) : '';
+    if (!s && !e) return '';
+    return s + ' – ' + e;
+  }
+  function fillSelect(sel, values) {
+    var current = sel.value;
+    sel.length = 1;  // "Alle" behalten
+    values.forEach(function(v) { sel.add(new Option(v, v)); });
+    if (current && values.indexOf(current) !== -1) sel.value = current;
+  }
+  /* Dropdown-Werte aus den geladenen Runs ableiten (aktuelle Auswahl bleibt erhalten) */
+  function populateFilters(items) {
+    var symbols = [], tfs = [], periods = [], sizeTypes = [];
+    items.forEach(function(it) {
+      if (it.symbol && symbols.indexOf(it.symbol) === -1) symbols.push(it.symbol);
+      if (it.timeframe && tfs.indexOf(it.timeframe) === -1) tfs.push(it.timeframe);
+      var p = periodOf(it);
+      if (p && periods.indexOf(p) === -1) periods.push(p);
+      if (it.size_type && sizeTypes.indexOf(it.size_type) === -1) sizeTypes.push(it.size_type);
+    });
+    symbols.sort(); tfs.sort(); periods.sort(); sizeTypes.sort();
+    fillSelect(document.getElementById("filter-symbol"), symbols);
+    fillSelect(document.getElementById("filter-timeframe"), tfs);
+    fillSelect(document.getElementById("filter-period"), periods);
+    fillSelect(document.getElementById("filter-size_type"), sizeTypes);
+  }
+  /* Custom-Suchfunktion — nur auf die Runs-Tabelle anwenden */
+  DataTable.ext.search.push(function(settings, searchData, dataIndex, rowData) {
+    if (settings.nTable.id !== 'runs-table') return true;
+    var sym = document.getElementById("filter-symbol").value;
+    var tf = document.getElementById("filter-timeframe").value;
+    var per = document.getElementById("filter-period").value;
+    var st = document.getElementById("filter-size_type").value;
+    if (sym && rowData.symbol !== sym) return false;
+    if (tf && rowData.timeframe !== tf) return false;
+    if (per && periodOf(rowData) !== per) return false;
+    if (st && rowData.size_type !== st) return false;
+    return true;
+  });
+  /* Änderungen sofort anwenden */
+  ["filter-symbol", "filter-timeframe", "filter-period", "filter-size_type"].forEach(function(id) {
+    document.getElementById(id).addEventListener("change", function() {
+      table.draw();
+      document.getElementById("runs-total").textContent = table.page.info().recordsDisplay;
+    });
+  });
+  /* Reset */
+  document.getElementById("filter-reset").addEventListener("click", function() {
+    document.getElementById("filter-symbol").value = "";
+    document.getElementById("filter-timeframe").value = "";
+    document.getElementById("filter-period").value = "";
+    document.getElementById("filter-size_type").value = "";
+    table.draw();
+    document.getElementById("runs-total").textContent = table.page.info().recordsDisplay;
   });
 
   /* Child Row Toggle (gemäß Design-Guide: manuelles DOM-Einfügen) */
