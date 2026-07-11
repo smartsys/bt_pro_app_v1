@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.72] - 11.07.2026
+
+### Added
+- Results-Tabelle: Size Type in der Iterations-Zelle und als Filter
+  - Size Type (aus der Backtest-Config, per Result-Snapshot) wird hinten an die Iterations-Zelle als schlichter Fliesstext angehaengt
+  - Neuer Size-Type-Filter in der Filterleiste (Werte aus den vorhandenen Backtest-Configs); Filterung serverseitig ueber den Result-Snapshot
+  - Spaltenkopf Bestwert in Best umbenannt
+  - Filter-Dropdowns auf die Hoehe der Input-Boxen angeglichen (form-select-sm Padding)
+  - Spalten ID, Run und Symbol zentriert
+
+### Files
+- services/api/routes/api_backtest.py
+- services/frontend/templates/backtest/results.html
+
+
+
 ## [1.30.71] - 11.07.2026
 
 ### Changed

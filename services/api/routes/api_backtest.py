@@ -674,6 +674,8 @@ def get_results_datatable(request: Request) -> dict:
     iteration_id = int(iteration_id_str) if iteration_id_str else None
     symbol = params.get('symbol', '') or None
     timeframe = params.get('timeframe', '') or None
+    # GEÄNDERT: Size-Type-Filter (aus Result-Snapshot, kein Run-Feld)
+    size_type = params.get('size_type', '') or None
     run_id_str = params.get('run_id', '') or None
     run_id = int(run_id_str) if run_id_str else None
 
@@ -724,6 +726,15 @@ def get_results_datatable(request: Request) -> dict:
             result_conditions.append(BacktestResult.run_id.in_(matching_run_ids))
         if run_id:
             result_conditions.append(BacktestResult.run_id == run_id)
+
+        # GEÄNDERT: Size-Type-Filter als Result-Level-Bedingung auf den Snapshot-JSON-Pfad
+        # (size_type lebt in full_config_snapshot_json['backtest_config'], nicht am Run).
+        if size_type:
+            result_conditions.append(
+                func.json_extract_path_text(
+                    BacktestResult.full_config_snapshot_json, 'backtest_config', 'size_type'
+                ) == size_type
+            )
 
         # GEÄNDERT: Numerische Min/Max-Feld-Filter anwenden (z.B. win_rate_pct_min=90)
         for field, column in _NUMERIC_FILTER_COLUMNS.items():
@@ -893,6 +904,8 @@ def get_results_datatable(request: Request) -> dict:
                 'symbol': run.symbol,
                 'exchange': run.exchange,
                 'timeframe': run.timeframe,
+                # GEÄNDERT: Size-Type aus dem Result-Snapshot (wie tp_stop/sl_stop)
+                'size_type': ((result.full_config_snapshot_json or {}).get('backtest_config') or {}).get('size_type'),
                 'start_date': run.start_date.isoformat() if run.start_date else None,
                 'end_date': run.end_date.isoformat() if run.end_date else None,
                 'tp_stop': tp_stop,
@@ -961,6 +974,12 @@ def get_filters() -> dict:
 
         symbols = [r[0] for r in session.query(BacktestRun.symbol).distinct().all()]
         timeframes = [r[0] for r in session.query(BacktestRun.timeframe).distinct().all()]
+        # GEÄNDERT: Size-Type-Filterwerte aus den vorhandenen Backtest-Configs (kleine Tabelle,
+        # autoritative Quelle der genutzten Größenarten)
+        size_types = [
+            r[0] for r in session.query(BacktestConfig.size_type)
+            .distinct().order_by(BacktestConfig.size_type.asc()).all()
+        ]
         runs = [
             {'id': r.id, 'label': f"#{r.id} {r.strategy_name} {r.symbol} {r.timeframe}"}
             for r in session.query(BacktestRun).order_by(BacktestRun.id.desc()).all()
@@ -971,6 +990,7 @@ def get_filters() -> dict:
             'has_unassigned': has_unassigned,
             'symbols': symbols,
             'timeframes': timeframes,
+            'size_types': size_types,
             'runs': runs,
         }
     finally:
