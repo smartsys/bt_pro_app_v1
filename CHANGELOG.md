@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.75] - 12.07.2026
+
+### Fixed
+- Heatmap auf der Analyse-Seite blieb dauerhaft beim Platzhalter haengen
+  - Sobald eine Heatmap den Hinweis Zwei verschiedene Parameter auswaehlen zeigte (X und Y kurzzeitig gleich, z.B. beim Umstellen der zweiten Heatmap auf dieselben Achsen wie die erste), kam sie nicht mehr zurueck: Der Platzhalter ueberschrieb das Canvas per innerHTML, die ECharts-Instanz blieb aber am Container registriert. Der naechste echarts.init() lieferte die alte, canvas-lose Instanz zurueck und setOption() zeichnete ins Leere.
+  - Platzhalter-Zweig meldet die Instanz jetzt per dispose() ab statt sie nur zu clear()en; vor dem Neu-Init wird das Platzhalter-Markup aus dem Container entfernt.
+  - Verifiziert an Run 231: rechte Heatmap rendert nach dem Platzhalter wieder, auch bei mehrfachem Wechsel.
+
+### Files
+- services/frontend/templates/backtest/analyse.html
+
+
+
 ## [1.30.74] - 12.07.2026
 
 ### Changed

@@ -707,6 +707,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var inst = heatmapInstances[prefix] || {};
     var el = document.getElementById(prefix + '-chart');
     if (!inst.chart) {
+      // GEÄNDERT: Platzhalter-Markup entfernen, sonst bliebe der Hinweistext
+      // neben dem frisch initialisierten Chart im Container stehen.
+      el.innerHTML = '';
       inst.chart = echarts.init(el);
     } else {
       inst.chart.clear();
@@ -787,7 +790,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
     if (!paramX || !paramY || paramX === paramY) {
       var el = document.getElementById(prefix + '-chart');
-      if (inst.chart) { inst.chart.clear(); }
+      // GEÄNDERT: dispose() statt clear() — sonst bleibt die Instanz am Container
+      // registriert, echarts.init() liefert später die alte (canvas-lose) Instanz
+      // zurück und die Heatmap bleibt dauerhaft beim Platzhalter hängen.
+      if (inst.chart) { inst.chart.dispose(); }
       el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Zwei verschiedene Parameter auswählen</div>';
       inst.chart = null;
       heatmapInstances[prefix] = inst;
