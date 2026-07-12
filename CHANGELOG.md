@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.85] - 13.07.2026
+
+### Added
+- Chart-Playground: Button „Vollen Run starten" — Multiparameter-Lauf als Ad-hoc-Run aus dem aktuellen Playground-Zustand
+  - Neuer Endpunkt POST /api/chart-playground/run-backtest: nimmt denselben Payload wie der Schnellbacktest, aber ohne Startwert-Reduktion — das eingetragene Parameter-Raster inklusive '_stops' geht vollständig als Multiparameter-Lauf in den Run.
+  - Ad-hoc-Run ohne gespeicherte Configs: Zeitraum, Raster, Stops und Portfolio werden als Snapshot in backtest_config_json/indicators_config_json geschrieben; backtest_config_id und indicator_config_id bleiben NULL, iteration_id wird gesetzt.
+  - Regel-Abgleich als Schutz vor stiller Divergenz: Der Worker rechnet immer mit iteration.spec_json['rules']. Weichen die Playground-Regeln davon ab, lehnt der Endpunkt den Start mit 409 ab, statt mit den alten Regeln der Iteration zu rechnen. Fehlt die Iteration, kommt 400.
+  - Bestätigungsdialog vor dem Start zeigt Symbol, Exchange, Timeframe, Zeitraum und die Anzahl der Kombinationen (gezählt über den bestehenden Endpunkt /api/config/indicator/count-combos, damit es nur eine Zähl-Wahrheit gibt).
+  - Nach dem Start Toast mit Run-ID und Link auf die Ergebnisse.
+
+### Files
+- services/api/routes/api_chart_playground.py
+- services/frontend/templates/chart_playground/index.html
+
+
+
 ## [1.30.84] - 12.07.2026
 
 ### Fixed

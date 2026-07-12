@@ -15,6 +15,7 @@ DELETE /api/chart-playground/setups/{id}       — Setup löschen
 import glob
 import importlib
 import inspect
+import json
 import os
 import re
 from datetime import datetime
@@ -26,9 +27,16 @@ import pandas as pd
 import vectorbtpro as vbt
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from rq import Queue
 
+from services.api.redis_conn import (
+    BACKTEST_JOB_TIMEOUT,
+    BACKTEST_QUEUE_NAME,
+    get_redis_connection,
+)
 from user_data.strategies.generic.indicator_factory import (
     STOP_PARAM_KEYS,
+    count_total_combos,
     run_indicator_nan_safe,
 )
 from user_data.strategies.generic.tf_resample import (
@@ -39,7 +47,12 @@ from user_data.strategies.generic.tf_resample import (
     validate_tf,
 )
 from user_data.utils.database.db import get_session
-from user_data.utils.database.models import ChartPlaygroundSetup
+from user_data.utils.database.models import (
+    ChartPlaygroundSetup,
+    StrategyConcept,
+    StrategyIteration,
+)
+from user_data.utils.database.repository import create_backtest_run
 from user_data.utils.ohlc.loader import EXCHANGE_DATA_CLASS
 
 
@@ -1119,6 +1132,139 @@ def _pf_scalar(value: Any) -> Optional[float]:
         return float(value) if value is not None else None
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Voller Run aus dem Playground (ad hoc, ohne gespeicherte Configs)
+# ---------------------------------------------------------------------------
+def _rules_fingerprint(rules: Optional[dict]) -> str:
+    """Normalform der logik-wirksamen Regeln — Vergleichsbasis Playground/Iteration.
+
+    Verglichen werden nur die Teile, die die Engine auswertet: je Seite (entry/exit)
+    die Bedingungen der aktiven Blöcke (enabled != false) in ihrer Reihenfolge.
+    Deaktivierte Blöcke fallen raus, weil sie auch aus der ODER-Verknüpfung fallen.
+    """
+    def normalize_group(group: Any) -> list:
+        if not isinstance(group, dict):
+            return []
+        return [
+            block.get('conditions') or []
+            for block in (group.get('blocks') or [])
+            if isinstance(block, dict) and block.get('enabled', True) is not False
+        ]
+
+    rules = rules or {}
+    return json.dumps(
+        {
+            'entry': normalize_group(rules.get('entry')),
+            'exit': normalize_group(rules.get('exit')),
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+
+@router.post('/run-backtest')
+def run_backtest(req: RunBacktestIn) -> dict:
+    """Startet einen vollen Backtest mit dem aktuellen Playground-Zustand.
+
+    Anders als /run-backtest-lite: keine Startwert-Reduktion — das eingetragene
+    Parameter-Raster (inklusive '_stops') geht vollständig als Multiparameter-Lauf
+    in den Run. Zeitraum, Symbol und Portfolio kommen aus dem Playground, nicht aus
+    einer gespeicherten BacktestConfig; entsprechend bleiben backtest_config_id und
+    indicator_config_id am Run NULL (ad-hoc-Run).
+
+    Die Regeln liefert ausschließlich die gewählte Iteration (der Worker liest
+    iteration.spec_json['rules']). Weichen die Playground-Regeln davon ab, wird der
+    Start mit 409 abgelehnt, statt still mit den alten Regeln zu rechnen — die
+    geänderten Regeln müssen vorher als Iteration gespeichert werden.
+    """
+    from user_data.strategies.generic.spec_runner import (
+        SPEC_RUNNER_IMPORT_PATH,
+        VERSION as spec_runner_version,
+    )
+
+    if not req.iteration_id:
+        raise HTTPException(
+            status_code=400,
+            detail='Keine Iteration gewählt — ein voller Run braucht eine gespeicherte Iteration.',
+        )
+
+    session = get_session()
+    try:
+        iteration = (
+            session.query(StrategyIteration)
+            .filter(StrategyIteration.id == req.iteration_id)
+            .first()
+        )
+        if not iteration:
+            raise HTTPException(status_code=404, detail=f'Iteration {req.iteration_id} nicht gefunden.')
+        concept = (
+            session.query(StrategyConcept)
+            .filter(StrategyConcept.id == iteration.concept_id)
+            .first()
+        )
+        if not concept:
+            raise HTTPException(
+                status_code=404,
+                detail=f'Konzept zu Iteration {req.iteration_id} nicht gefunden.',
+            )
+
+        iteration_rules = (iteration.spec_json or {}).get('rules')
+        if iteration_rules is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f'Iteration {req.iteration_id} hat keine Regeln (spec_json ohne "rules").',
+            )
+        if _rules_fingerprint(req.rules) != _rules_fingerprint(iteration_rules):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f'Die Regeln im Playground weichen von Iteration {req.iteration_id} ab. '
+                    'Der Run rechnet immer mit den Regeln der Iteration — bitte die geänderten '
+                    'Regeln erst als Iteration speichern.'
+                ),
+            )
+
+        strategy_family = concept.slug
+        strategy_name = iteration.version
+        import_path = iteration.import_path if iteration.type == 'hardcoded' else SPEC_RUNNER_IMPORT_PATH
+    finally:
+        session.close()
+
+    backtest_config = {
+        **req.data,
+        'portfolio': req.portfolio,
+        'strategy_family': strategy_family,
+        'strategy_name': strategy_name,
+        'import_path': import_path,
+    }
+
+    run_id = create_backtest_run(
+        backtest_config=backtest_config,
+        indicators_config=req.indicators,
+        spec_runner_version=spec_runner_version,
+        iteration_id=req.iteration_id,
+        # Ad-hoc-Run: Zeitraum und Raster stammen aus dem Playground, nicht aus
+        # gespeicherten Configs — die Herkunfts-Referenzen bleiben deshalb leer.
+        backtest_config_id=None,
+        indicator_config_id=None,
+    )
+
+    queue = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
+    queue.enqueue(
+        'services.api.worker_tasks.run_backtest_job',
+        run_id=run_id,
+        job_timeout=BACKTEST_JOB_TIMEOUT,
+    )
+
+    return {
+        'data': {
+            'run_id': run_id,
+            'n_combinations': count_total_combos(req.indicators),
+        },
+        'error': None,
+    }
 
 
 # ---------------------------------------------------------------------------

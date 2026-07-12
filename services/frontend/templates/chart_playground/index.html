@@ -95,8 +95,10 @@
       </div>
       <div style="align-self:flex-end">
         <button class="btn btn-primary" id="cpLoadChartBtn">Chart laden</button>
-        <!-- GEÄNDERT: Voller Backtest aus dem Playground entfernt — hier nur noch Schnellbacktest + Refresh -->
         <button class="btn btn-success ms-1" id="cpRunLiteBtn">Schnellbacktest</button>
+        <!-- GEÄNDERT: Voller Run aus dem Playground — Multiparameter-Lauf mit dem aktuellen
+             Zustand (Zeitraum, Raster, Stops) als ad-hoc-Run, ohne Configs zu speichern. -->
+        <button class="btn btn-azure ms-1" id="cpRunFullBtn" title="Vollen Multiparameter-Lauf mit den aktuellen Einstellungen starten">Vollen Run starten</button>
       </div>
     </div>
     <!-- Zeile 2: Chart-Buttons links, Setup-Gruppe rechts -->
@@ -2757,6 +2759,81 @@
   }
 
   // GEÄNDERT: Ticket 23 — Schnellanalyse-Button (Lite-Backtest, kein DB-Schreiben)
+  /** Zählt die Kombinationen eines Indikator-Dicts serverseitig (einzige Zähl-Wahrheit). */
+  async function countCombosForRun(indicators) {
+    try {
+      const resp = await fetch('/api/config/indicator/count-combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_json: indicators }),
+      });
+      const j = await resp.json();
+      if (!resp.ok || j.error || !j.data) return null;
+      return j.data.total;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // GEÄNDERT: Voller Run aus dem Playground. Anders als der Schnellbacktest (erste Kombination,
+  // kein DB-Schreiben) startet dieser Button den echten Multiparameter-Lauf über das gesamte
+  // eingetragene Raster — mit dem aktuell eingestellten Zeitraum, den Stops und dem Portfolio.
+  // Es werden keine Configs gespeichert: der Run trägt den Zustand als Snapshot (ad-hoc-Run).
+  // Die Regeln liefert die gewählte Iteration; weichen die Playground-Regeln ab, lehnt das
+  // Backend den Start ab (409), statt still mit den Regeln der Iteration zu rechnen.
+  async function runBacktestFull() {
+    if (!_cpPreChecks()) return;
+    const payload = buildBacktestPayload();
+    if (!payload.iteration_id) {
+      showToast('Voller Run: Keine Iteration gewählt — der Run rechnet mit den Regeln einer gespeicherten Iteration.', 'err');
+      return;
+    }
+    const btn = document.getElementById('cpRunFullBtn');
+    const originalLabel = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starte...';
+    try {
+      const total = await countCombosForRun(payload.indicators);
+      const d = payload.data;
+      const comboLine = total != null
+        ? total.toLocaleString('de-DE') + (total === 1 ? ' Kombination' : ' Kombinationen')
+        : 'Anzahl Kombinationen nicht ermittelbar';
+      const confirmed = window.confirm(
+        'Vollen Run starten?\n\n'
+        + `${d.symbols[0]} · ${d.exchange} · ${d.timeframe}\n`
+        + `Zeitraum: ${d.start} bis ${d.end}\n`
+        + `${comboLine}`
+      );
+      if (!confirmed) return;
+
+      const r = await fetch('/api/chart-playground/run-backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!r.ok || j.error || !j.data) {
+        const msg = j.detail || j.error || (r.ok ? 'unbekannt' : `HTTP ${r.status}`);
+        showToast('Voller Run: ' + msg, 'err', null, null, 15000);
+        return;
+      }
+      const n = j.data.n_combinations || 0;
+      const combos = n.toLocaleString('de-DE') + (n === 1 ? ' Kombination' : ' Kombinationen');
+      showToast(
+        `Voller Run gestartet — Run ${j.data.run_id} (${combos})`,
+        'ok',
+        `/backtest/results?run_id=${j.data.run_id}`,
+        'Ergebnisse ansehen',
+        15000
+      );
+    } catch (e) {
+      showToast('Voller Run: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalLabel;
+    }
+  }
+
   async function runBacktestLite(opts) {
     // GEÄNDERT: fitAfter nur im Lade-Pfad gesetzt — dort soll der Chart nach dem Equity-Overlay auf "Fit"
     // landen. Beim manuellen Schnellbacktest bleibt der aktuelle Zoom des Users erhalten.
@@ -3867,6 +3944,7 @@
     invalidateLiteResult();
   });
   document.getElementById('cpRunLiteBtn').addEventListener('click', () => runBacktestLite());
+  document.getElementById('cpRunFullBtn').addEventListener('click', () => runBacktestFull());
   document.getElementById('cpPickerSearch').addEventListener('input', (e) => renderPicker(e.target.value));
   document.getElementById('cpSaveBtn').addEventListener('click', () => saveSetup(false));
   document.getElementById('cpSaveAsBtn').addEventListener('click', () => saveSetup(true));
