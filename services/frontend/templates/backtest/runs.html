@@ -141,6 +141,12 @@ document.addEventListener("DOMContentLoaded", function() {
       '<div class="card-body py-2" style="word-break:break-all;font-size:1.1rem;">' + indConfig + '</div></div>';
   }
 
+  /* ISO-Datum (JJJJ-MM-TT) in deutsches Format (TT.MM.JJJJ) umwandeln */
+  function formatDateDe(iso) {
+    var p = iso.split("-");
+    return p.length === 3 ? p[2] + "." + p[1] + "." + p[0] : iso;
+  }
+
   var table = new DataTable("#runs-table", {
     ajax: {
       url: "/api/backtest/runs?limit=10000",
@@ -219,14 +225,21 @@ document.addEventListener("DOMContentLoaded", function() {
       },
       {
         data: "start_date",
-        render: function(data) {
-          return data ? '<span class="text-secondary">' + data.substring(0, 10) + '</span>' : '-';
+        render: function(data, type) {
+          if (!data) return type === "display" ? '-' : '';
+          var iso = data.substring(0, 10);
+          // Sortierung/Filter weiter auf ISO, nur die Anzeige im deutschen Format
+          if (type !== "display") return iso;
+          return '<span class="text-secondary">' + formatDateDe(iso) + '</span>';
         }
       },
       {
         data: "end_date",
-        render: function(data) {
-          return data ? '<span class="text-secondary">' + data.substring(0, 10) + '</span>' : '-';
+        render: function(data, type) {
+          if (!data) return type === "display" ? '-' : '';
+          var iso = data.substring(0, 10);
+          if (type !== "display") return iso;
+          return '<span class="text-secondary">' + formatDateDe(iso) + '</span>';
         }
       },
       {
