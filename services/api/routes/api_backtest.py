@@ -846,6 +846,16 @@ def get_results_datatable(request: Request) -> dict:
                 # Bestandszeilen ab, die frueher als JSON-null (Text "null") statt SQL-NULL gespeichert
                 # wurden, damit auch sie via nullslast ans Ende fallen.
                 sort_col = func.nullif(cast(BacktestResult.best_criteria_json, Text), 'null')
+            elif col_name == 'id':
+                # GEÄNDERT: Sortierung nach der ID ohne NULLS-LAST und ohne Tiebreaker. Die ID
+                # ist Primärschlüssel — nie NULL und bereits eindeutig, ein Tiebreaker kann die
+                # Reihenfolge also gar nicht mehr ändern. Angehängt macht er den PK-Index aber
+                # unbrauchbar: PostgreSQL sortiert dann die ganze Tabelle durch (gemessen
+                # 1.135 ms mit NULLS LAST, 1.564 ms mit Tiebreaker — gegen 0,5 ms per Index).
+                # Das ist die Default-Sortierung der Results-Liste, trifft also jeden Aufruf.
+                ordered = BacktestResult.id.desc() if order_dir == 'desc' else BacktestResult.id.asc()
+                query = query.order_by(ordered)
+                sort_col = None
             else:
                 sort_col = getattr(BacktestResult, col_name, None)
             if sort_col is not None:

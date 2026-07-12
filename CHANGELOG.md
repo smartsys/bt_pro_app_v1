@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.79] - 12.07.2026
+
+### Fixed
+- Results-Liste lud in der Default-Sortierung (ID) mehrere Sekunden — Tiebreaker machte den Primärschlüssel-Index unbrauchbar
+  - Die Results-Liste sortiert per Default nach ID absteigend. Die Sortierung hängte - wie bei den Metrik-Spalten - stur die Tiebreaker (max_drawdown_pct DESC NULLS LAST, id DESC) plus ein NULLS LAST an. Bei der ID ist beides sinnlos: sie ist Primärschlüssel, also nie NULL und bereits eindeutig, ein Tiebreaker kann die Reihenfolge gar nicht mehr ändern. Angehängt macht er den PK-Index jedoch unbrauchbar - PostgreSQL sortierte die kompletten 3 Mio Zeilen durch (Full Sort, 624.854 Blöcke).
+  - Sortierung nach ID läuft jetzt ohne NULLS LAST und ohne Tiebreaker über den PK-Index: 1.564 ms auf 0,5 ms (SQL) bzw. ~3 s auf 15 ms (API, unter laufender Worker-Last gemessen). Beide Richtungen geprüft, Reihenfolge unverändert korrekt.
+  - Die Metrik-Spalten behalten ihre Tiebreaker - dort sind sie nötig, weil sich Werte wiederholen (u.a. über 1 Mio Results ohne Trades mit identischen Werten).
+  - Nebenbefund: Das seit 1.30.78 aktive Auto-Update (5s) legte während der noch laufenden Abfrage nach, sodass sich die Anfragen stapelten - mit dem Fix erledigt.
+
+### Files
+- services/api/routes/api_backtest.py
+
+
+
 ## [1.30.78] - 12.07.2026
 
 ### Changed
