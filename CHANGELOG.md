@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.80] - 12.07.2026
+
+### Added
+- Toolbox-Verb vergleichstabelle (Iterations-Vergleich aus Doku-Favoriten) plus Skill-Prozess für Analyse-Screenshots
+  - Neues Toolbox-Verb vergleichstabelle --strategy <slug> [--save <pfad>] [--json]: generiert je Testset eine Iterations-Vergleichstabelle (Zeilen Symbol × Iteration, Spalten Spitze = Max Total Return und robuster Kern = Profitfaktor >= 30 Trades) ausschließlich aus den roten Doku-Favoriten mit persistierten Bestwert-Kriterien — purge-fest, funktioniert auch für Runs ohne vollen Result-Satz; --save schreibt zusätzlich eine eigenständige Markdown-Notiz mit Frontmatter
+  - fetch() und _dt_query() der Toolbox akzeptieren einen optionalen timeout-Parameter (Default unverändert 10s); das neue Verb nutzt 60s, weil die Favoriten-Sortierung auf Runs mit sechsstelligen Result-Zahlen länger als 10s dauert
+  - SKILL.md um zwei Prozess-Abschnitte erweitert: Analyse-Screenshots direkt nach run-bestwerte (zeitkritisch, solange der volle Result-Satz lebt) und Iterations-Vergleichstabelle; Trigger-Beschreibung ergänzt
+  - Neue Referenz references/screenshot-standard.md: verbindlicher Screenshot-Standard (maximiertes Browserfenster, Übersicht-Tab, Total Return %, beide Heatmaps auf Average, feste Achsenpaare je Strategie, Ablage- und Namenskonvention im Vault) samt erprobtem Subagent-Prompt und bekannten Stolpersteinen
+  - Handbuch: Werkzeugliste um vergleichstabelle ergänzt und --json-Aufzählung aktualisiert
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- .claude/skills/ds-strategie-session/references/screenshot-standard.md
+- documentation/project/handbuch.md
+
+
+
 ## [1.30.79] - 12.07.2026
 
 ### Fixed

@@ -59,6 +59,8 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
                                                               #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
   python3 toolbox.py run-favorites-reset --testset-run 6      # Favoriten einer Run-Menge zuruecksetzen; ohne Flag beide Sterne, sonst --doc (rot) und/oder --user (gelb)
                                                               #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
+  python3 toolbox.py vergleichstabelle --strategy vwma        # Iterations-Vergleichstabelle je Testset aus roten Doku-Favoriten (purge-fest);
+                                                              #   optional --save <pfad> schreibt sie als Vault-Notiz (z.B. .../strategies/<slug>/iterationen-vergleich.md)
   python3 toolbox.py run-favorites-list --testset-run 6       # markierte Favoriten-Results ausgeben (reiner Read); Selektoren/Flags wie run-favorites-reset
   python3 toolbox.py result-lookup --run 1812 --params "vwma_length=20,atr_mult=2.5"    # Result(s) per Parameter-Werten nachschlagen (Subset, serverseitig)
                                                               #   [--tolerance 1] = skalare Nachbarschaft (±t je Parameter) | [--tolerance-steps 1] = ±N Raster-Schritte je Achse, [--limit 20]
@@ -180,6 +182,7 @@ Unterstützte Bereiche:
     vault               — indizierte Vault-Dateien (Pfad-Substring)
 """
 
+import datetime
 import json
 import os
 import re
@@ -246,8 +249,8 @@ def parse_arg(arg: str):
     return None, None
 
 
-def fetch(path: str) -> dict:
-    with urllib.request.urlopen(f"{BASE}{path}", timeout=TIMEOUT) as r:
+def fetch(path: str, timeout: int = TIMEOUT) -> dict:
+    with urllib.request.urlopen(f"{BASE}{path}", timeout=timeout) as r:
         return json.loads(r.read())
 
 
@@ -1332,7 +1335,8 @@ _PF_MIN_TRADES = 30
 
 
 def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
-              sharpe_ratio_min=None, total_trades_min=None, length: int = 1) -> tuple:
+              sharpe_ratio_min=None, total_trades_min=None, length: int = 1,
+              timeout: int = TIMEOUT) -> tuple:
     """Top-<length> Results eines Runs nach Spalte <order_idx> absteigend.
 
     Geteilte Low-Level-Abfrage über /api/backtest/results/dt für die vier
@@ -1350,7 +1354,7 @@ def _dt_query(run_id: int, order_idx: int, *, win_rate_pct_min=None,
         params["sharpe_ratio_min"] = sharpe_ratio_min
     if total_trades_min is not None:
         params["total_trades_min"] = total_trades_min
-    dd = fetch(f"/api/backtest/results/dt?{urllib.parse.urlencode(params)}")
+    dd = fetch(f"/api/backtest/results/dt?{urllib.parse.urlencode(params)}", timeout=timeout)
     return dd.get("data") or [], dd.get("recordsFiltered")
 
 
@@ -1615,6 +1619,112 @@ def run_favorites_list(args: list) -> int:
             print(f"  - {_fmt_result_line(r)}")
 
     print(f"\n**{found_total} Favoriten-Markierungen gefunden.**\n")
+    return 0
+
+
+def vergleichstabelle(args: list) -> int:
+    """Iterations-Vergleichstabelle aus roten Doku-Favoriten (nur Testset-Läufe).
+
+    Flags: --strategy <slug> [--save <pfad>] [--json]
+    Je Testset ein Abschnitt; Zeilen = Symbol × Iteration, Spalten = Spitze
+    (Bestwert „Max Total Return") und robuster Kern (Bestwert „Profitfaktor
+    >= 30 Trades") — dasselbe Format wie die Benchmark-Tabellen in status.md.
+    Quelle sind ausschließlich rote Doku-Favoriten mit gespeicherten
+    Bestwert-Kriterien (best_criteria); die Tabelle funktioniert daher auch für
+    Runs, deren volle Result-Sätze bereits gelöscht wurden. Einzel-Läufe ohne
+    Testset bleiben bewusst außen vor. --save schreibt zusätzlich eine
+    eigenständige Markdown-Notiz (mit Frontmatter) an den angegebenen Pfad.
+    """
+    f = _parse_flags(args)
+    if not f.get("strategy") or f.get("strategy") is True:
+        raise ValueError("vergleichstabelle braucht --strategy <slug> (z.B. --strategy vwma)")
+    slug = str(f["strategy"])
+    runs, _scope = _resolve_runs({"strategy": slug, "limit": f.get("limit", 10000)}, "vergleichstabelle")
+    ts_runs = [r for r in runs if r.get("testset_run_id")]
+
+    # Je Run die zwei Tabellen-Bestwerte aus den roten Doku-Favoriten ziehen.
+    # Kürzel-Katalog ist Single Source am Server (best_criteria_labels.py):
+    # T = Max Total Return (Spitze), P = Profitfaktor >= 30 Trades (Kern).
+    def _fav_by_short(marked: list, letter: str):
+        for r in marked:
+            for c in (r.get("best_criteria") or []):
+                if isinstance(c, dict) and c.get("short") == letter:
+                    return r
+        return None
+
+    groups: dict = {}
+    missing: list = []
+    for run in sorted(ts_runs, key=lambda x: x["id"]):
+        # Doku-Favoriten zuerst; 60s-Timeout, weil die Favoriten-Sortierung auf
+        # Runs mit sechsstelligen Result-Zahlen (z.B. 371k) über 10s dauern kann.
+        rows, _n = _dt_query(run["id"], _FAV_KINDS["doc"][0], length=200, timeout=60)
+        marked = [r for r in rows if r.get(_FAV_KINDS["doc"][1])]
+        spitze, kern = _fav_by_short(marked, "T"), _fav_by_short(marked, "P")
+        if spitze is None and kern is None:
+            missing.append(run["id"])
+        key = run.get("testset_name") or f"testset-run:{run['testset_run_id']}"
+        groups.setdefault(key, []).append({"run": run, "spitze": spitze, "kern": kern})
+
+    if _maybe_json(f, {"strategy": slug, "groups": groups, "runs_ohne_bestwerte": missing}):
+        return 0
+
+    def _version_num(run: dict) -> int:
+        try:
+            return int(run.get("strategy_name"))
+        except (TypeError, ValueError):
+            return 0
+
+    def _cell_spitze(r) -> str:
+        if not r:
+            return "—"
+        return (f"{num(r.get('total_return_pct'), '{:.0f}')} % · Sharpe {num(r.get('sharpe_ratio'))} · "
+                f"DD {num(r.get('max_drawdown_pct'), '{:.0f}')} % · result:{r['id']}")
+
+    def _cell_kern(r) -> str:
+        if not r:
+            return "—"
+        return (f"{num(r.get('total_return_pct'), '{:.0f}')} % · PF {num(r.get('profit_factor'))} · "
+                f"WinR {num(r.get('win_rate_pct'), '{:.0f}')} % · {r.get('total_trades')} Tr · "
+                f"DD {num(r.get('max_drawdown_pct'), '{:.0f}')} % · result:{r['id']}")
+
+    lines = [f"## Iterations-Vergleich — {slug.upper()} (nur Testset-Läufe, aus roten Doku-Favoriten)", ""]
+    if not ts_runs:
+        lines.append("- (keine Testset-Läufe gefunden)")
+        lines.append("")
+    for ts_name in sorted(groups):
+        entries = sorted(groups[ts_name], key=lambda e: (e["run"]["symbol"], _version_num(e["run"])))
+        lines.append(f"### {ts_name}")
+        lines.append("")
+        lines.append("| Symbol | Iteration | Spitze (Max Total Return) | Robuster Kern (PF ≥ 30 Trades) |")
+        lines.append("|---|---|---|---|")
+        for e in entries:
+            run = e["run"]
+            lines.append(f"| {run['symbol']} | v{run.get('strategy_name')} "
+                         f"| {_cell_spitze(e['spitze'])} | {_cell_kern(e['kern'])} |")
+        lines.append("")
+    if missing:
+        lines.append("> Läufe ohne markierte Bestwerte (erst `run-bestwerte` laufen lassen): "
+                     + ", ".join(f"run:{i}" for i in sorted(missing)))
+        lines.append("")
+
+    out = "\n".join(lines)
+    print(out)
+
+    if f.get("save") and f.get("save") is not True:
+        header = (
+            "---\n"
+            "type: strategy-vergleich\n"
+            f"strategy: {slug}\n"
+            f"updated: {datetime.date.today().isoformat()}\n"
+            "---\n\n"
+            f"# {slug.upper()} — Iterations-Vergleich\n\n"
+            f"> Generiert mit `toolbox.py vergleichstabelle --strategy {slug} --save <pfad>` aus den roten "
+            "Doku-Favoriten (purge-fest). Nicht von Hand editieren — nach neuen Testset-Läufen "
+            "(und `run-bestwerte`) neu generieren.\n\n"
+        )
+        with open(f["save"], "w", encoding="utf-8") as fh:
+            fh.write(header + out + "\n")
+        print(f"Gespeichert: {f['save']}\n")
     return 0
 
 
@@ -2440,6 +2550,7 @@ SINGLE_VERBS = {
     "run-bestwerte": run_bestwerte,
     "run-favorites-reset": run_favorites_reset,
     "run-favorites-list": run_favorites_list,
+    "vergleichstabelle": vergleichstabelle,
     "result-lookup": result_lookup,
     "result-query": result_query,
     "kreuztest": kreuztest,
