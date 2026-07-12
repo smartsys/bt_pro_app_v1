@@ -332,18 +332,21 @@ def get_runs(
         runs = query.offset(offset).limit(limit).all()
         items = [BacktestRunOut.model_validate(r).model_dump(mode='json') for r in runs]
 
-        # GEÄNDERT: Result-Anzahl pro Run nur für ABGESCHLOSSENE Runs zählen - und gezielt
-        # über deren run_ids, statt per GROUP BY über die ganze Tabelle (Full-Scan, ~10 s
-        # bei >700k Zeilen). Der Filter auf die stabilen run_ids nutzt die (run_id,...)-
-        # Indizes (Range-Scan, ~ms je Run auf vacuumter Tabelle). Laufende/eingereihte Runs
-        # werden übersprungen: deren Zeilen werden gerade geschrieben (Count langsam, weil
-        # die Visibility Map noch nicht gesetzt ist) und die Zahl wäre ohnehin unvollständig
-        # - das Frontend zeigt dort den Chunk-Fortschritt.
+        # Result-Anzahl pro Run nur für ABGESCHLOSSENE Runs zählen. Laufende/eingereihte
+        # Runs werden übersprungen: deren Zeilen werden gerade geschrieben (Count langsam,
+        # weil die Visibility Map noch nicht gesetzt ist) und die Zahl wäre ohnehin
+        # unvollständig - das Frontend zeigt dort den Chunk-Fortschritt.
+        #
+        # GEÄNDERT: count(*) statt count(id). Der Filter auf die run_ids allein reicht
+        # nicht: count(id) verlangt die Spalte id, die in keinem der (run_id, ...)-Indizes
+        # steckt - Postgres muss dafür die komplette, sehr breite Tabelle vom Heap lesen
+        # (Parallel Seq Scan, ~744k Blöcke, ~10 s). count(*) zählt nur Zeilen, dafür genügt
+        # ein (run_id, ...)-Index: daraus wird ein Index-Only-Scan (~13k Blöcke, ~0,8 s).
         stable_run_ids = [r.id for r in runs if r.status in ('completed', 'failed')]
         result_counts: dict[int, int] = {}
         if stable_run_ids:
             result_counts = dict(
-                session.query(BacktestResult.run_id, func.count(BacktestResult.id))
+                session.query(BacktestResult.run_id, func.count())
                 .filter(BacktestResult.run_id.in_(stable_run_ids))
                 .group_by(BacktestResult.run_id)
                 .all()
@@ -769,7 +772,8 @@ def get_results_datatable(request: Request) -> dict:
             records_total = int(estimate or 0)
         else:
             records_total = (
-                session.query(func.count(BacktestResult.id))
+                session.query(func.count())
+                .select_from(BacktestResult)
                 .filter(*result_conditions)
                 .scalar()
             )
@@ -788,7 +792,8 @@ def get_results_datatable(request: Request) -> dict:
             )
             query = query.filter(search_condition)
             records_filtered = (
-                session.query(func.count(BacktestResult.id))
+                session.query(func.count())
+                .select_from(BacktestResult)
                 .join(BacktestRun, BacktestResult.run_id == BacktestRun.id)
                 .filter(*result_conditions)
                 .filter(search_condition)
@@ -1202,7 +1207,15 @@ def delete_result(result_id: int) -> JSONResponse:
         session.delete(result)
         session.flush()
 
-        remaining = session.query(BacktestResult).filter(BacktestResult.run_id == run_id).count()
+        # GEÄNDERT: count(*) statt query(Entity).count() - letzteres baut eine Unterabfrage
+        # über alle Spalten der breiten Result-Tabelle; count(*) kommt mit dem
+        # (run_id, ...)-Index aus.
+        remaining = (
+            session.query(func.count())
+            .select_from(BacktestResult)
+            .filter(BacktestResult.run_id == run_id)
+            .scalar()
+        )
         if remaining == 0:
             run = session.query(BacktestRun).filter(BacktestRun.id == run_id).first()
             if run:

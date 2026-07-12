@@ -5,21 +5,23 @@ GET  /config/seed/export           — Export-Seite (Speichern-Button + Download
 POST /config/seed/export           — Snapshot im Ordner speichern
 GET  /config/seed/export/download  — frischen Dump als Download ausliefern
 GET  /config/seed/import           — Import-Seite (gespeicherten Snapshot + Button)
-POST /config/seed/import           — gespeicherten Snapshot zurückspielen
+POST /config/seed/import           — Import anstoßen (läuft im Hintergrund)
+GET  /config/seed/import/status    — Fortschritt des Imports (für die Anzeige)
 
 Der eigentliche Dump/Restore steckt in services.api.seed_service (pg_dump/
 pg_restore per TCP, Ablage in db_snapshot/data/, kein Stack-Neustart).
 """
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 
 from services.api.seed_service import (
     export_temp_dump,
     export_to_store,
-    import_from_store,
+    import_status,
     snapshot_filename,
+    start_import,
     stored_snapshot_info,
 )
 
@@ -87,31 +89,28 @@ def seed_import_page(request: Request) -> HTMLResponse:
         name='config/seed_import.html',
         context={
             'active_nav': 'config_seed_import',
-            'result': None,
             'snapshot': stored_snapshot_info(),
         },
     )
 
 
-@router.post('/seed/import', response_class=HTMLResponse)
-def seed_import_action(request: Request) -> HTMLResponse:
-    """Spielt den gespeicherten Snapshot (seed.dump) zurück. Überschreibt die DB."""
-    templates = request.app.state.templates
+@router.post('/seed/import')
+def seed_import_action() -> JSONResponse:
+    """Stößt den Import an (läuft im Hintergrund) und kehrt sofort zurück.
+
+    Den Fortschritt holt die Seite über ``/config/seed/import/status``.
+    """
     try:
-        name = import_from_store()
-        result = {
-            'ok': True,
-            'message': f'Import abgeschlossen. Die DB entspricht jetzt dem '
-                       f'gespeicherten Snapshot ({name}).',
-        }
+        start_import()
     except Exception as exc:  # noqa: BLE001 — Fehler sichtbar auf der Seite melden
-        result = {'ok': False, 'message': f'Import fehlgeschlagen: {exc}'}
-    return templates.TemplateResponse(
-        request=request,
-        name='config/seed_import.html',
-        context={
-            'active_nav': 'config_seed_import',
-            'result': result,
-            'snapshot': stored_snapshot_info(),
-        },
-    )
+        return JSONResponse(
+            status_code=409,
+            content={'started': False, 'message': f'Import fehlgeschlagen: {exc}'},
+        )
+    return JSONResponse(status_code=202, content={'started': True})
+
+
+@router.get('/seed/import/status')
+def seed_import_status() -> JSONResponse:
+    """Aktueller Stand des laufenden bzw. zuletzt gelaufenen Imports."""
+    return JSONResponse(content=import_status())

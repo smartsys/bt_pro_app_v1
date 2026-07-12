@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.77] - 12.07.2026
+
+### Fixed
+- DB-Snapshot-Import repariert (Restore in einer Transaktion), Fortschrittsanzeige ergänzt und Results-/Runs-Listen entscheidend beschleunigt
+  - Import-Fehler behoben: pg_restore läuft jetzt mit --single-transaction. Vorher waren die wiederhergestellten Tabellen für Worker und Scheduler bereits sichtbar, während pg_restore die Primär- und Unique-Constraints erst am Ende anlegt. Der 5-Minuten-Reindex des Schedulers schrieb in dieses Fenster hinein und der Restore scheiterte an doppelten Schlüsseln (vault_chunks, vault_reindex_runs) - die DB blieb ohne diese Constraints zurück. In der Transaktion sind die Tabellen bis zum Commit unsichtbar, ein Fehler rollt vollständig zurück. Gilt für GUI-Import und CLI-Skript.
+  - Fortschrittsanzeige für den Import: Der Restore läuft als Hintergrund-Job, die Seite pollt /config/seed/import/status. Der Balken zeigt einen echten Prozentwert (pg_restore --verbose meldet jedes verarbeitete Objekt, die Gesamtzahl kommt vorab aus dem Inhaltsverzeichnis des Dumps) samt Phase und Objektzahl. Ein Reload dockt an einen laufenden Import wieder an.
+  - ANALYZE nach dem Restore: pg_restore stellt die Planner-Statistiken nicht mit her. Ohne sie plante PostgreSQL blind, die Runs-Liste brauchte 35 s statt 10 s. Ergänzt in GUI-Import und CLI-Skript.
+  - Result-Anzahl je Run: count(*) statt count(id). count(id) verlangt die Spalte id, die in keinem der (run_id, ...)-Indizes steckt - PostgreSQL las dafür die komplette breite Result-Tabelle vom Heap (Parallel Seq Scan). Die Runs-Liste fiel von 10 s auf 0,2 s. Analog an drei weiteren Zählstellen (DataTables-Counts, Rest-Zählung beim Löschen eines Results).
+  - Sortier-Indizes für die Results-Liste (Migration 0015): Die Liste sortiert mit zwei Tiebreakern (max_drawdown_pct, id), die Indizes aus 0010 deckten nur die erste Spalte und nur DESC ab. Über eine Million Results aus Kombinationen ohne Trades tragen überall den Wert 0 bzw. NULL und bilden bei absteigender Sortierung die Spitzengruppe - PostgreSQL musste sie für 25 angezeigte Zeilen komplett nachsortieren. Je Metrik-Spalte gibt es jetzt einen DESC- und einen ASC-Index über die vollständige Sortierkette. Gesamtliste: 0,2-9.523 ms auf 0,1-4,0 ms.
+  - Sortier-Indizes für Results eines einzelnen Runs (Migration 0016): Die (run_id, metrik)-Composites aus 0010 bedienten nur die absteigende Richtung; aufsteigend sortierte PostgreSQL alle Results des Runs durch (1,0-4,3 s). Aufsteigendes Gegenstück je Metrik-Spalte ergänzt: jetzt 0,1-0,7 ms.
+  - Index-Speicher der Result-Tabelle wächst dadurch von 1,3 GB auf 3,7 GB.
+
+### Files
+- services/api/seed_service.py
+- services/api/routes/views_seed.py
+- services/api/routes/api_backtest.py
+- services/frontend/templates/config/seed_import.html
+- db_snapshot/db_import.py
+- alembic/versions/0015_result_sort_tiebreaker_indexes.py
+- alembic/versions/0016_result_run_sort_asc_indexes.py
+
+
+
 ## [1.30.76] - 12.07.2026
 
 ### Added

@@ -17,12 +17,10 @@
 
 {% block content %}
 
-{% if result %}
-<div class="alert {% if result.ok %}bg-success{% else %}bg-danger{% endif %} text-white alert-dismissible shadow" role="alert">
-  {{ result.message }}
+<div id="import-result" class="alert alert-dismissible shadow d-none" role="alert">
+  <span id="import-result-message"></span>
   <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
 </div>
-{% endif %}
 
 <div class="alert alert-warning" role="alert">
   <h4 class="alert-title">Achtung: überschreibt die komplette Datenbank</h4>
@@ -44,9 +42,20 @@
       Gespeicherter Snapshot: <strong>{{ snapshot.name }}</strong>
       ({{ '%.1f'|format(snapshot.size_mb) }} MB)
     </p>
-    <form id="import-form" method="post" action="/config/seed/import">
-      <button type="submit" class="btn btn-danger">Snapshot einspielen</button>
-    </form>
+    <button type="button" id="import-start" class="btn btn-danger">Snapshot einspielen</button>
+
+    <div id="import-progress" class="mt-3 d-none">
+      <div class="d-flex justify-content-between mb-1">
+        <span id="import-phase" class="text-secondary">Import läuft…</span>
+        <span id="import-percent" class="text-secondary">0 %</span>
+      </div>
+      <div class="progress">
+        <div id="import-bar" class="progress-bar progress-bar-indeterminate" style="width: 0%"></div>
+      </div>
+      <div class="text-secondary mt-1">
+        <small id="import-detail"></small>
+      </div>
+    </div>
     {% else %}
     <p class="text-secondary">
       Kein gespeicherter Snapshot vorhanden. Erst über
@@ -58,16 +67,119 @@
 
 {% if snapshot %}
 <script>
-  // Sicherheitsabfrage vor dem Einspielen.
-  document.getElementById('import-form').addEventListener('submit', function (event) {
-    try {
-      if (!window.confirm('Datenbank wirklich überschreiben? Dieser Schritt kann nicht rückgängig gemacht werden.')) {
-        event.preventDefault();
-      }
-    } catch (err) {
-      event.preventDefault();
+  (function () {
+    const startButton = document.getElementById('import-start');
+    const progressBox = document.getElementById('import-progress');
+    const bar = document.getElementById('import-bar');
+    const phaseLabel = document.getElementById('import-phase');
+    const percentLabel = document.getElementById('import-percent');
+    const detailLabel = document.getElementById('import-detail');
+    const resultBox = document.getElementById('import-result');
+    const resultMessage = document.getElementById('import-result-message');
+
+    // Beschriftung der Phasen, die der Server meldet.
+    const PHASE_TEXT = {
+      prepare: 'Snapshot wird gelesen…',
+      reset: 'Datenbank wird zurückgesetzt…',
+      restore: 'Snapshot wird eingespielt…',
+      analyze: 'Statistiken werden berechnet…',
+    };
+
+    let pollTimer = null;
+
+    function showResult(ok, message) {
+      resultMessage.textContent = message;
+      resultBox.classList.remove('d-none', 'bg-success', 'bg-danger', 'text-white');
+      resultBox.classList.add(ok ? 'bg-success' : 'bg-danger', 'text-white');
     }
-  });
+
+    function render(status) {
+      progressBox.classList.remove('d-none');
+      const percent = status.percent || 0;
+      // Beim Zurücksetzen gibt es noch keinen Zähler — solange unbestimmt laufen lassen.
+      const indeterminate = status.running && status.phase !== 'restore';
+      bar.classList.toggle('progress-bar-indeterminate', indeterminate);
+      bar.style.width = indeterminate ? '100%' : percent + '%';
+      percentLabel.textContent = indeterminate ? '' : percent + ' %';
+      phaseLabel.textContent = PHASE_TEXT[status.phase] || 'Import läuft…';
+
+      if (status.total) {
+        detailLabel.textContent = status.done + ' von ' + status.total + ' Objekten';
+      }
+
+      if (!status.running && status.ok !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+        startButton.disabled = false;
+        bar.classList.remove('progress-bar-indeterminate');
+        bar.classList.toggle('bg-danger', !status.ok);
+        bar.style.width = status.ok ? '100%' : '0%';
+        percentLabel.textContent = status.ok ? '100 %' : '';
+        phaseLabel.textContent = status.ok ? 'Fertig' : 'Abgebrochen';
+        showResult(status.ok, status.message);
+      }
+    }
+
+    async function poll() {
+      try {
+        const response = await fetch('/config/seed/import/status');
+        if (!response.ok) {
+          return;
+        }
+        render(await response.json());
+      } catch (err) {
+        console.error('Statusabfrage fehlgeschlagen', err);
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer === null) {
+        pollTimer = window.setInterval(poll, 1000);
+      }
+    }
+
+    startButton.addEventListener('click', async function () {
+      if (!window.confirm('Datenbank wirklich überschreiben? Dieser Schritt kann nicht rückgängig gemacht werden.')) {
+        return;
+      }
+      startButton.disabled = true;
+      resultBox.classList.add('d-none');
+      bar.classList.remove('bg-danger');
+      try {
+        const response = await fetch('/config/seed/import', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+          startButton.disabled = false;
+          showResult(false, payload.message || 'Import konnte nicht gestartet werden.');
+          return;
+        }
+        progressBox.classList.remove('d-none');
+        phaseLabel.textContent = PHASE_TEXT.prepare;
+        bar.classList.add('progress-bar-indeterminate');
+        bar.style.width = '100%';
+        startPolling();
+      } catch (err) {
+        startButton.disabled = false;
+        showResult(false, 'Import konnte nicht gestartet werden: ' + err);
+      }
+    });
+
+    // Läuft beim Seitenaufruf bereits ein Import (z.B. nach einem Reload),
+    // die Anzeige direkt daran andocken.
+    (async function () {
+      try {
+        const response = await fetch('/config/seed/import/status');
+        const status = await response.json();
+        if (status.running) {
+          startButton.disabled = true;
+          render(status);
+          startPolling();
+        }
+      } catch (err) {
+        console.error('Statusabfrage fehlgeschlagen', err);
+      }
+    })();
+  })();
 </script>
 {% endif %}
 {% endblock %}
