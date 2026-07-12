@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.81] - 12.07.2026
+
+### Added
+- Exit-freie Entry-Bewertung (MFE/MAE, First-Touch-Geometrie) als wiederverwendbares Analyse-Modul
+  - Neues Modul user_data/utils/analysis/entry_quality.py bewertet einen Einstiegszeitpunkt ohne jede Exit-Regel: Vorwaertsfenster je Signal, MFE (maximale Bewegung ins Plus) und MAE (maximale Bewegung ins Minus), skalenfreie Asymmetrie, First-Touch-Gitter ueber Take-Profit/Stop-Loss-Paare, Null-Modell (unbedingter Einstieg) und Bootstrap gegen den Zufall.
+  - Strategie-unabhaengig: arbeitet auf beliebigen Signal-Masken, die die vorhandene Engine (build_indicators + evaluate_rules) liefert. Kein Nachbau der Engine, keine DB-Abhaengigkeit.
+  - Konventionen an die Engine angelehnt: Einstandspreis = Close des Signalbalkens (from_signals nutzt den VBT-Default), Vorwaertsfenster ab t+1, MFE ueber High und MAE ueber Low (die Stops triggern intrabar).
+  - Balken-Kollision (Ziel und Stop im selben Balken) zaehlt konservativ als Stop, weil die Reihenfolge innerhalb des Balkens aus OHLC nicht rekonstruierbar ist.
+  - Skalenfreie Asymmetrie statt reiner MFE-Vergleich: MFE und MAE wachsen gemeinsam mit der Volatilitaet, ein MFE-Vergleich gegen das Null-Modell wuerde Volatilitaet als Kante ausweisen.
+  - 26 Unit-Tests auf synthetischen OHLC-Serien (tests/test_entry_quality.py), Gesamtsuite gruen (548 Tests).
+
+### Files
+- user_data/utils/analysis/entry_quality.py
+- tests/test_entry_quality.py
+
+
+
 ## [1.30.80] - 12.07.2026
 
 ### Added
