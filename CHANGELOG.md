@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.84] - 12.07.2026
+
+### Fixed
+- Phantom-Grenzen-Audit der Rechen-Pipeline: falsche Raises-Behauptung in evaluate_rules korrigiert, zwei tote Parameter markiert
+  - evaluate_rules (rules_engine.py): Der Raises-Block kuendigte einen short-spezifischen ValueError an ('Short-Bloecke sind im nativen Pfad nicht unterstuetzt'). Beides existiert nicht: Der Short-Guard fiel mit Ticket 47 (kein entsprechendes raise im Rumpf, nur 'entry fehlt' und 'keine blocks'), und der native Pfad unterstuetzt Short vollstaendig. Der real geworfene ValueError kommt aus _resolve_ref und gilt fuer jedes State-Primitiv, unabhaengig von is_short. Docstring an der Quelle korrigiert und auf die pinnenden Tests verwiesen.
+  - Belegt durch Ausfuehrung: tests/test_rules_engine_short.py (TestGuardShortWithStateExit — Fehler kommt aus _resolve_ref, nicht aus einem Short-Guard) und tests/test_native_short.py (TestLongShortNativePath::test_short_only_native_state_exit — Short + State-Exit laeuft nativ durch). 65 Tests gruen.
+  - Toter Parameter markiert (nicht entfernt): _state_exit_signal_func_nb(close_arr) — wird im Rumpf nie gelesen, die Preise kommen aus dem Numba-Kontext c; der Aufrufer reicht ihn weiterhin durch.
+  - Toter Parameter markiert (nicht entfernt): _build_indicators_results(timeframe) in spec_runner.py — Fossil aus der Zeit vor dem tf-Pflichtfeld; tf steht heute verbatim aus dem Spec.
+  - Geprueft und als ECHT bestaetigt (keine Aenderung noetig): Downsampling-Abweisung in tf_resample.validate_tf, TSL-Paar-Laengen-Guard und leere Sweep-Achse in build_stop_kwargs/count_stop_combos/expand_stop_values, State-Ref-plus-shift-Guard in _build_stateful_condition_spec, Verschachtelungs-Abweisung in _assert_flat_group, Combo-Achsen-Konsistenzcheck in _assert_single_combo_axis, State-Ref-Abweisung im Masken-Pfad (_resolve_ref) sowie saemtliche einschraenkenden Aussagen in services/api/routes/ (18 Dateien geprueft, kein Widerspruch).
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- user_data/strategies/generic/spec_runner.py
+
+
+
 ## [1.30.83] - 12.07.2026
 
 ### Changed

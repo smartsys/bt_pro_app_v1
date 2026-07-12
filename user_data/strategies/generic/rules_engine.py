@@ -298,8 +298,21 @@ def evaluate_rules(
         SignalMasks(long_entries, long_exits, short_entries, short_exits)
 
     Raises:
-        ValueError: Wenn Short-Blöcke vorhanden sind und exit_spec State-Refs enthält
-            (Short-Blöcke sind im nativen Pfad nicht unterstützt).
+        ValueError: Wenn 'entry' fehlt oder die Entry-Blockliste leer ist.
+        ValueError: Bei einem State-Primitiv in irgendeiner Condition — geworfen aus
+            `_resolve_ref`, **unabhängig von is_short**. Der Masken-Pfad kennt keinen
+            Trade-State; solche Specs laufen über `evaluate_rules_native`.
+
+            GEÄNDERT 2026-07-12: Der frühere Raises-Eintrag behauptete einen
+            short-spezifischen ValueError ("Short-Blöcke sind im nativen Pfad nicht
+            unterstützt"). Beides ist falsch: Der short-spezifische Guard fiel mit
+            Ticket 47 (kein entsprechendes raise im Rumpf), und der native Pfad
+            unterstützt Short vollständig (is_short auf Entry- und Exit-Blöcken,
+            Richtungs-Trennung über c.last_pos_info['direction']). Gepinnt in
+            tests/test_rules_engine_short.py::TestGuardShortWithStateExit (Fehler kommt
+            aus _resolve_ref, nicht aus einem Short-Guard) und
+            tests/test_native_short.py::TestLongShortNativePath::test_short_only_native_state_exit
+            (Short + State-Exit läuft nativ durch).
     """
     entry_spec = rules_json.get('entry')
     if entry_spec is None:
@@ -910,6 +923,9 @@ def _state_exit_signal_func_nb(
     short_n_series_cols: np.int64,
     short_series_col_map: np.ndarray,
     # OHLCV für max/min-Tracking (volle 1D-Arrays)
+    # TOTER PARAMETER (2026-07-12): wird im Rumpf nie gelesen — die Preise kommen aus dem
+    # Kontext c. Der Aufrufer (Zeile ~1951) reicht ihn weiterhin durch; nicht entfernt, um
+    # den Aufrufer nicht anzufassen. Vor einer Bereinigung bewusst entscheiden.
     close_arr: np.ndarray,          # (T,)
     high_arr: np.ndarray,           # (T,)
     low_arr: np.ndarray,            # (T,)

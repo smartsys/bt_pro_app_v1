@@ -597,7 +597,16 @@ def build_stop_kwargs(stops_cfg: dict) -> dict:
 
 
 def _build_indicators_results(indicators: dict, indicators_json: dict, timeframe: str) -> dict:
-    """Baut das indicators_results-Dict im Format der bestehenden Strategien."""
+    """Baut das indicators_results-Dict im Format der bestehenden Strategien.
+
+    Args:
+        indicators: Berechnete Indikator-Instanzen.
+        indicators_json: Indikator-Spec (Flat-Dict).
+        timeframe: TOTER PARAMETER (2026-07-12) — wird im Rumpf nie gelesen. Fossil aus der
+            Zeit, als ein fehlender `tf` auf den Basis-Timeframe defaultete; seit dem
+            tf-Pflichtfeld steht `tf` verbatim aus dem Spec. Der Aufrufer (Zeile 223) reicht
+            ihn weiterhin durch; nicht entfernt, um den Aufrufer nicht anzufassen.
+    """
     out: dict = {}
     from user_data.strategies.generic.registry import resolve_indicator_factory
     for ind_id, inst in indicators.items():
