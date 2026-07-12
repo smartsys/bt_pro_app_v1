@@ -686,11 +686,18 @@ document.addEventListener("DOMContentLoaded", function() {
   function buildHeatmapData(cells, xVals, yVals) {
     var data = [];
     var cellMap = {};
-    cells.forEach(function(c) { cellMap[c.x + '|' + c.y] = c.value; });
+    var countMap = {};
+    cells.forEach(function(c) {
+      cellMap[c.x + '|' + c.y] = c.value;
+      countMap[c.x + '|' + c.y] = c.count;
+    });
     for (var yi = 0; yi < yVals.length; yi++) {
       for (var xi = 0; xi < xVals.length; xi++) {
-        var val = cellMap[xVals[xi] + '|' + yVals[yi]];
-        data.push([xi, yi, val != null ? val : '-']);
+        var key = xVals[xi] + '|' + yVals[yi];
+        var val = cellMap[key];
+        // GEÄNDERT: Anzahl der aggregierten Backtests als vierte Dimension mitführen
+        // (nur für den Tooltip — visualMap ist deshalb fest auf Dimension 2 gepinnt).
+        data.push([xi, yi, val != null ? val : '-', countMap[key] != null ? countMap[key] : 0]);
       }
     }
     return data;
@@ -726,7 +733,8 @@ document.addEventListener("DOMContentLoaded", function() {
           if (params.value[2] === '-') return '';
           return paramX + ': ' + xLabels[params.value[0]] +
             '<br/>' + paramY + ': ' + yLabels[params.value[1]] +
-            '<br/>' + document.querySelector('.metric-btn.active').textContent + ': ' + params.value[2];
+            '<br/>' + document.querySelector('.metric-btn.active').textContent + ': ' + params.value[2] +
+            '<br/>Datensätze: ' + params.value[3];
         }
       },
       grid: { left: 95, right: 60, top: 10, bottom: 60 },
@@ -754,6 +762,7 @@ document.addEventListener("DOMContentLoaded", function() {
       visualMap: {
         min: minV,
         max: maxV,
+        dimension: 2,
         calculable: true,
         orient: 'vertical',
         right: 0,

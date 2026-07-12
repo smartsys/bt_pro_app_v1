@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.76] - 12.07.2026
+
+### Added
+- Heatmap-Tooltip zeigt die Anzahl der aggregierten Backtests
+  - Der Tooltip der Analyse-Heatmaps nennt jetzt zusaetzlich die Datensaetze pro Zelle, also wie viele Backtest-Results in den angezeigten Wert eingeflossen sind (bei Average wie bei Max). Damit ist erkennbar, wenn eine Zelle auf weniger Ergebnissen beruht als die uebrigen - etwa bei unvollstaendig gerechneten Runs oder wenn die Metrik in einzelnen Results fehlt.
+  - Die Anzahl liefert der Heatmap-Endpunkt bereits als count pro Zelle; sie wird nun als vierte Datendimension durchgereicht statt verworfen. visualMap ist dafuer fest auf Dimension 2 gepinnt, damit die Einfaerbung weiterhin ueber den Metrikwert laeuft.
+
+### Files
+- services/frontend/templates/backtest/analyse.html
+
+
+
 ## [1.30.75] - 12.07.2026
 
 ### Fixed
