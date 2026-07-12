@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.78] - 12.07.2026
+
+### Changed
+- Auto-Update in Runs- und Results-Tabelle standardmäßig aktiv; Worker-Replicas lokal auf 4
+  - Der Auto-Update-Schalter (5s) in der Runs- und der Results-Tabelle ist jetzt standardmäßig eingeschaltet. Er war bewusst aus, weil ein Reload früher mehrere Sekunden brauchte und sich die Aufrufe stapelten - die Runs-Liste zählte die Results je Run über einen Full-Scan der breiten Result-Tabelle. Seit der Umstellung auf count(*) und die Sortier-Indizes (1.30.77) kostet ein Reload ~0,2-0,35 s (Runs) bzw. ~15 ms (Results).
+  - Gemessen während laufender Backtests: Rechenphase und Schreibphase (Tabelle wuchs während der Messung von 2,99 auf 3,02 Mio Zeilen) ändern die Reload-Dauer praktisch nicht - die Runs-Liste überspringt die Result-Zählung für laufende Runs, die Results-Liste nutzt ungefiltert eine Schätzung statt einer echten Zählung.
+  - Der Code-Kommentar, der das frühere Abschalten begründete ("Counts erstickten die DB gegenseitig"), wurde durch den aktuellen Stand ersetzt.
+  - docker-compose-local.yml: Worker-Replicas von 2 auf 4 erhöht (wirkt erst beim nächsten up).
+
+### Files
+- services/frontend/templates/backtest/runs.html
+- services/frontend/templates/backtest/results.html
+- docker-compose-local.yml
+
+
+
 ## [1.30.77] - 12.07.2026
 
 ### Fixed

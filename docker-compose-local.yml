@@ -105,7 +105,7 @@ services:
       - "-m"
       - "services.api.worker_entry"
     deploy:
-      replicas: 2
+      replicas: 4
 
   worker-init:
     <<: *worker-base

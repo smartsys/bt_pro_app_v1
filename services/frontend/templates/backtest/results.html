@@ -13,7 +13,7 @@
       </div>
       <div class="col-auto ms-auto d-flex align-items-center gap-3">
         <div class="form-check form-switch mb-0">
-          <input class="form-check-input" type="checkbox" id="toggle-auto-update">
+          <input class="form-check-input" type="checkbox" id="toggle-auto-update" checked>
           <label class="form-check-label small" for="toggle-auto-update">Auto-Update (5s)</label>
         </div>
         <button id="btn-delete-selected-results" class="btn btn-outline-danger" disabled>Auswahl löschen (<span id="results-selected-count">0</span>)</button>
@@ -650,7 +650,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Auto-Update (standardmäßig AUS, 5s Intervall) */
+  /* Auto-Update (standardmäßig AN, 5s Intervall) */
   var autoUpdateInterval = null;
   function startAutoUpdate() {
     if (autoUpdateInterval) return;
@@ -671,6 +671,9 @@ document.addEventListener("DOMContentLoaded", function() {
   document.getElementById("toggle-auto-update").addEventListener("change", function() {
     if (this.checked) { startAutoUpdate(); } else { stopAutoUpdate(); }
   });
+  // GEÄNDERT: Standard AN (vorher AUS). Ein Reload kostet seit den Sortier-Indizes (0015/0016)
+  // ~15 ms statt mehrerer Sekunden - auch während die Worker Results schreiben.
+  if (document.getElementById("toggle-auto-update").checked) { startAutoUpdate(); }
   // GEÄNDERT: Standard AUS - der teure Reload (5er-Join über die ganze Results-Tabelle)
   // lief sonst alle 5s, obwohl Results erst nach Run-Ende gesammelt nachgetragen werden.
   // Bei Bedarf manuell per Schalter aktivierbar.
