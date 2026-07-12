@@ -536,11 +536,17 @@ class TestHybridSplit:
 
 
 # ============================================================================
-# 4. Multi-Combo: hart-abgewiesen bei stateful Series-Ops (N5)
+# 4. Multi-Combo mit stateful Series-Ops (der frühere N5-Reject ist gefallen)
 # ============================================================================
 
 class TestMultiCombo:
-    """Prüft Multi-Combo-Verhalten (N5-Entscheidung: hard-abgewiesen bei Series-Ops)."""
+    """Prüft Multi-Combo-Verhalten mit stateful Conditions.
+
+    GEÄNDERT 2026-07-12: Überschrift korrigiert. Der frühere N5-Hard-Reject
+    ("Multi-Combo mit stateful Series-Ops wird abgewiesen") fiel mit Ticket 47 —
+    diese Klasse prüft heute das Gegenteil, nämlich dass solche Konstellationen
+    laufen UND je Spalte richtig rechnen.
+    """
 
     def test_multi_combo_state_only_accepted(self, spike_ohlc_df: pd.DataFrame) -> None:
         """Multi-Combo mit nur State-Refs und Skalaren in stateful Conditions läuft durch."""
@@ -616,6 +622,77 @@ class TestMultiCombo:
         assert pf is not None
         # Zwei identische Combo-Spalten -> Portfolio hat 2 Spalten
         assert len(pf.wrapper.columns) == 2
+
+    def test_multi_combo_series_op_variiert_je_combo(self, spike_ohlc_df: pd.DataFrame) -> None:
+        """Serien-Operand, der PRO COMBO verschieden ist, wird je Spalte korrekt aufgelöst.
+
+        Das ist der Fall, den die Normierung braucht: ein dynamischer Zeitstopp
+        `since_entry >= indicator:td_dyn:result`, bei dem `td_dyn` selbst eine
+        gesweepte Achse trägt (td = k x Marktrhythmus). Der bestehende Test darüber
+        nutzt nur einen GLOBALEN Operanden (close), der auf alle Combos broadcastet —
+        er würde einen Fehler im col-%-n_combo-Mapping des series_bundle nicht sehen.
+
+        Aufbau: zwei Combos mit konstantem Exit-Horizont 5 bzw. 20 Balken, als Serie
+        über einen Indikator-Output mit Param-Achse. Erwartung: Combo 0 hält jeden
+        Trade 5 Balken, Combo 1 hält ihn 20 — würden die Spalten vertauscht oder
+        kollabiert, kippt genau diese Zuordnung.
+        """
+        close = spike_ohlc_df['Close']
+        ohlc = _OhlcWrapper(spike_ohlc_df)
+        index = spike_ohlc_df.index
+
+        # Indikator-Output mit Param-Achse: je Combo ein anderer konstanter Horizont
+        horizons = (5.0, 20.0)
+        td_dyn = pd.DataFrame(
+            {h: np.full(len(index), h) for h in horizons},
+            index=index,
+        )
+        td_dyn.columns = pd.Index(horizons, name='td_dyn_value')
+
+        class _FakeIndicator:
+            output_names = ('result',)
+            param_names = ('value',)
+            short_name = 'td_dyn'
+
+            def __init__(self, out: pd.DataFrame) -> None:
+                self.result = out
+
+        indicators = {'td_dyn': _FakeIndicator(td_dyn)}
+
+        close_2col = pd.DataFrame(
+            {h: close.values for h in horizons}, index=index
+        )
+        close_2col.columns = pd.Index(horizons, name='td_dyn_value')
+
+        rules_json = {
+            'entry': {'blocks': [{'conditions': [
+                {'lhs': 'close', 'op': '>', 'rhs': 0.0},
+            ]}]},
+            'exit': {'blocks': [{'conditions': [
+                {'lhs': 'since_entry', 'op': '>=', 'rhs': 'indicator:td_dyn:result'},
+            ]}]},
+        }
+        pf_kwargs = dict(close=close_2col, init_cash=10_000.0, fees=0.0, freq="1h")
+
+        pf = evaluate_rules_native(rules_json, ohlc, indicators, pf_kwargs)
+        assert len(pf.wrapper.columns) == 2
+
+        records = pf.trades.records_readable
+        col_names = list(pf.wrapper.columns)
+        for col_pos, expected_hold in enumerate(horizons):
+            own = records[records['Column'] == col_names[col_pos]]
+            held = [
+                int(np.searchsorted(index, row['Exit Index']))
+                - int(np.searchsorted(index, row['Entry Index']))
+                for _, row in own.iterrows()
+            ]
+            # Letzter Trade kann force-closed sein -> ausklammern
+            assert held[:-1], f"Combo {col_pos} hat keine auswertbaren Trades"
+            assert all(h == int(expected_hold) for h in held[:-1]), (
+                f"Combo {col_pos} (Horizont {expected_hold}): Haltedauern {set(held[:-1])} "
+                f"statt {int(expected_hold)} — Series-Operand wurde der falschen Spalte "
+                f"zugeordnet oder ist kollabiert."
+            )
 
 
 # ============================================================================

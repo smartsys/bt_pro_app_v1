@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.82] - 12.07.2026
+
+### Fixed
+- Veralteten Docstring in der Rules-Engine korrigiert: Multi-Combo mit Serien-Operanden in stateful Bedingungen wird NICHT abgewiesen
+  - Der Docstring von evaluate_rules_native behauptete, Multi-Combo mit stateful Series-Operanden werde hart abgewiesen (sogenannter N5-Guard). Ein entsprechendes raise existiert nicht: Der Guard fiel bereits mit Ticket 47, nachzulesen im Kommentar an _assert_single_combo_axis. Nur die Dokumentation wurde nie nachgezogen und hat als vermeintlicher Code-Beleg eine Werkzeug-Grenze in die Strategie-Planung getragen, die es nicht gibt.
+  - Empirisch verifiziert: Ein dynamischer Zeitstopp (Exit-Regel since_entry >= indicator:td_dyn:real) laeuft im Multiparameter-Lauf, inklusive des Faktors k als eigener Sweep-Achse, ohne neuen Indikator-Code (custom:dwsConst fuer k, talib:MULT fuer k x talib:HT_DCPERIOD). Der Multi-Combo-Lauf liefert je Spalte dieselben Ergebnisse wie der Single-Combo-Lauf derselben Konfiguration.
+  - Neuer Test test_multi_combo_series_op_variiert_je_combo: prueft einen Serien-Operanden, der PRO COMBO verschieden ist. Der bestehende Test nutzte nur einen globalen Operanden (close), der auf alle Combos broadcastet, und haette einen Fehler im Spalten-Mapping (col % n_combo) des series_bundle nicht bemerkt.
+  - Veraltete Klassen-Ueberschrift in tests/test_native_state_exits.py mitkorrigiert (sie kuendigte den entfernten N5-Reject an, waehrend die Tests darunter das Gegenteil pruefen).
+  - Weiterhin bestehender, engerer Guard (unveraendert): Stop-Sweep (gesweepte _stops als vbt.Param) kombiniert mit Multi-Combo-Indikatoren wird als Still-falsch-Schutz abgewiesen.
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- tests/test_native_state_exits.py
+
+
+
 ## [1.30.81] - 12.07.2026
 
 ### Added

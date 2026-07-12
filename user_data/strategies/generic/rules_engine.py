@@ -1564,9 +1564,18 @@ def evaluate_rules_native(
     vorab als pandas-Maske berechnet und die stateful Conditions nativ per Numba
     signal_func_nb ausgewertet (_eval_exit_blocks_nb).
 
-    Unterstützt Single-Combo oder Multi-Combo OHNE Series-Operanden in stateful
-    Conditions (N5: Multi-Combo mit stateful Series-Ops wird hard-abgewiesen).
-    Multi-Combo mit reinen State-Refs oder Skalaren in stateful Conditions läuft.
+    Unterstützt Single-Combo UND Multi-Combo, auch mit Series-Operanden in stateful
+    Conditions (z.B. ein dynamischer Zeitstopp `since_entry >= indicator:td_dyn:real`
+    über einem Indikator-Parameter-Raster). Die Series-Operanden werden dabei über
+    das series_bundle auf die gemeinsame Combo-Achse expandiert (Ticket 51).
+
+    GEÄNDERT 2026-07-12: Docstring korrigiert. Er behauptete bis hier, Multi-Combo mit
+    stateful Series-Ops werde hard-abgewiesen ("N5"). Dieser Blanket-Guard fiel bereits
+    mit Ticket 47 (siehe Kommentar an _assert_single_combo_axis); ein entsprechendes
+    raise existiert nicht mehr. Verifiziert: below_pct-Raster x k-Raster mit dynamischem
+    Zeitstopp läuft und liefert je Spalte korrekte, gegen den Single-Combo-Lauf geprüfte
+    Ergebnisse. Was bleibt, ist der engere Guard darunter: Stop-Sweep (gesweepte '_stops'
+    als vbt.Param) kombiniert mit Multi-Combo-Indikatoren.
 
     Args:
         rules_json: Entry-/Exit-Rules-Spezifikation.
