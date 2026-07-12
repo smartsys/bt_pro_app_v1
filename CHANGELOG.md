@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.83] - 12.07.2026
+
+### Changed
+- Strategie-Doku fuer die normierte Iterationsentwicklung ergaenzt; zweite veraltete Docstring-Aussage korrigiert (Stop-Sweep-Guard existiert ebenfalls nicht)
+  - KORREKTUR zu 1.30.82: Dort hiess es, ein engerer Guard bleibe bestehen (Stop-Sweep kombiniert mit Multi-Combo-Indikatoren). Das ist falsch. Auch dieser Guard existiert nicht: Der Parameter stops_swept wird von spec_runner zwar uebergeben, im Rumpf von evaluate_rules_native aber nirgends gelesen (toter Parameter), und tests/test_native_short.py prueft Multi-Combo x Stop-Sweep auf Bit-Paritaet. Der Raises-Block des Docstrings ist jetzt vollstaendig bereinigt; stops_swept ist als toter Parameter markiert statt entfernt (Aufrufer nicht angefasst).
+  - Aufgedeckt wurde das durch einen Widerspruch: code-referenz.md beschrieb den Stand die ganze Zeit korrekt, der Docstring nicht.
+  - Neuer Workflow workflows/normierte-parameter.md: Rezepte fuer selbstjustierende Parameter ohne neuen Indikator-Code — dynamischer Zeitstopp (td = k x talib:HT_DCPERIOD) und normierte Einstiegstiefe (Band = VWMA x (1 - k x NATR/100)). Beide auf echten Daten verifiziert, inklusive der Falle, dass die talib-Arithmetik-Indikatoren ihre Inputs high/low nennen.
+  - Neuer Workflow workflows/entry-qualitaet-messen.md: exit-freie Entry-Bewertung per MFE/MAE gegen ein Null-Modell, First-Touch-Gitter fuer die erreichbare Win-Rate einer TP/SL-Geometrie ohne Backtest, plus die zwei Denkfehler (fehlendes Null-Modell, MFE-Vergleich statt skalenfreier Asymmetrie).
+  - code-referenz.md: neuer Abschnitt Indikator-Arithmetik (dwsConst + talib:MULT/DIV/ADD/SUB als Ersatz fuer die fehlende Regel-Arithmetik, damit dynamische Parameter baubar sind). Die Einschraenkung 'Keine Skalar-Arithmetik' ist entsprechend eingeordnet statt als Sackgasse stehen zu lassen.
+  - AGENT_ENTRY.md: beide Workflows im Index; Warnung ergaenzt, dass ein Docstring kein Code-Beleg ist (die Phantom-Grenze hatte einen ganzen Arbeitsstrang als blockiert markiert).
+
+### Files
+- user_data/strategies/generic/rules_engine.py
+- documentation/knowledge/strategy-development/workflows/normierte-parameter.md
+- documentation/knowledge/strategy-development/workflows/entry-qualitaet-messen.md
+- documentation/knowledge/strategy-development/code-referenz.md
+- documentation/knowledge/strategy-development/AGENT_ENTRY.md
+
+
+
 ## [1.30.82] - 12.07.2026
 
 ### Fixed

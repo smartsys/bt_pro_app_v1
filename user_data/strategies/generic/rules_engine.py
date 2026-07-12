@@ -1574,8 +1574,8 @@ def evaluate_rules_native(
     mit Ticket 47 (siehe Kommentar an _assert_single_combo_axis); ein entsprechendes
     raise existiert nicht mehr. Verifiziert: below_pct-Raster x k-Raster mit dynamischem
     Zeitstopp läuft und liefert je Spalte korrekte, gegen den Single-Combo-Lauf geprüfte
-    Ergebnisse. Was bleibt, ist der engere Guard darunter: Stop-Sweep (gesweepte '_stops'
-    als vbt.Param) kombiniert mit Multi-Combo-Indikatoren.
+    Ergebnisse. Auch der zweite früher dokumentierte Guard (Stop-Sweep x Multi-Combo)
+    existiert nicht mehr — 'stops_swept' ist ein toter Parameter, siehe Args.
 
     Args:
         rules_json: Entry-/Exit-Rules-Spezifikation.
@@ -1585,17 +1585,24 @@ def evaluate_rules_native(
             Muss 'close' enthalten.
         date_start: Optionaler Startzeitpunkt für die Date-Mask auf die Entry-Maske.
         date_end: Optionaler Endzeitpunkt für die Date-Mask auf die Entry-Maske.
-        stops_swept: True, wenn pf_kwargs gesweepte Stop-vbt.Param-Achsen enthält.
-            Dann ist nur Single-Combo zulässig (siehe Raises) — VBT broadcastet die
-            signal_func-Entry-Maske nicht entlang einer Stop-Param-Achse.
+        stops_swept: TOTER PARAMETER — wird im Rumpf nicht mehr gelesen. spec_runner
+            reicht ihn weiterhin durch. Er stammt aus der Zeit, als Stop-Sweep nur mit
+            Single-Combo zulaessig war; seit Ticket 47 rechnet der native Pfad
+            Multi-Combo x Stop-Sweep korrekt (Bit-Paritaet geprueft in
+            tests/test_native_short.py). Nicht entfernt, um den Aufrufer nicht
+            anzufassen — vor einer Bereinigung bewusst entscheiden.
 
     Returns:
         vbt.Portfolio-Objekt.
 
     Raises:
-        ValueError: Bei verschachtelten Gruppen, shift auf State-Refs,
-            Multi-Combo mit stateful Series-Operanden, oder Stop-Sweep
-            kombiniert mit Multi-Combo-Indikatoren (still-falsch-Schutz).
+        ValueError: Bei verschachtelten Gruppen und shift auf State-Refs.
+
+            GEAENDERT 2026-07-12: Die frueher hier gelisteten Abweisungen "Multi-Combo mit
+            stateful Series-Operanden" und "Stop-Sweep kombiniert mit Multi-Combo-Indikatoren"
+            existieren NICHT (mehr). Beide Guards fielen mit Ticket 47; ein entsprechendes
+            raise gibt es nicht. Der Docstring wurde nie nachgezogen und hat eine
+            Werkzeug-Grenze in die Strategie-Planung getragen, die es nicht gibt.
     """
     entry_spec = rules_json.get('entry')
     if entry_spec is None:
