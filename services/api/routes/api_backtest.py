@@ -10,6 +10,7 @@ GET /api/backtest/results/dt        — DataTables Server-Side Processing
 GET /api/backtest/filters           — Verfügbare Filter-Werte
 """
 
+import copy
 import json
 import os
 from datetime import datetime, timedelta
@@ -44,6 +45,7 @@ from user_data.utils.database.models import (
 )
 # GEÄNDERT: ToDo 10 — Key->Kürzel+Label-Mapping der Bestwert-Kriterien (Single Source, serverseitig)
 from services.api.utils.best_criteria_labels import criteria_keys_to_badges
+from services.api.utils.walk_forward import shift_backtest_window
 # GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
 from user_data.utils.database.repository import (
     create_backtest_run, _count_combinations, _build_resolved_config,
@@ -213,9 +215,6 @@ def start_walk_forward(request_body: dict):
 
     Body: { "result_id": int, "months": int (3/6/12), "metric": str }
     """
-    from dateutil.relativedelta import relativedelta
-    import copy
-
     result_id = request_body.get('result_id')
     months = request_body.get('months', 6)
     metric = request_body.get('metric', 'total_return_pct')
@@ -243,19 +242,8 @@ def start_walk_forward(request_body: dict):
     finally:
         session.close()
 
-    # Zeitraum berechnen: neuer Start = altes Ende, neues Ende = Start + months
-    old_end = datetime.strptime(backtest_config['end'], '%Y-%m-%d')
-    new_start = old_end
-    new_end = new_start + relativedelta(months=months)
-
-    backtest_config['start'] = new_start.strftime('%Y-%m-%d')
-    backtest_config['end'] = new_end.strftime('%Y-%m-%d')
-    # OHLC-Daten: Vorlauf beibehalten (Differenz ohlc_start zu start)
-    old_start = datetime.strptime(backtest_config.get('start', backtest_config['start']), '%Y-%m-%d')
-    old_ohlc_start = datetime.strptime(backtest_config.get('ohlc_start', backtest_config['start']), '%Y-%m-%d')
-    vorlauf = old_start - old_ohlc_start
-    backtest_config['ohlc_start'] = (new_start - vorlauf).strftime('%Y-%m-%d')
-    backtest_config['ohlc_end'] = new_end.strftime('%Y-%m-%d')
+    # Zeitraum verschieben: neuer Start = altes Ende, Vorlauf bleibt erhalten
+    backtest_config = shift_backtest_window(backtest_config, months)
 
     # Run erstellen und Job starten
     # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)

@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.92] - 13.07.2026
+
+### Fixed
+- Walk-Forward-Route: Indikator-Vorlauf blieb nicht erhalten
+  - Beim Verschieben des Zeitfensters wurde der alte Start erst gelesen, nachdem er bereits mit dem neuen Start ueberschrieben war. Der berechnete Vorlauf entsprach dadurch der gesamten bisherigen Historie statt dem tatsaechlichen Abstand zwischen ohlc_start und start. Folge: der Folge-Run lud unnoetig viele Kerzen (Ergebnisse blieben korrekt, da Entries ohnehin auf das Backtest-Fenster maskiert werden).
+  - Zeitfenster-Logik aus der Route in das neue Modul services/api/utils/walk_forward.py gezogen (shift_backtest_window) - reine Datumsrechnung ohne FastAPI-, Queue- und DB-Abhaengigkeiten und damit eigenstaendig testbar.
+  - copy und relativedelta von lokalen Funktions-Importen an den Dateianfang gezogen; der durch die Aenderung verwaiste relativedelta-Import in api_backtest.py entfernt.
+  - 8 neue Tests (tests/test_walk_forward_window_shift.py) pinnen Fensterlaenge, Erhalt des Vorlaufs, fehlendes ohlc_start und die Unveraenderlichkeit der Eingabe.
+
+### Files
+- services/api/routes/api_backtest.py
+- services/api/utils/walk_forward.py
+- tests/test_walk_forward_window_shift.py
+
+
+
 ## [1.30.91] - 13.07.2026
 
 ### Fixed
