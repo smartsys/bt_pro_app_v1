@@ -7,8 +7,8 @@ POST /api/leaderboard/<entry_id>/rerun   — Lauf aus Snapshot allein reproduzie
 """
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import date, datetime, time
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -26,13 +26,29 @@ from user_data.utils.database.repository_testsets import (
 router = APIRouter(prefix='/api/leaderboard', tags=['leaderboard'])
 
 
-def _compute_span_days(intervals: List[Tuple[datetime, datetime]]) -> Tuple[Optional[float], bool]:
+def _as_datetime(value: Union[datetime, date, None]) -> Optional[datetime]:
+    """Hebt ein date auf datetime an (Tagesbeginn); datetime bleibt unverändert.
+
+    Nötig, weil die Grenzen aus zwei Quellen mit verschiedenen Spaltentypen kommen:
+    backtest_results.start_index/end_index sind timestamp, die Fallback-Werte aus
+    backtest_runs.start_date/end_date sind date. Ohne Angleichung vergleicht sich
+    date nicht mit datetime.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.combine(value, time.min)
+
+
+def _compute_span_days(intervals: List[Tuple[Union[datetime, date, None], Union[datetime, date, None]]]) -> Tuple[Optional[float], bool]:
     """Berechnet die Tage der Intervall-Union und erkennt Überschneidungen.
 
     Returns (union_days, has_overlap). union_days ist None, wenn keine
     gültigen Intervalle vorliegen.
     """
-    valid = [(s, e) for s, e in intervals if s is not None and e is not None and e > s]
+    normalized = [(_as_datetime(s), _as_datetime(e)) for s, e in intervals]
+    valid = [(s, e) for s, e in normalized if s is not None and e is not None and e > s]
     if not valid:
         return None, False
     # Identische Zeiträume (gleiches Symbol, gleicher Window) sind kein Overlap,

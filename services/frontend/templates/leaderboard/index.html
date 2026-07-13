@@ -546,7 +546,7 @@ document.addEventListener("DOMContentLoaded", function() {
           data: 'result_id',
           render: function(d, type, row) {
             if (row.missing) return '<span class="text-muted fst-italic">—</span>';
-            return '<a href="/backtest/results/' + d + '/chart" target="_blank">#' + d + '</a>';
+            return '<a href="/chart-playground?resultid=' + d + '" target="_blank">' + d + '</a>';
           }
         },
         {

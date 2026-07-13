@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.91] - 13.07.2026
+
+### Fixed
+- Leaderboard: Result-ID im Drilldown öffnet den Playground, Tabellen-Ladefehler behoben
+  - Der Result-ID-Link im Drilldown-Popup zeigte auf die Chart-Ansicht (/backtest/results/<id>/chart) und führt jetzt in den Chart-Playground (/chart-playground?resultid=<id>) - dieselbe Ziel-URL wie die PG-Buttons in Ergebnisliste, Analyse und Run-Detail. Die Raute vor der ID ist entfallen (reine Zahl).
+  - GET /api/leaderboard lieferte einen 500er (TypeError: '<' not supported between instances of 'datetime.datetime' and 'datetime.date'), wodurch die Leaderboard-Tabelle leer blieb. Ursache: Fuer die Tage-Union werden backtest_results.start_index/end_index genutzt; sind diese NULL, greift ein Fallback auf backtest_runs.start_date/end_date. In der Datenbank sind die Result-Spalten timestamp, die Run-Spalten date - sobald ein Eintrag beide Quellen mischt, scheiterte das Sortieren der Intervalle.
+  - Neue Hilfsfunktion _as_datetime() hebt date-Grenzen auf datetime (Tagesbeginn) an, bevor _compute_span_days die Intervalle sortiert und vereinigt.
+
+### Files
+- services/frontend/templates/leaderboard/index.html
+- services/api/routes/api_leaderboard.py
+
+
+
 ## [1.30.90] - 13.07.2026
 
 ### Changed
