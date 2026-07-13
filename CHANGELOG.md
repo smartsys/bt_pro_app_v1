@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.86] - 13.07.2026
+
+### Fixed
+- Backtest-Queue überlebt das Hochfahren: Worker warten auf die Datenbank, Recovery holt verwaiste Runs zurück
+  - Worker warten vor dem ersten Dequeue auf die Datenbank (wait_for_db in worker_entry.py: SELECT 1 alle 2 Sekunden, Abbruch mit Exit 1 nach 120 Sekunden). Startet der Stack nicht über 'compose up', sondern über 'compose start' oder den Autostart der Docker-Oberfläche, wertet Compose die depends_on-Bedingungen nicht aus. Die Worker waren dann vor Postgres bereit, zogen Jobs, scheiterten sofort an 'the database system is starting up', und RQ schob sie ohne Wiederholung ins FailedJobRegistry - die komplette Queue brannte in Sekunden durch, während die Runs in der Datenbank auf 'queued' stehen blieben.
+  - Recovery-Oneshot (worker-init) räumt jetzt zwei Fälle auf: hängende 'running'-Runs (wie bisher) und zusätzlich 'queued'-Runs, zu denen kein RQ-Job mehr existiert. Als lebendig gilt ein Job, der wartend in der Queue oder im StartedJobRegistry liegt - ein zeitgleich anlaufender Worker führt damit nicht zu doppeltem Einreihen. Die im ersten Fall zurückgesetzten Runs werden explizit ausgenommen.
+  - Tests für recovery_oneshot ergänzt: 'queued'-Run mit lebendem Job bleibt unberührt, verwaister 'queued'-Run wird neu eingereiht. Die Tests der Datei hängen jetzt zusätzlich an der session-Fixture, die die Tabellen vor jedem Test leert (vorher liefen sie auf Resten voriger Tests).
+
+### Files
+- services/api/worker_entry.py
+- services/api/recovery_oneshot.py
+- services/api/tests/test_recovery_oneshot.py
+
+
+
 ## [1.30.85] - 13.07.2026
 
 ### Added

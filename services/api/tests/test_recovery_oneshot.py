@@ -26,6 +26,9 @@ _mock_rq = MagicMock()
 _mock_queue_cls = MagicMock()
 _mock_rq.Queue = _mock_queue_cls
 sys.modules.setdefault('rq', _mock_rq)
+# Submodule separat mocken — 'from rq.job import Job' sucht sys.modules['rq.job']
+sys.modules.setdefault('rq.job', MagicMock())
+sys.modules.setdefault('rq.registry', MagicMock())
 
 import services.api.recovery_oneshot  # noqa: E402, F401
 import user_data.utils.database.db as _db_module  # noqa: E402
@@ -64,7 +67,7 @@ def _insert_backtest_run(engine, status: str) -> int:
 class TestRecoverStaleRuns:
     """recover_stale_runs() setzt running-Runs zurück und reiht sie ein."""
 
-    def test_keine_haengenden_runs(self, db_engine, monkeypatch):
+    def test_keine_haengenden_runs(self, db_engine, session, monkeypatch):
         """Leere DB — recover_stale_runs() läuft ohne Fehler durch."""
         mock_q = MagicMock()
         monkeypatch.setattr(_db_module, '_engine', None)
@@ -77,7 +80,7 @@ class TestRecoverStaleRuns:
         # Kein enqueue-Call erwartet
         mock_q.enqueue.assert_not_called()
 
-    def test_zwei_running_runs_werden_zurueckgesetzt(self, db_engine, monkeypatch):
+    def test_zwei_running_runs_werden_zurueckgesetzt(self, db_engine, session, monkeypatch):
         """Zwei BacktestRuns mit status='running' → beide auf 'queued', beide eingereiht."""
         run1_id = _insert_backtest_run(db_engine, 'running')
         run2_id = _insert_backtest_run(db_engine, 'running')
@@ -108,22 +111,40 @@ class TestRecoverStaleRuns:
         assert r1_status == 'queued', f"Run1 Status erwartet 'queued', war: {r1_status}"
         assert r2_status == 'queued', f"Run2 Status erwartet 'queued', war: {r2_status}"
 
-    def test_queued_runs_werden_nicht_angefasst(self, db_engine, monkeypatch):
-        """BacktestRuns mit status='queued' bleiben unberührt."""
-        _insert_backtest_run(db_engine, 'queued')
+    def test_queued_run_mit_lebendem_job_bleibt_unberuehrt(self, db_engine, session, monkeypatch):
+        """'queued'-Run, zu dem noch ein RQ-Job existiert, wird nicht erneut eingereiht."""
+        run_id = _insert_backtest_run(db_engine, 'queued')
 
         mock_q = MagicMock()
         monkeypatch.setattr(_db_module, '_engine', None)
         monkeypatch.setattr(_db_module, '_session_factory', None)
 
         with patch('services.api.recovery_oneshot.get_redis_connection', return_value=MagicMock()), \
-             patch('services.api.recovery_oneshot.Queue', return_value=mock_q):
+             patch('services.api.recovery_oneshot.Queue', return_value=mock_q), \
+             patch('services.api.recovery_oneshot._live_run_ids', return_value={run_id}):
             services.api.recovery_oneshot.recover_stale_runs()
 
-        # Kein erneutes Einreihen (Run ist bereits queued)
         mock_q.enqueue.assert_not_called()
 
-    def test_enqueue_verwendet_korrekten_task_namen(self, db_engine, monkeypatch):
+    def test_verwaister_queued_run_wird_neu_eingereiht(self, db_engine, session, monkeypatch):
+        """'queued'-Run ohne lebenden RQ-Job (Job gestorben) wird neu eingereiht."""
+        run_id = _insert_backtest_run(db_engine, 'queued')
+
+        mock_q = MagicMock()
+        monkeypatch.setattr(_db_module, '_engine', None)
+        monkeypatch.setattr(_db_module, '_session_factory', None)
+
+        with patch('services.api.recovery_oneshot.get_redis_connection', return_value=MagicMock()), \
+             patch('services.api.recovery_oneshot.Queue', return_value=mock_q), \
+             patch('services.api.recovery_oneshot._live_run_ids', return_value=set()):
+            services.api.recovery_oneshot.recover_stale_runs()
+
+        assert mock_q.enqueue.call_count == 1, (
+            f"Erwartet 1 enqueue-Aufruf, war: {mock_q.enqueue.call_count}"
+        )
+        assert mock_q.enqueue.call_args.kwargs['run_id'] == run_id
+
+    def test_enqueue_verwendet_korrekten_task_namen(self, db_engine, session, monkeypatch):
         """Enqueued Job muss 'services.api.worker_tasks.run_backtest_job' verwenden."""
         _insert_backtest_run(db_engine, 'running')
 
