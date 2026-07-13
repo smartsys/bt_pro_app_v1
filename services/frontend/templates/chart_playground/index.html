@@ -98,7 +98,7 @@
         <button class="btn btn-success ms-1" id="cpRunLiteBtn">Schnellbacktest</button>
         <!-- GEÄNDERT: Voller Run aus dem Playground — Multiparameter-Lauf mit dem aktuellen
              Zustand (Zeitraum, Raster, Stops) als ad-hoc-Run, ohne Configs zu speichern. -->
-        <button class="btn btn-azure ms-1" id="cpRunFullBtn" title="Vollen Multiparameter-Lauf mit den aktuellen Einstellungen starten">Vollen Run starten</button>
+        <button class="btn btn-azure ms-1 px-2" id="cpRunFullBtn" title="Startet einen vollen Multiparameter-Lauf (Run) mit den aktuellen Einstellungen">VRS</button>
       </div>
     </div>
     <!-- Zeile 2: Chart-Buttons links, Setup-Gruppe rechts -->
@@ -2791,7 +2791,7 @@
     const btn = document.getElementById('cpRunFullBtn');
     const originalLabel = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starte...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
     try {
       const total = await countCombosForRun(payload.indicators);
       const d = payload.data;

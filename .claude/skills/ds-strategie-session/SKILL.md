@@ -252,7 +252,26 @@ Läufe ohne markierte Bestwerte weist die Ausgabe explizit aus (erst `run-bestwe
 
 - **Syntax/Flags je Aktion** (inkl. aller Anlege-, Listen-, Lösch- und sonstigen Aktionen und Defaults): `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py --help`
 
-**Kein fabrizierter Curl / kein `sys.path`-Import des Skripts.** Wenn du den **rohen** Ist-Body eines Objekts brauchst (z. B. um einen `-update --file` zu bauen), nimm den vorhandenen generischen Verb `api GET <route>` — der gibt das rohe JSON aus (z. B. `toolbox.py api GET /api/strategy/iterations/8`). Für gezielte Teiländerungen die `-set`/`-indicator-set`/`-condition-add`/`-stops-set`-Verben oben — die machen GET→ändern→zurück selbst. **Erst wenn wirklich ein Verb/Feld fehlt**, das weder ein Bearbeitungsverb noch `api GET/PUT/PATCH/POST/DELETE` abdeckt, die Lücke in `documentation/todo/todo-toolbox.md` eintragen (unter `## Offen`, nächste freie Nummer).
+**Kein fabrizierter Curl / kein `sys.path`-Import des Skripts.** Wenn du den **rohen** Ist-Body eines Objekts brauchst (z. B. um einen `-update --file` zu bauen), nimm den vorhandenen generischen Verb `api GET <route>` — der gibt das rohe JSON aus (z. B. `toolbox.py api GET /api/strategy/iterations/8`). Für gezielte Teiländerungen die `-set`/`-indicator-set`/`-condition-add`/`-stops-set`-Verben oben — die machen GET→ändern→zurück selbst.
+
+**Lange `api GET`-Antworten:** Die Anzeige kappt bei 4000 Zeichen — der Schnitt liegt mitten im JSON, das Ergebnis ist dann **nicht mehr parsebar**. Wer die vollständige Antwort braucht (z. B. `parameter-ranking` mit allen Achsen), nimmt eines der beiden Flags — nicht den Umweg über einen eigenen `urllib`-Fetch:
+
+```bash
+toolbox.py api GET "/api/backtest/runs/222/analyse/parameter-ranking?metric=total_return_pct" --out ranking.json
+toolbox.py api GET "/api/…" --out          # ohne Wert: Auto-Name mit Zeitstempel
+toolbox.py api GET "/api/…" --full         # ungekürzt in den Kontext
+```
+
+`--out` schreibt ungekürzt in eine Datei und gibt auf der Konsole nur Pfad + Zeichenzahl aus — **die bevorzugte Variante**, weil das Kontextfenster klein bleibt und Folge-Analysen die Datei per `json.load` lesen können. `--full` gibt alles auf stdout aus (nur wenn die Antwort wirklich in den Kontext soll). Beide zusammen sind ein Fehler.
+
+**Ablageort und Aufräumen (kein Müll im Repo):** `--out` schreibt **immer** unter `<TEMP>/bt-toolbox-out/`. Ein reiner Dateiname oder relativer Pfad landet dort — **nicht** im Arbeitsverzeichnis, es kann also nichts versehentlich im Projektbaum landen. Nur ein absoluter Pfad wird wörtlich genommen (bewusste Ausnahme, die dann aber vom Cleanup ausgenommen ist). Aufgeräumt wird automatisch: bei **jedem** `--out`-Schreiben fliegen Dateien raus, die älter als 24 h sind. Sofortiges Aufräumen von Hand:
+
+```bash
+toolbox.py out-clean          # nur abgelaufene (>24h)
+toolbox.py out-clean --all    # Ordner komplett leeren
+```
+
+Du musst also nach einer Analyse **nichts** von Hand löschen — der Ordner hält sich selbst sauber. **Erst wenn wirklich ein Verb/Feld fehlt**, das weder ein Bearbeitungsverb noch `api GET/PUT/PATCH/POST/DELETE` abdeckt, die Lücke in `documentation/todo/todo-toolbox.md` eintragen (unter `## Offen`, nächste freie Nummer).
 
 **Eintrags-Qualität (Pflicht):** Der Eintrag muss **für sich allein verständlich** sein — ein frischer Chat ohne den heutigen Gesprächskontext muss ihn nachvollziehen und umsetzen können. Also nicht der knappe Einzeiler, der nur im Moment Sinn ergibt („Feld X fehlt"), sondern:
 - **Ziel** — was soll gehen, das heute nicht geht.

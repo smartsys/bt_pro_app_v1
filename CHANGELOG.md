@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.88] - 13.07.2026
+
+### Added
+- Toolbox: api GET liefert lange Antworten vollständig (--out / --full) mit selbstaufräumendem Temp-Ordner
+  - --out [datei]: schreibt die Antwort ungekürzt in eine Datei, auf der Konsole erscheinen nur Pfad und Zeichenzahl (kontextschonend). Ohne Wert wird ein Auto-Name mit Zeitstempel vergeben.
+  - --full: gibt die Antwort ungekürzt auf stdout aus. --out und --full zusammen sind ein Fehler.
+  - Hintergrund: die Anzeige kappte lange Antworten hart bei 4000 Zeichen, der Schnitt lag mitten im JSON und machte es unparsebar. Der Hinweis 'Filter nutzen' half bei Routen ohne Filter-Query (z.B. parameter-ranking) nicht; als Ausweg blieb nur ein direkter urllib-Fetch an der Toolbox vorbei.
+  - Ablageort: --out schreibt immer unter <TEMP>/bt-toolbox-out/. Reine Dateinamen und relative Pfade werden dorthin aufgelöst statt ins Arbeitsverzeichnis, damit keine Wegwerf-Datei im Projektbaum landen kann. Nur absolute Pfade werden wörtlich genommen (ohne Cleanup).
+  - Cleanup: bei jedem --out-Schreiben werden Dateien älter als 24 Stunden rekursiv entfernt, leer gewordene Unterordner fallen mit weg. Neues Verb out-clean [--all] räumt auf Zuruf auf (ohne Flag nur Abgelaufenes, mit --all den ganzen Ordner).
+  - Doku: Toolbox-Help (--help), Skill SKILL.md und handbuch.md nachgezogen; To-Do 14 in todo-toolbox.md geschlossen.
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+- .claude/skills/ds-strategie-session/SKILL.md
+- documentation/project/handbuch.md
+- documentation/todo/todo-toolbox.md
+
+
+
 ## [1.30.87] - 13.07.2026
 
 ### Added

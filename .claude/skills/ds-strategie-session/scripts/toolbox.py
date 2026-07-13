@@ -164,6 +164,18 @@ Generischer Direktzugriff auf JEDE (auch künftige) Route:
   python3 toolbox.py api GET /api/backtest/runs
   python3 toolbox.py api POST /api/testsets --file body.json
   python3 toolbox.py api DELETE /api/backtest/runs/1234
+  Lange Antworten: die Anzeige kappt bei 4000 Zeichen (Schnitt mitten im JSON, nicht parsebar).
+    --out [datei]  ungekürzt in eine Datei, Konsole nur Pfad + Zeichenzahl (kontextschonend, bevorzugt)
+    --full         ungekürzt auf stdout
+  python3 toolbox.py api GET "/api/backtest/runs/222/analyse/parameter-ranking?metric=total_return_pct" --out ranking.json
+
+  --out schreibt IMMER unter <TEMP>/bt-toolbox-out/ (ohne Wert: Auto-Name mit Zeitstempel).
+  Ein reiner Dateiname bzw. relativer Pfad landet dort, nicht im Arbeitsverzeichnis — so kann
+  nichts im Repo landen. Nur ein absoluter Pfad wird wörtlich genommen (dann aber kein Cleanup).
+  Aufräumen: passiert automatisch bei jedem --out-Schreiben (Dateien älter als 24h fliegen raus).
+  Sofort/komplett aufräumen:
+    python3 toolbox.py out-clean          # nur abgelaufene (>24h)
+    python3 toolbox.py out-clean --all    # Ordner komplett leeren
 
 Unterstützte Bereiche:
   ID-basiert:
@@ -185,9 +197,11 @@ Unterstützte Bereiche:
 import datetime
 import json
 import os
+import pathlib
 import re
 import statistics
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -1953,19 +1967,118 @@ def testset_run_start(args: list) -> int:
 # beliebige (auch künftige) Route direkt.
 # ---------------------------------------------------------------------------
 
-def _print_data(verb: str, resp) -> None:
+# Ausgabe-Ordner für --out. Immer unter Temp — die Dateien sind Zwischenergebnisse
+# für genau eine Folge-Analyse, kein Artefakt, das im Projektbaum landen darf.
+OUT_DIR = pathlib.Path(tempfile.gettempdir()) / "bt-toolbox-out"
+OUT_MAX_AGE_HOURS = 24
+
+
+def _out_path(out) -> pathlib.Path:
+    """Löst den --out-Wert zu einem Pfad unter OUT_DIR auf.
+
+    out=True (Flag ohne Wert) -> Auto-Name mit Zeitstempel. Ein reiner Dateiname
+    oder ein relativer Pfad landet ebenfalls unter OUT_DIR (nie im Arbeitsverzeichnis
+    und damit nie im Repo). Nur ein absoluter Pfad wird wörtlich genommen — bewusste
+    Ausnahme, die dann aber auch nicht mit aufgeräumt wird.
+    """
+    if out is True:
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        return OUT_DIR / f"api-{stamp}.json"
+    p = pathlib.Path(str(out)).expanduser()
+    return p if p.is_absolute() else OUT_DIR / p
+
+
+def _drop_empty_out_dirs() -> None:
+    """Entfernt leer gewordene Unterordner in OUT_DIR (tiefste zuerst). OUT_DIR bleibt."""
+    dirs = sorted((p for p in OUT_DIR.rglob("*") if p.is_dir()),
+                  key=lambda p: len(p.parts), reverse=True)
+    for d in dirs:
+        try:
+            d.rmdir()
+        except OSError:
+            continue
+
+
+def _prune_out_dir(max_age_hours: int = OUT_MAX_AGE_HOURS) -> int:
+    """Löscht abgelaufene --out-Dateien aus OUT_DIR. Gibt die Anzahl zurück.
+
+    Läuft bei jedem --out-Schreiben mit: der Ordner räumt sich selbst auf, ohne dass
+    der Aufrufer daran denken muss. Rekursiv (auch Dateien in Unterordnern, die ein
+    relativer --out-Pfad angelegt hat); leer gewordene Unterordner fallen mit weg.
+    Fasst ausschließlich OUT_DIR an.
+    """
+    if not OUT_DIR.is_dir():
+        return 0
+    cutoff = datetime.datetime.now().timestamp() - max_age_hours * 3600
+    removed = 0
+    for f in OUT_DIR.rglob("*"):
+        try:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink()
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        _drop_empty_out_dirs()
+    return removed
+
+
+def out_clean(args: list) -> int:
+    """Räumt den --out-Ordner auf: out-clean [--all].
+
+    Ohne Flag fallen nur abgelaufene Dateien (aelter als OUT_MAX_AGE_HOURS) weg —
+    dasselbe, was beim Schreiben automatisch passiert. Mit --all wird der Ordner
+    komplett geleert (auch noch frische Dateien).
+    """
+    f = _parse_flags(args)
+    if not OUT_DIR.is_dir():
+        print(f"## out-clean: nichts zu tun — {OUT_DIR} existiert nicht\n")
+        return 0
+    if f.get("all"):
+        removed = 0
+        for p in OUT_DIR.rglob("*"):
+            try:
+                if p.is_file():
+                    p.unlink()
+                    removed += 1
+            except OSError:
+                continue
+        _drop_empty_out_dirs()
+        print(f"## out-clean: {removed} Datei(en) geloescht — {OUT_DIR} geleert\n")
+        return 0
+    removed = _prune_out_dir()
+    rest = sum(1 for p in OUT_DIR.rglob("*") if p.is_file())
+    print(f"## out-clean: {removed} abgelaufene Datei(en) geloescht (aelter als "
+          f"{OUT_MAX_AGE_HOURS}h), {rest} verbleiben — {OUT_DIR}\n")
+    return 0
+
+
+def _print_data(verb: str, resp, full: bool = False, out=None) -> None:
     """Druckt die Antwort einer Route als kompakten JSON-Block.
 
     Kürzt sehr lange Antworten auf 4000 Zeichen, weist die Kürzung dabei aber
-    immer sichtbar mit Original-Größe aus — nie stilles Abschneiden.
+    immer sichtbar mit Original-Größe aus — nie stilles Abschneiden. Der Schnitt
+    liegt mitten im JSON, das Ergebnis ist also nicht mehr parsebar; wer die
+    vollständige Antwort braucht, nimmt out (ungekürzt in Datei unter OUT_DIR,
+    Konsole bleibt klein) oder full (ungekürzt auf stdout).
     """
     payload = resp.get("data", resp) if isinstance(resp, dict) else resp
     text = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    if out:
+        path = _out_path(out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pruned = _prune_out_dir()
+        written = path.write_text(text, encoding="utf-8")
+        note = f" · {pruned} abgelaufene aufgeraeumt" if pruned else ""
+        print(f"## {verb}: vollständiges JSON geschrieben — {path} ({written} Zeichen){note}\n")
+        return
+
     print(f"## {verb}")
     print("```json")
-    if len(text) > 4000:
+    if len(text) > 4000 and not full:
         print(text[:4000])
-        print(f"[gekürzt: 4000 von {len(text)} Zeichen — Filter nutzen]")
+        print(f"[gekürzt: 4000 von {len(text)} Zeichen — --full oder --out <datei> für die volle Antwort]")
     else:
         print(text)
     print("```\n")
@@ -2020,9 +2133,13 @@ def _run_table_verb(verb: str, spec: tuple, args: list) -> int:
 
 
 def api_call(args: list) -> int:
-    """Generischer Direktaufruf: api <METHOD> <pfad> [--file body.json].
+    """Generischer Direktaufruf: api <METHOD> <pfad> [--file body.json] [--out [datei.json] | --full].
 
     Erreicht JEDE Route — auch solche ohne eigenes Verb und künftige.
+    Die Anzeige kappt lange Antworten bei 4000 Zeichen (unparsebar!). Für die
+    vollständige Antwort: --out (ungekürzt in eine Datei unter OUT_DIR, Konsole nur
+    Pfad + Zeichenzahl — kontextschonend; ohne Wert Auto-Name mit Zeitstempel) oder
+    --full (ungekürzt auf stdout). Der Ordner räumt sich selbst auf, siehe out-clean.
     """
     if len(args) < 2:
         raise ValueError("api braucht <METHOD> <pfad> (z.B. api GET /api/backtest/runs)")
@@ -2031,9 +2148,13 @@ def api_call(args: list) -> int:
     if not path.startswith("/"):
         path = "/" + path
     f = _parse_flags(args[2:])
+    full = bool(f.get("full"))
+    out = f.get("out")
+    if out and full:
+        raise ValueError("api: --out und --full schließen sich aus")
     body = _read_json_file(f["file"]) if f.get("file") else None
     resp = request(method, path, body)
-    _print_data(f"api {method} {path}", resp)
+    _print_data(f"api {method} {path}", resp, full=full, out=out)
     return 0
 
 
@@ -2530,6 +2651,7 @@ TABLE_VERBS = {
 # Einzel-Verben mit eigener Argument-Form (Liste/Create/Start). Erstes CLI-Argument.
 SINGLE_VERBS = {
     "api": api_call,
+    "out-clean": out_clean,
     "walk-forward-start": walk_forward_start,
     "run-remarks": run_remarks_set,
     "data-update": data_update,

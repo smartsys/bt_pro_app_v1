@@ -332,6 +332,9 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 
 | Werkzeug | macht |
 |---|---|
-| `api GET <pfad>` | Ruft eine beliebige API-Route lesend auf. |
+| `api GET <pfad>` | Ruft eine beliebige API-Route lesend auf. Die Anzeige kappt bei 4000 Zeichen. |
+| `api GET <pfad> --out [datei.json]` | Schreibt die vollständige Antwort ungekürzt in eine Datei unter `<TEMP>/bt-toolbox-out/` (Konsole: nur Pfad + Zeichenzahl). Ohne Wert: Auto-Name mit Zeitstempel. |
+| `api GET <pfad> --full` | Gibt die vollständige Antwort ungekürzt auf der Konsole aus. |
 | `api POST <pfad> --file body.json` | Ruft eine beliebige API-Route schreibend auf. |
 | `api DELETE <pfad>` | Löscht über eine beliebige API-Route. |
+| `out-clean [--all]` | Räumt den `--out`-Ordner auf: ohne Flag nur Abgelaufenes (>24 h), mit `--all` komplett. Passiert bei jedem `--out`-Schreiben ohnehin automatisch. |
