@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.89] - 13.07.2026
+
+### Fixed
+- Toolbox-Verb vergleichstabelle fasst mehrere Läufe einer Iteration je Symbol+Testset zu einer Zeile zusammen
+  - Bisher schrieb der Generator eine Tabellenzeile pro Run. Das stimmte nur, solange eine Iteration genau einen Run je Symbol+Testset hatte.
+  - Verteilt eine Iteration eine Sweep-Achse auf mehrere Läufe (VWMA v8: 17 Runs je Zelle, einer je k-Stufe, weil k nicht als Sweep-Achse läuft), entstanden 17 identisch mit v8 beschriftete Zeilen ohne unterscheidendes Merkmal — die Tabelle wuchs auf 208 Zeilen und las sich, als gäbe es 17 v8-Iterationen.
+  - Die Zelle ist jetzt Symbol x Iteration: Spitze = bester Total Return und Kern = bester Profitfaktor über alle Läufe der Zelle, also die Decke über die gesamte verteilte Achse.
+  - Zellen aus mehreren Läufen werden als 'vN (17 Läufe)' gekennzeichnet, mit erklärender Fußnote unter der Tabelle.
+
+### Files
+- .claude/skills/ds-strategie-session/scripts/toolbox.py
+
+
+
 ## [1.30.88] - 13.07.2026
 
 ### Added

@@ -1666,6 +1666,27 @@ def vergleichstabelle(args: list) -> int:
                     return r
         return None
 
+    def _version_num(run: dict) -> int:
+        try:
+            return int(run.get("strategy_name"))
+        except (TypeError, ValueError):
+            return 0
+
+    def _metric(result: dict, key: str) -> float:
+        """Metrik als Zahl; fehlende/ungueltige Werte verlieren jeden Vergleich."""
+        try:
+            return float(result.get(key))
+        except (TypeError, ValueError):
+            return float("-inf")
+
+    # GEAENDERT: Zelle = Symbol x Iteration, NICHT mehr eine Zeile je Run.
+    # Eine Iteration kann mehrere Runs je Symbol+Testset haben, wenn eine
+    # Sweep-Achse auf Laeufe verteilt werden musste (VWMA v8: 17 Runs, einer je
+    # k-Stufe, weil k nicht als Sweep-Achse laeuft). Frueher ergab das 17
+    # identisch mit "v8" beschriftete Zeilen. Jetzt wird die Zelle ueber alle
+    # Runs zur Decke zusammengefasst: beste Spitze (max Total Return) und bester
+    # Kern (max Profitfaktor) — genau das, was "Spitze/Kern dieser Iteration in
+    # dieser Zelle" bedeutet.
     groups: dict = {}
     missing: list = []
     for run in sorted(ts_runs, key=lambda x: x["id"]):
@@ -1677,16 +1698,24 @@ def vergleichstabelle(args: list) -> int:
         if spitze is None and kern is None:
             missing.append(run["id"])
         key = run.get("testset_name") or f"testset-run:{run['testset_run_id']}"
-        groups.setdefault(key, []).append({"run": run, "spitze": spitze, "kern": kern})
+        cells = groups.setdefault(key, {})
+        cell_key = (run["symbol"], _version_num(run))
+        cell = cells.get(cell_key)
+        if cell is None:
+            cells[cell_key] = {"run": run, "spitze": spitze, "kern": kern, "runs": 1}
+            continue
+        cell["runs"] += 1
+        if spitze is not None and (cell["spitze"] is None or _metric(spitze, "total_return_pct")
+                                   > _metric(cell["spitze"], "total_return_pct")):
+            cell["spitze"] = spitze
+        if kern is not None and (cell["kern"] is None or _metric(kern, "profit_factor")
+                                 > _metric(cell["kern"], "profit_factor")):
+            cell["kern"] = kern
 
-    if _maybe_json(f, {"strategy": slug, "groups": groups, "runs_ohne_bestwerte": missing}):
+    if _maybe_json(f, {"strategy": slug,
+                       "groups": {ts: list(cells.values()) for ts, cells in groups.items()},
+                       "runs_ohne_bestwerte": missing}):
         return 0
-
-    def _version_num(run: dict) -> int:
-        try:
-            return int(run.get("strategy_name"))
-        except (TypeError, ValueError):
-            return 0
 
     def _cell_spitze(r) -> str:
         if not r:
@@ -1705,16 +1734,26 @@ def vergleichstabelle(args: list) -> int:
     if not ts_runs:
         lines.append("- (keine Testset-Läufe gefunden)")
         lines.append("")
+    aggregiert = False
     for ts_name in sorted(groups):
-        entries = sorted(groups[ts_name], key=lambda e: (e["run"]["symbol"], _version_num(e["run"])))
+        entries = sorted(groups[ts_name].values(), key=lambda e: (e["run"]["symbol"], _version_num(e["run"])))
         lines.append(f"### {ts_name}")
         lines.append("")
         lines.append("| Symbol | Iteration | Spitze (Max Total Return) | Robuster Kern (PF ≥ 30 Trades) |")
         lines.append("|---|---|---|---|")
         for e in entries:
             run = e["run"]
-            lines.append(f"| {run['symbol']} | v{run.get('strategy_name')} "
+            label = f"v{run.get('strategy_name')}"
+            if e["runs"] > 1:
+                aggregiert = True
+                label += f" ({e['runs']} Läufe)"
+            lines.append(f"| {run['symbol']} | {label} "
                          f"| {_cell_spitze(e['spitze'])} | {_cell_kern(e['kern'])} |")
+        lines.append("")
+    if aggregiert:
+        lines.append("> Zellen mit „(N Läufe)“: Die Iteration hat mehrere Runs je Symbol+Testset, weil eine "
+                     "Sweep-Achse auf Läufe verteilt werden musste. Spitze und Kern sind die **Decke über "
+                     "alle diese Läufe** — also über die gesamte verteilte Achse, nicht über einen einzelnen Lauf.")
         lines.append("")
     if missing:
         lines.append("> Läufe ohne markierte Bestwerte (erst `run-bestwerte` laufen lassen): "
