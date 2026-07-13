@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.90] - 13.07.2026
+
+### Changed
+- Backtest-Configs-Übersicht lädt sofort, Datenqualität wird pro Timeframe nachgereicht
+  - Die Tabelle wartete bisher auf /api/config/backtest/quality und /api/config/data/files, bevor sie überhaupt gezeichnet wurde. Die Qualitätsberechnung liest den kompletten Zeit-Index aller HDF5-Dateien (allein die 5m-Datei rund 13 Mio. Zeitstempel) und brauchte damit gut 6 Sekunden — unabhängig von der Zahl der Configs.
+  - GET /api/config/backtest/quality akzeptiert jetzt den optionalen Parameter timeframe und berechnet dann nur die Configs dieses Timeframes (eine HDF5-Datei statt aller). Ohne Parameter unverändertes Verhalten.
+  - Die Übersicht rendert die Tabelle sofort (rund 140 ms statt 6,5 s) und holt die Qualität je Timeframe parallel nach; jede Antwort zeichnet die Spalte neu. Noch nicht berechnete Zellen zeigen einen Spinner, die günstigen Timeframes erscheinen praktisch sofort.
+  - Der Qualitäts-Filter (min/max) lässt Zeilen durch, deren Timeframe noch rechnet, statt sie auszublenden.
+  - Behoben: solange die Verfügbarkeits-Daten noch luden, markierte der Datums-Renderer jede Zelle fälschlich rot als 'keine OHLC-Daten vorhanden'. Marker werden jetzt erst gesetzt, wenn die Daten wirklich da sind.
+
+### Files
+- services/api/routes/api_config.py
+- services/frontend/templates/config/backtest_configs.html
+
+
+
 ## [1.30.89] - 13.07.2026
 
 ### Fixed

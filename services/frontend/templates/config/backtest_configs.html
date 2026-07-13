@@ -104,9 +104,10 @@
 document.addEventListener("DOMContentLoaded", function() {
 
   // Lookup-Map: "exchange|timeframe|symbol" -> { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
-  // Wird vor DataTable-Init geladen, damit die Date-Renderer den Verfügbarkeitsabgleich
-  // direkt machen können.
+  // Wird erst NACH dem ersten Render geladen (das Lesen der HDF5-Metadaten dauert rund
+  // eine Sekunde) — bis dahin zeigen die Datums-Zellen keinen Verfügbarkeits-Marker.
   var dataAvailability = {};
+  var availabilityLoaded = false;
   function availabilityKey(exchange, timeframe, symbol) {
     return (exchange || '') + '|' + (timeframe || '') + '|' + (symbol || '');
   }
@@ -127,20 +128,41 @@ document.addEventListener("DOMContentLoaded", function() {
       .catch(function() { /* fallback: leere Map -> kein Marker */ });
   }
 
-  // Datenqualität je Config-ID für den eingestellten OHLC-Zeitraum (aus /api/config/backtest/quality)
+  // Datenqualität je Config-ID für den eingestellten OHLC-Zeitraum (aus /api/config/backtest/quality).
+  // Wird pro Timeframe nachgeladen: die Berechnung liest den kompletten Zeit-Index der
+  // HDF5-Datei, und die 5m-Datei kostet dabei ein Mehrfaches der übrigen Timeframes.
+  // Getrennte Anfragen lassen die günstigen Timeframes sofort erscheinen.
   var configQuality = {};
-  function loadQuality() {
-    return fetch('/api/config/backtest/quality')
+  var qualityLoadedTf = {};  // timeframe -> true, sobald dessen Werte da sind
+
+  function loadQualityForTf(tf) {
+    return fetch('/api/config/backtest/quality?timeframe=' + encodeURIComponent(tf))
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        configQuality = (j.data && j.data.quality) || {};
+        var q = (j.data && j.data.quality) || {};
+        Object.keys(q).forEach(function(id) { configQuality[id] = q[id]; });
       })
-      .catch(function() { configQuality = {}; });
+      .catch(function() { /* fallback: keine Werte -> Strich statt Badge */ })
+      .then(function() {
+        qualityLoadedTf[tf] = true;
+        redrawQualityColumn();
+      });
+  }
+
+  // Zellen neu rendern, ohne Seite/Sortierung/Auswahl zu verlieren. invalidate('data')
+  // ist nötig, weil DataTables die gerenderten Zellen sonst aus dem Cache zeichnet.
+  function redrawQualityColumn() {
+    if (!table) return;
+    table.rows().invalidate('data').draw(false);
   }
 
   // Prozentwert als farbige Badge (grün >= 99,5 / gelb >= 90 / rot darunter; null -> Strich).
   // Formatierung identisch zur OHLC-Daten-Seite (data_files.html).
-  function qualityBadge(q) {
+  // Solange der Timeframe der Zeile noch rechnet: Spinner statt Wert.
+  function qualityBadge(q, tf) {
+    if (!qualityLoadedTf[tf]) {
+      return '<span class="spinner-border spinner-border-sm text-muted" role="status" title="Qualität wird berechnet"></span>';
+    }
     if (q === null || q === undefined) return '<span class="text-muted">–</span>';
     var cls = q >= 99.5 ? 'bg-green-lt' : (q >= 90 ? 'bg-yellow-lt' : 'bg-red-lt');
     var txt = q.toFixed(1).replace('.', ',') + ' %';
@@ -163,6 +185,9 @@ document.addEventListener("DOMContentLoaded", function() {
     if (type !== 'display') return dateStr || '';
     if (!dateStr) return '-';
     var display = formatDateDe(dateStr);
+    // Solange die Verfügbarkeit noch lädt, ist die Map leer — dann OHNE Marker rendern,
+    // sonst stünde jede Zeile kurzzeitig faelschlich auf "keine OHLC-Daten vorhanden".
+    if (!availabilityLoaded) return display;
     var avail = dataAvailability[availabilityKey(row.exchange, row.timeframe, row.symbol)];
     if (!avail || !avail.start || !avail.end) {
       var tip = 'Keine OHLC-Daten für '
@@ -226,6 +251,9 @@ document.addEventListener("DOMContentLoaded", function() {
     if (filterState.ohlcStart && datePart(rowData.ohlc_start) < filterState.ohlcStart) return false;
     if (filterState.ohlcEnd && datePart(rowData.ohlc_end) > filterState.ohlcEnd) return false;
     if (filterState.qMin !== null || filterState.qMax !== null) {
+      // Noch nicht berechnete Zeilen durchlassen — sie bekommen erst mit ihrem
+      // Timeframe einen Wert und würden sonst grundlos aus der Ansicht fallen.
+      if (!qualityLoadedTf[rowData.timeframe]) return true;
       var q = configQuality[rowData.id];
       if (q === null || q === undefined) return false;
       if (filterState.qMin !== null && q < filterState.qMin) return false;
@@ -271,11 +299,16 @@ document.addEventListener("DOMContentLoaded", function() {
       url: "/api/config/backtest",
       dataSrc: function(json) {
         document.getElementById("configs-total").textContent = json.data.length;
+        var timeframes = json.data.map(function(r) { return r.timeframe; });
         // Filter-Dropdowns aus den geladenen Configs befüllen
-        fillSelect(document.getElementById('filter-tf'),
-                   json.data.map(function(r) { return r.timeframe; }), 'TF (alle)');
+        fillSelect(document.getElementById('filter-tf'), timeframes, 'TF (alle)');
         fillSelect(document.getElementById('filter-symbol'),
                    json.data.map(function(r) { return r.symbol; }), 'Symbol (alle)');
+        // Qualität je vorkommendem Timeframe nachladen (parallel, jede Antwort zeichnet neu).
+        // Nach einem ajax.reload() (Kopieren/Löschen) sind die Werte schon da -> nichts zu tun.
+        Array.from(new Set(timeframes.filter(Boolean))).forEach(function(tf) {
+          if (!qualityLoadedTf[tf]) loadQualityForTf(tf);
+        });
         return json.data;
       }
     },
@@ -313,11 +346,12 @@ document.addEventListener("DOMContentLoaded", function() {
       { data: "start",      render: renderDateCell },
       { data: "end",        render: renderDateCell },
       { data: "ohlc_end",   render: renderDateCell },
-      // Datenqualität im eingestellten OHLC-Zeitraum (aus separatem Endpoint, per Config-ID gemappt)
-      { data: "id", orderable: true, className: "text-center", render: function(d, type) {
+      // Datenqualität im eingestellten OHLC-Zeitraum (aus separatem Endpoint, per Config-ID gemappt).
+      // Zeilen, deren Timeframe noch rechnet, sortieren wie fehlende Werte (-1) und zeigen einen Spinner.
+      { data: "id", orderable: true, className: "text-center", render: function(d, type, row) {
           var q = configQuality[d];
           if (type === 'sort' || type === 'type') return (q === null || q === undefined) ? -1 : q;
-          return qualityBadge(q);
+          return qualityBadge(q, row.timeframe);
       }},
       { data: "size", className: "text-center" },
       { data: "size_type" },
@@ -358,9 +392,16 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // Erst Availability + Qualität laden, dann DataTable initialisieren — damit die
-  // Datums-Renderer und die Qualitäts-Spalte beim ersten Render schon Daten haben.
-  Promise.all([loadAvailability(), loadQuality()]).then(initTable).then(function() {
+  // Tabelle sofort initialisieren — sie hängt nicht mehr am Lesen der HDF5-Dateien.
+  // Verfügbarkeits-Marker und Qualitäts-Badges kommen per Redraw nach, sobald ihre
+  // Daten da sind (Qualität timeframe-weise, siehe loadQualityForTf).
+  initTable();
+  loadAvailability().then(function() {
+    availabilityLoaded = true;
+    if (table) table.rows().invalidate('data').draw(false);
+  });
+
+  {
     // Suche; X-Sichtbarkeit per CSS, Klick via Delegation
     var searchInput = document.getElementById("configs-search");
     searchInput.addEventListener("input", function() {
@@ -419,7 +460,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       rows.invalidate('data').draw(false);
     });
-  });
+  }
 
   document.addEventListener("click", function(e) {
     var btn = e.target.closest(".dt-search-clear");

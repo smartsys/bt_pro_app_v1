@@ -124,7 +124,9 @@ def list_configs():
 
 
 @router.get('/backtest/quality')
-def backtest_configs_range_quality():
+def backtest_configs_range_quality(
+    timeframe: Optional[str] = Query(None, description='Nur Configs dieses Timeframes berechnen'),
+):
     """Datenqualitaet je Backtest-Config fuer den eingestellten OHLC-Zeitraum.
 
     Fuer jede Config wird gemessen, wie vollstaendig die OHLC-Daten im Bereich
@@ -136,13 +138,21 @@ def backtest_configs_range_quality():
     Effizienz: Je (exchange, timeframe) wird die HDF5-Datei nur einmal geoeffnet
     und der Zeit-Index pro Symbol einmal geladen (select_column, ohne OHLC-Werte),
     danach werden alle Configs desselben Symbols per searchsorted bedient.
+
+    `timeframe` grenzt die Berechnung auf einen Timeframe ein. Das Frontend holt
+    damit einen Timeframe pro Anfrage, sodass die guenstigen Timeframes sofort
+    erscheinen und nur die grosse 5m-Datei laenger braucht. Ohne den Parameter
+    werden wie bisher alle Configs berechnet.
     """
     session = get_session()
     try:
-        rows = session.execute(text(
-            "SELECT id, exchange, symbol, timeframe, ohlc_start, ohlc_end "
-            "FROM backtest_configs"
-        )).mappings().all()
+        sql = ("SELECT id, exchange, symbol, timeframe, ohlc_start, ohlc_end "
+               "FROM backtest_configs")
+        params: dict = {}
+        if timeframe:
+            sql += " WHERE timeframe = :tf"
+            params['tf'] = timeframe
+        rows = session.execute(text(sql), params).mappings().all()
 
         # Benoetigte Symbole je (exchange, timeframe) sammeln.
         needed = {}
