@@ -19,6 +19,7 @@ from user_data.utils.database.repository_testsets import (
     delete_testset,
     get_testset,
     list_testsets,
+    toggle_testset_favorite,
     update_testset,
 )
 
@@ -152,6 +153,40 @@ def test_list_testsets_empty(session):
     """Leere Liste wenn keine TestSets vorhanden."""
     result = list_testsets(session)
     assert result == []
+
+
+# ============================================================================
+# Tests: Favoriten-Stern
+# ============================================================================
+
+def test_toggle_testset_favorite(session, backtest_config):
+    """Stern schaltet zwischen 0 und 1 um."""
+    ts = create_testset(session=session, name='Favorit-Test', backtest_config_ids=[backtest_config.id])
+    assert ts.is_favorite == 0
+
+    toggled = toggle_testset_favorite(session, ts.id)
+    assert toggled is not None
+    assert toggled.is_favorite == 1
+
+    toggled_back = toggle_testset_favorite(session, ts.id)
+    assert toggled_back.is_favorite == 0
+
+
+def test_toggle_testset_favorite_not_found(session):
+    """Toggle auf unbekannte ID gibt None."""
+    assert toggle_testset_favorite(session, 99999) is None
+
+
+def test_list_testsets_favorites_first(session, backtest_config):
+    """Favoriten stehen oben, der Rest bleibt alphabetisch nach Name sortiert."""
+    create_testset(session=session, name='Alpha', backtest_config_ids=[backtest_config.id])
+    create_testset(session=session, name='Beta', backtest_config_ids=[backtest_config.id])
+    gamma = create_testset(session=session, name='Gamma', backtest_config_ids=[backtest_config.id])
+
+    toggle_testset_favorite(session, gamma.id)
+
+    names = [ts.name for ts in list_testsets(session)]
+    assert names == ['Gamma', 'Alpha', 'Beta']
 
 
 # ============================================================================

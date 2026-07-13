@@ -109,7 +109,7 @@ def get_testset(session: Session, testset_id: int) -> Optional[TestSet]:
 
 
 def list_testsets(session: Session) -> List[TestSet]:
-    """Gibt alle TestSets sortiert nach Name zurück.
+    """Gibt alle TestSets zurück — Favoriten zuerst, dann alphabetisch nach Name.
 
     Args:
         session: Aktive SQLAlchemy-Session.
@@ -117,7 +117,28 @@ def list_testsets(session: Session) -> List[TestSet]:
     Returns:
         Liste aller TestSets.
     """
-    return session.query(TestSet).order_by(TestSet.name).all()
+    # GEÄNDERT: Favoriten-Stern zuerst, danach die bisherige Namens-Sortierung
+    return session.query(TestSet).order_by(TestSet.is_favorite.desc(), TestSet.name).all()
+
+
+def toggle_testset_favorite(session: Session, testset_id: int) -> Optional[TestSet]:
+    """Schaltet den Favoriten-Stern eines TestSets um.
+
+    Args:
+        session: Aktive SQLAlchemy-Session.
+        testset_id: Primärschlüssel des TestSets.
+
+    Returns:
+        Das aktualisierte TestSet oder None wenn nicht gefunden.
+    """
+    testset = session.query(TestSet).filter(TestSet.id == testset_id).first()
+    if testset is None:
+        return None
+    testset.is_favorite = 0 if testset.is_favorite else 1
+    session.commit()
+    session.refresh(testset)
+    logger.info("TestSet ID %d: is_favorite -> %d.", testset_id, testset.is_favorite)
+    return testset
 
 
 def update_testset(

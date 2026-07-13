@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.87] - 13.07.2026
+
+### Added
+- Favoriten-Stern für TestSets — Favoriten stehen in der TestSet-Liste und im Test-Set-Dropdown der Start-Maske oben
+  - Neue Spalte testsets.is_favorite (Integer 0/1) samt Alembic-Migration 0017_testset_favorite
+  - Neuer Endpunkt POST /api/testsets/{id}/favorite schaltet den Stern um; is_favorite im TestSetOut-Schema. Wie bei den Backtest-Configs wird der Stern nicht über Create/Update gesetzt, sondern nur über den Toggle-Endpunkt
+  - list_testsets sortiert jetzt nach is_favorite absteigend, danach nach Name — die bisherige Namens-Sortierung bleibt innerhalb der Gruppen erhalten
+  - TestSet-Liste: klickbare Stern-Spalte (gelb = Favorit) ganz links, Sortierung Favoriten zuerst, danach ID absteigend
+  - Start-Maske, Test-Set-Lauf: Favoriten in eigener Gruppe „Favoriten" oben, darunter „Weitere TestSets" in der bisherigen Reihenfolge
+  - Tests für Toggle und Favoriten-Sortierung ergänzt
+
+### Files
+- user_data/utils/database/models.py
+- user_data/utils/database/repository_testsets.py
+- services/api/routes/api_testsets.py
+- services/frontend/templates/testsets/list.html
+- services/frontend/templates/backtest/start.html
+- alembic/versions/0017_testset_favorite_flag.py
+- tests/test_repository_testsets.py
+
+
+
 ## [1.30.86] - 13.07.2026
 
 ### Fixed

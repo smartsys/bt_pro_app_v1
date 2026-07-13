@@ -570,6 +570,9 @@ class TestSet(Base):
     # GEÄNDERT: Opt-in-Schalter — nur bei True wird nach einem TestSet-Lauf ein
     # LeaderboardEntry erstellt. Default False (bewusstes Aktivieren nötig).
     leaderboard_enabled = Column(Boolean, nullable=False, default=False, server_default='false')
+    # GEÄNDERT: Favoriten-Stern (gelb) — sortiert Favoriten in Listen und im
+    # Test-Set-Dropdown der Start-Maske nach oben. 0/1 wie bei BacktestConfig.
+    is_favorite = Column(Integer, nullable=False, default=0, server_default='0')
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     created_by = Column(String(120), nullable=True)
 

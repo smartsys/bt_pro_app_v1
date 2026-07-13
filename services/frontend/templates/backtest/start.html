@@ -610,13 +610,26 @@ document.addEventListener("DOMContentLoaded", function() {
     .then(function(r) { return r.json(); })
     .then(function(json) {
       tsTestSets = json.data || [];
-      tsSelTestset.innerHTML = '<option value="">-- TestSet wählen --</option>';
-      tsTestSets.forEach(function(ts) {
+      // GEÄNDERT: Favoriten und übrige TestSets als getrennte optgroups — Favoriten oben,
+      // innerhalb der Gruppen bleibt die Reihenfolge der API (alphabetisch nach Name).
+      var favSets = tsTestSets.filter(function(ts) { return ts.is_favorite; });
+      var restSets = tsTestSets.filter(function(ts) { return !ts.is_favorite; });
+
+      function tsOptHtml(ts) {
         var label = ts.name + ' (' + (ts.backtest_config_ids || []).length + ' Configs)';
-        // GEÄNDERT: Hinweis am Ende, wenn das TestSet ins Leaderboard aufgenommen wird
+        // Hinweis am Ende, wenn das TestSet ins Leaderboard aufgenommen wird
         if (ts.leaderboard_enabled) { label += ' — Leaderboard'; }
-        tsSelTestset.innerHTML += '<option value="' + ts.id + '">' + label + '</option>';
-      });
+        return '<option value="' + ts.id + '">' + label + '</option>';
+      }
+      function tsGroupHtml(label, sets) {
+        if (!sets.length) return '';
+        return '<optgroup label="' + label + '">' + sets.map(tsOptHtml).join('') + '</optgroup>';
+      }
+
+      var html = '<option value="">-- TestSet wählen --</option>';
+      html += tsGroupHtml('Favoriten', favSets);
+      html += tsGroupHtml(favSets.length ? 'Weitere TestSets' : 'TestSets', restSets);
+      tsSelTestset.innerHTML = html;
       _updateTsStartButton();
     });
 

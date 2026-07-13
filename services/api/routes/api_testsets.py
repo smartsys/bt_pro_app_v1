@@ -1,11 +1,12 @@
 """
 API-Endpoints für TestSets
 
-GET    /api/testsets           — Alle TestSets auflisten
-GET    /api/testsets/{id}      — Einzelnes TestSet abrufen
-POST   /api/testsets           — Neues TestSet anlegen
-PUT    /api/testsets/{id}      — TestSet aktualisieren
-DELETE /api/testsets/{id}      — TestSet löschen
+GET    /api/testsets                 — Alle TestSets auflisten
+GET    /api/testsets/{id}            — Einzelnes TestSet abrufen
+POST   /api/testsets                 — Neues TestSet anlegen
+PUT    /api/testsets/{id}            — TestSet aktualisieren
+POST   /api/testsets/{id}/favorite   — Favoriten-Stern umschalten
+DELETE /api/testsets/{id}            — TestSet löschen
 """
 # GEÄNDERT: Ticket 13 — Naming-Cleanup auf api_testsets, Prefix /api/testsets
 
@@ -21,6 +22,7 @@ from user_data.utils.database.repository_testsets import (
     delete_testset,
     get_testset,
     list_testsets,
+    toggle_testset_favorite,
     update_testset,
 )
 
@@ -58,6 +60,9 @@ class TestSetOut(BaseModel):
     # validation_alias liest ORM-Attribut backtest_config_ids_json (from_attributes=True)
     backtest_config_ids: List[int] = Field(validation_alias='backtest_config_ids_json')
     leaderboard_enabled: bool
+    # GEÄNDERT: Favoriten-Stern — wird nur über den Toggle-Endpunkt geändert,
+    # nicht über Create/Update (Muster wie bei BacktestConfig).
+    is_favorite: int
     created_at: datetime
     created_by: Optional[str] = None
 
@@ -130,6 +135,22 @@ def update_testset_endpoint(testset_id: int, payload: TestSetUpdateIn):
         return {'data': TestSetOut.model_validate(ts).model_dump(mode='json'), 'error': None}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        session.close()
+
+
+@router.post('/{testset_id}/favorite')
+def toggle_testset_favorite_endpoint(testset_id: int):
+    """Favoriten-Stern eines TestSets umschalten."""
+    session = get_session()
+    try:
+        ts = toggle_testset_favorite(session, testset_id)
+        if ts is None:
+            raise HTTPException(status_code=404, detail=f'TestSet {testset_id} nicht gefunden.')
+        return {
+            'data': {'id': testset_id, 'is_favorite': bool(ts.is_favorite)},
+            'error': None,
+        }
     finally:
         session.close()
 
