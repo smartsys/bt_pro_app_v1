@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.30.93] - 14.07.2026
+
+### Added
+- Runs-Übersicht: Filter nach Konzept und Iteration
+  - /api/backtest/runs liefert pro Run zusätzlich concept_slug, concept_name, iteration_version und iteration_name (gebündelter Join strategy_iterations -> strategy_concepts, kein N+1). Runs ohne Iteration bleiben ohne diese Felder.
+  - Zwei neue clientseitige Filter auf /backtest/runs: Konzept und Iteration; die Iterationsliste ist an das gewählte Konzept gekoppelt (ohne Auswahl alle Iterationen, dann mit Konzept-Präfix).
+  - Filter-Leiste an die Results-Seite angeglichen: Reihenfolge Konzept, Iteration, Symbol, Timeframe, Size Type, danach Zeitraum; Label 'TF' heißt jetzt 'Timeframe'; Iterations-Label im Format '<Version> <Name>', Version absteigend.
+  - Fixed: Der Zähler 'Alle Runs (N)' wurde in dataSrc auf die ungefilterte Gesamtzahl gesetzt und sprang beim Auto-Update-Reload alle 5 Sekunden trotz aktivem Filter zurück. Er wird jetzt in drawCallback aus der angezeigten Zeilenzahl gesetzt.
+
+### Files
+- services/api/routes/api_backtest.py
+- services/frontend/templates/backtest/runs.html
+
+
+
 ## [1.30.92] - 13.07.2026
 
 ### Fixed

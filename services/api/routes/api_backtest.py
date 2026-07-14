@@ -373,6 +373,34 @@ def get_runs(
                 .all()
             )
 
+        # GEÄNDERT: Konzept + Iterations-Version zu den Runs auflösen (für die Filter
+        # "Strategie"/"Iteration" im Frontend). Runs ohne iteration_id (Alt-Bestand)
+        # bleiben ohne diese Felder.
+        iter_ids_of_runs = {r.iteration_id for r in runs if r.iteration_id}
+        iter_info: dict[int, dict] = {}
+        if iter_ids_of_runs:
+            iter_rows = (
+                session.query(
+                    StrategyIteration.id,
+                    StrategyIteration.version,
+                    StrategyIteration.version_name,
+                    StrategyConcept.slug,
+                    StrategyConcept.name,
+                )
+                .join(StrategyConcept, StrategyIteration.concept_id == StrategyConcept.id)
+                .filter(StrategyIteration.id.in_(iter_ids_of_runs))
+                .all()
+            )
+            iter_info = {
+                it_id: {
+                    'concept_slug': c_slug,
+                    'concept_name': c_name,
+                    'iteration_version': version_num,
+                    'iteration_name': version_name,
+                }
+                for it_id, version_num, version_name, c_slug, c_name in iter_rows
+            }
+
         for item in items:
             # GEÄNDERT: None für laufende/eingereihte Runs (Count übersprungen) - das
             # Frontend zeigt dort "–"; abgeschlossene Runs ohne Treffer bleiben 0.
@@ -395,6 +423,12 @@ def get_runs(
             ts = ts_info.get(item.get('testset_run_id')) if item.get('testset_run_id') else None
             item['testset_id'] = ts['testset_id'] if ts else None
             item['testset_name'] = ts['testset_name'] if ts else None
+            # GEÄNDERT: Konzept/Iteration für die Frontend-Filter (None bei Runs ohne Iteration)
+            info = iter_info.get(item.get('iteration_id')) if item.get('iteration_id') else None
+            item['concept_slug'] = info['concept_slug'] if info else None
+            item['concept_name'] = info['concept_name'] if info else None
+            item['iteration_version'] = info['iteration_version'] if info else None
+            item['iteration_name'] = info['iteration_name'] if info else None
 
         return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=offset))
     finally:

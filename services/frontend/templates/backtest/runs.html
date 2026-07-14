@@ -34,26 +34,38 @@
   <div class="card-body py-2">
     <div class="row g-2 align-items-end">
       <div class="col-auto">
+        <label class="form-label mb-0 small">Konzept</label>
+        <select id="filter-concept" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Iteration</label>
+        <select id="filter-iteration" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
         <label class="form-label mb-0 small">Symbol</label>
         <select id="filter-symbol" class="form-select form-select-sm">
           <option value="">Alle</option>
         </select>
       </div>
       <div class="col-auto">
-        <label class="form-label mb-0 small">TF</label>
+        <label class="form-label mb-0 small">Timeframe</label>
         <select id="filter-timeframe" class="form-select form-select-sm">
-          <option value="">Alle</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <label class="form-label mb-0 small">Zeitraum</label>
-        <select id="filter-period" class="form-select form-select-sm">
           <option value="">Alle</option>
         </select>
       </div>
       <div class="col-auto">
         <label class="form-label mb-0 small">Size Type</label>
         <select id="filter-size_type" class="form-select form-select-sm">
+          <option value="">Alle</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-0 small">Zeitraum</label>
+        <select id="filter-period" class="form-select form-select-sm">
           <option value="">Alle</option>
         </select>
       </div>
@@ -151,10 +163,15 @@ document.addEventListener("DOMContentLoaded", function() {
     ajax: {
       url: "/api/backtest/runs?limit=10000",
       dataSrc: function(json) {
-        document.getElementById("runs-total").textContent = json.data.total;
         populateFilters(json.data.items);
         return json.data.items;
       }
+    },
+    // GEÄNDERT: Zähler nach jedem Draw aus der gefilterten Zeilenzahl setzen. Vorher stand
+    // das in dataSrc (json.data.total) — der Auto-Update-Reload hat den Zähler damit alle
+    // 5 Sekunden auf die ungefilterte Gesamtzahl zurückgesetzt, obwohl ein Filter aktiv war.
+    drawCallback: function() {
+      document.getElementById("runs-total").textContent = this.api().page.info().recordsDisplay;
     },
     columns: [
       {
@@ -358,7 +375,8 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Filter (clientseitig): Symbol / TF / Zeitraum / Size Type */
+  /* Filter (clientseitig): Strategie / Iteration / Symbol / TF / Zeitraum / Size Type */
+  var loadedRuns = [];  // letzte Ajax-Antwort, Basis für den abhängigen Iterations-Select
   function periodOf(it) {
     var s = it.start_date ? it.start_date.substring(0, 10) : '';
     var e = it.end_date ? it.end_date.substring(0, 10) : '';
@@ -371,29 +389,68 @@ document.addEventListener("DOMContentLoaded", function() {
     values.forEach(function(v) { sel.add(new Option(v, v)); });
     if (current && values.indexOf(current) !== -1) sel.value = current;
   }
+  /* Iterations-Select: nur Iterationen des gewählten Konzepts (ohne Auswahl: alle).
+     Label/Sortierung wie auf der Results-Seite: "<Version> <Name>", Version absteigend.
+     Die aktuelle Auswahl bleibt erhalten, wenn sie noch in der Liste steht. */
+  function fillIterationSelect() {
+    var sel = document.getElementById("filter-iteration");
+    var conceptSlug = document.getElementById("filter-concept").value;
+    var current = sel.value;
+    var seen = {}, options = [];
+    loadedRuns.forEach(function(it) {
+      if (!it.iteration_id || !it.concept_slug) return;
+      if (conceptSlug && it.concept_slug !== conceptSlug) return;
+      if (seen[it.iteration_id]) return;
+      seen[it.iteration_id] = true;
+      var label = String(it.iteration_version) + (it.iteration_name ? " " + it.iteration_name : "");
+      // Ohne Konzept-Auswahl sind Versionsnummern mehrdeutig -> Konzept voranstellen
+      if (!conceptSlug) label = it.concept_name + " " + label;
+      options.push({ value: String(it.iteration_id), label: label, version: it.iteration_version });
+    });
+    options.sort(function(a, b) { return b.version - a.version || a.label.localeCompare(b.label); });
+    sel.length = 1;  // "Alle" behalten
+    options.forEach(function(o) { sel.add(new Option(o.label, o.value)); });
+    sel.value = seen[current] ? current : "";
+  }
   /* Dropdown-Werte aus den geladenen Runs ableiten (aktuelle Auswahl bleibt erhalten) */
   function populateFilters(items) {
-    var symbols = [], tfs = [], periods = [], sizeTypes = [];
+    loadedRuns = items;
+    var symbols = [], tfs = [], periods = [], sizeTypes = [], concepts = [], conceptSeen = {};
     items.forEach(function(it) {
       if (it.symbol && symbols.indexOf(it.symbol) === -1) symbols.push(it.symbol);
       if (it.timeframe && tfs.indexOf(it.timeframe) === -1) tfs.push(it.timeframe);
       var p = periodOf(it);
       if (p && periods.indexOf(p) === -1) periods.push(p);
       if (it.size_type && sizeTypes.indexOf(it.size_type) === -1) sizeTypes.push(it.size_type);
+      if (it.concept_slug && !conceptSeen[it.concept_slug]) {
+        conceptSeen[it.concept_slug] = true;
+        concepts.push({ slug: it.concept_slug, name: it.concept_name || it.concept_slug });
+      }
     });
     symbols.sort(); tfs.sort(); periods.sort(); sizeTypes.sort();
+    concepts.sort(function(a, b) { return a.name.localeCompare(b.name); });
     fillSelect(document.getElementById("filter-symbol"), symbols);
     fillSelect(document.getElementById("filter-timeframe"), tfs);
     fillSelect(document.getElementById("filter-period"), periods);
     fillSelect(document.getElementById("filter-size_type"), sizeTypes);
+    var conceptSel = document.getElementById("filter-concept");
+    var currentConcept = conceptSel.value;
+    conceptSel.length = 1;  // "Alle" behalten
+    concepts.forEach(function(c) { conceptSel.add(new Option(c.name, c.slug)); });
+    if (currentConcept && conceptSeen[currentConcept]) conceptSel.value = currentConcept;
+    fillIterationSelect();
   }
   /* Custom-Suchfunktion — nur auf die Runs-Tabelle anwenden */
   DataTable.ext.search.push(function(settings, searchData, dataIndex, rowData) {
     if (settings.nTable.id !== 'runs-table') return true;
+    var concept = document.getElementById("filter-concept").value;
+    var iteration = document.getElementById("filter-iteration").value;
     var sym = document.getElementById("filter-symbol").value;
     var tf = document.getElementById("filter-timeframe").value;
     var per = document.getElementById("filter-period").value;
     var st = document.getElementById("filter-size_type").value;
+    if (concept && rowData.concept_slug !== concept) return false;
+    if (iteration && String(rowData.iteration_id) !== iteration) return false;
     if (sym && rowData.symbol !== sym) return false;
     if (tf && rowData.timeframe !== tf) return false;
     if (per && periodOf(rowData) !== per) return false;
@@ -401,18 +458,23 @@ document.addEventListener("DOMContentLoaded", function() {
     return true;
   });
   /* Änderungen sofort anwenden */
-  ["filter-symbol", "filter-timeframe", "filter-period", "filter-size_type"].forEach(function(id) {
+  ["filter-concept", "filter-iteration", "filter-symbol", "filter-timeframe", "filter-period", "filter-size_type"].forEach(function(id) {
     document.getElementById(id).addEventListener("change", function() {
+      // Strategie-Wechsel schränkt die Iterations-Auswahl ein
+      if (id === "filter-concept") fillIterationSelect();
       table.draw();
       document.getElementById("runs-total").textContent = table.page.info().recordsDisplay;
     });
   });
   /* Reset */
   document.getElementById("filter-reset").addEventListener("click", function() {
+    document.getElementById("filter-concept").value = "";
+    document.getElementById("filter-iteration").value = "";
     document.getElementById("filter-symbol").value = "";
     document.getElementById("filter-timeframe").value = "";
     document.getElementById("filter-period").value = "";
     document.getElementById("filter-size_type").value = "";
+    fillIterationSelect();
     table.draw();
     document.getElementById("runs-total").textContent = table.page.info().recordsDisplay;
   });
