@@ -155,7 +155,19 @@
 
 
 
-<!-- Heatmap -->
+<!-- Auswertungs-Tabs: Heatmaps / Kursverlauf -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-heatmaps" data-bs-toggle="tab" data-bs-target="#pane-heatmaps" type="button" role="tab">Heatmaps</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-chart" data-bs-toggle="tab" data-bs-target="#pane-chart" type="button" role="tab">Chart</button>
+  </li>
+</ul>
+
+<div class="tab-content">
+<!-- Tab: Heatmaps -->
+<div class="tab-pane fade show active" id="pane-heatmaps" role="tabpanel">
 <div class="row g-3 mb-3">
 <div class="col-md-6">
 <div class="card">
@@ -218,6 +230,23 @@
 </div>
 </div>
 </div>
+</div>
+
+<!-- Tab: Kursverlauf (OHLC-Candles des Runs) -->
+<div class="tab-pane fade" id="pane-chart" role="tabpanel">
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">Kursverlauf
+        <small class="text-muted ms-2">{{ run.symbol }} · {{ run.exchange }} · {{ run.timeframe }}</small>
+      </h3>
+    </div>
+    <div class="card-body">
+      <div id="analyse-chart-root"></div>
+      <div id="analyse-chart-error" class="alert alert-danger mb-0" style="display:none"></div>
+    </div>
+  </div>
+</div>
+</div>
 
 <!-- Hintergrund-Berechnung (halbe Breite, buendig mit der linken Heatmap darueber) -->
 <div class="row g-3 mb-3">
@@ -261,6 +290,8 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
+<script src="/static/js/chart/candle_chart.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   var runId = {{ run.id }};
@@ -1144,6 +1175,30 @@ document.addEventListener("DOMContentLoaded", function() {
       // Charts bei Tab-Wechsel resizen (ECharts braucht resize nach hidden->visible)
       for (var key in paramCharts) { paramCharts[key].resize(); }
     }
+  });
+
+  // Kursverlauf erst beim ersten Oeffnen des Chart-Tabs laden (spart einen Request beim Seitenaufbau)
+  var chartMounted = false;
+  document.getElementById('tab-chart').addEventListener('shown.bs.tab', function() {
+    if (chartMounted) return;
+    chartMounted = true;
+    CandleChart.mount(document.getElementById('analyse-chart-root'), {
+      symbol: {{ run.symbol | tojson }},
+      exchange: {{ run.exchange | tojson }},
+      timeframe: {{ run.timeframe | tojson }},
+      start: {{ run.start_date.strftime('%Y-%m-%d') | tojson }},
+      end: {{ run.end_date.strftime('%Y-%m-%d') | tojson }},
+      storageKey: 'analyse',
+    }).catch(function(e) {
+      var errEl = document.getElementById('analyse-chart-error');
+      errEl.textContent = 'Kursdaten konnten nicht geladen werden: ' + e.message;
+      errEl.style.display = 'block';
+    });
+  });
+
+  // Heatmaps beim Zurueckwechseln resizen (ECharts braucht resize nach hidden->visible)
+  document.getElementById('tab-heatmaps').addEventListener('shown.bs.tab', function() {
+    for (var hp in heatmapInstances) { if (heatmapInstances[hp].chart) heatmapInstances[hp].chart.resize(); }
   });
 
   // Metrik-Wechsel: Charts nur neu laden wenn Tab aktiv
