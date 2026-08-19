@@ -437,3 +437,140 @@ class TestConfigurationIsRejectedWithPlainText:
         assert build_risk_sizing_spec(
             {'size_type': 'value', 'size': 1000.0}, {'sl_stop': 0.02}, False
         ) is None
+
+
+# ============================================================================
+# 6. Der Weg vom Rechenergebnis an den Lauf
+# ============================================================================
+
+class TestWorkerHandsTheWarningToTheRun:
+    """Der Worker nimmt die Meldung aus dem Bericht und gibt sie an den Run weiter.
+
+    Das ist der letzte Sprung des Meldewegs: ``strategy_results['risk_sizing_report']``
+    -> ``risk_note`` -> ``assess_run_usability``. Was ``assess_run_usability`` damit
+    macht (Anhängen an ``usability_note``), prüft
+    ``tests/test_run_usability_and_warmup.py``. Ein Testset-Lauf geht durch genau
+    dieselbe ``run_backtest_job``; ``testset_run_id`` steuert erst danach den
+    Zähler-Anstieg und berührt den Meldeweg nicht.
+    """
+
+    @staticmethod
+    def _seed_run(session, run_id: int, concept_id: int, iteration_id: int) -> None:
+        """Legt Konzept, Iteration und Run an — das Minimum, das der Worker liest."""
+        from datetime import datetime
+
+        from user_data.utils.database.models import (
+            BacktestRun,
+            StrategyConcept,
+            StrategyIteration,
+        )
+
+        session.add(StrategyConcept(
+            id=concept_id, slug=f'risk-note-{concept_id}',
+            name=f'Risk-Note-Konzept {concept_id}', status='active',
+        ))
+        session.add(StrategyIteration(
+            id=iteration_id, concept_id=concept_id, version=1, type='generic',
+            spec_json={'rules': {'entry': {'blocks': []}}},
+        ))
+        session.add(BacktestRun(
+            id=run_id, strategy_family='test', strategy_name='v1', symbol='FETUSDT',
+            exchange='binance', timeframe='4h',
+            start_date=datetime(2022, 1, 1), end_date=datetime(2024, 1, 1),
+            backtest_config_json={'symbols': ['FETUSDT'], 'exchange': 'binance',
+                                  'timeframe': '4h', 'import_path': 'egal.egal'},
+            indicators_config_json={}, n_combinations=1, status='queued',
+            iteration_id=iteration_id,
+        ))
+        session.commit()
+
+    @staticmethod
+    def _patch_worker(monkeypatch, session, strategy_results: dict) -> list:
+        """Ersetzt alles um den Meldeweg herum und protokolliert den risk_note."""
+        from services.api import recompute as recompute_module
+        from services.api import worker_tasks
+        from user_data.strategies.generic import warmup as warmup_module
+        from user_data.utils.database import repository as repo
+        from user_data.utils.ohlc import loader as loader_module
+
+        class _KeepOpenSession:
+            """Reicht alles an die Test-Session durch, überlebt aber deren close()."""
+
+            def __init__(self, inner):
+                self._inner = inner
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(worker_tasks, 'get_session', lambda: _KeepOpenSession(session))
+        monkeypatch.setattr(loader_module, 'load_ohlc_data', lambda config: None)
+        monkeypatch.setattr(
+            warmup_module, 'check_warmup',
+            lambda config, indicators: {
+                'level': 'ok', 'note': 'Vorlauf ausreichend.',
+                'warmup_bars': 100, 'required_bars': 1,
+            },
+        )
+        monkeypatch.setattr(repo, 'update_backtest_run_status', lambda *a, **k: None)
+        monkeypatch.setattr(repo, 'update_backtest_run_warmup', lambda *a, **k: None)
+        monkeypatch.setattr(repo, 'save_strategy_results', lambda **kwargs: 1)
+
+        def _strategy_fn(ohlc_data, indicators_json, backtest_config_json, rules_json=None):
+            return strategy_results
+
+        monkeypatch.setattr(
+            recompute_module, 'load_strategy_function', lambda import_path: _strategy_fn
+        )
+
+        seen: list = []
+
+        def _assess(run_id, warmup=None, metrics_note=None, risk_note=None):
+            seen.append(risk_note)
+            return {'usability': 'usable', 'note': 'x', 'n_results': 1, 'total_trades': 5}
+
+        monkeypatch.setattr(repo, 'assess_run_usability', _assess)
+        return seen
+
+    def test_worker_passes_the_truncation_note_to_the_run_assessment(
+        self, session, monkeypatch
+    ):
+        from services.api.worker_tasks import run_backtest_job
+
+        note = '3 von 6 risikobasierten Orders wurden von VBT auf das verfügbare Geld gekürzt.'
+        self._seed_run(session, run_id=900101, concept_id=900101, iteration_id=900101)
+        seen = self._patch_worker(monkeypatch, session, {
+            'portfolios': None,
+            'risk_sizing_report': {
+                'n_sized': 6, 'n_unsized': 0, 'n_truncated': 3,
+                'max_shortfall_pct': 74.2, 'note': note,
+            },
+        })
+
+        run_backtest_job(900101)
+
+        assert seen == [note]
+
+    def test_worker_passes_no_note_when_the_run_reports_none(self, session, monkeypatch):
+        """Ohne Bericht (feste Größe) und mit Bericht ohne Meldung kommt None an."""
+        from services.api.worker_tasks import run_backtest_job
+
+        self._seed_run(session, run_id=900102, concept_id=900102, iteration_id=900102)
+        seen = self._patch_worker(monkeypatch, session, {
+            'portfolios': None, 'risk_sizing_report': None,
+        })
+        run_backtest_job(900102)
+        assert seen == [None]
+
+        self._seed_run(session, run_id=900103, concept_id=900103, iteration_id=900103)
+        seen_clean = self._patch_worker(monkeypatch, session, {
+            'portfolios': None,
+            'risk_sizing_report': {
+                'n_sized': 6, 'n_unsized': 0, 'n_truncated': 0,
+                'max_shortfall_pct': 0.0, 'note': None,
+            },
+        })
+        run_backtest_job(900103)
+        assert seen_clean == [None]

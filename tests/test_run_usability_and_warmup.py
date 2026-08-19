@@ -320,3 +320,61 @@ def test_warmup_result_is_stored_on_the_run(session, monkeypatch):
     assert row.warmup_bars == 0
     assert row.warmup_required_bars == 10
     assert 'Kein Vorlauf' in row.warmup_note
+
+
+def test_usability_note_carries_the_risk_sizing_warning(session, monkeypatch):
+    """Die Meldung der risikobasierten Größe landet am Run, nicht nur im Log.
+
+    ``assess_run_usability`` hängt einen gesetzten ``risk_note`` an die
+    Verwertbarkeits-Note an — das ist der Weg, über den die Kürzungs-Meldung
+    dauerhaft am Lauf hängt und damit auch bei einem Testset-Lauf auffindbar
+    bleibt (dessen Runs gehen durch dieselbe Funktion).
+    """
+    import user_data.utils.database.repository as repo
+
+    _insert_run(session, 900004)
+    _insert_result(session, 900031, 900004, 12)
+    session.commit()
+
+    monkeypatch.setattr(repo, 'get_engine', lambda: session.get_bind())
+    verdict = repo.assess_run_usability(
+        900004,
+        warmup={'level': 'ok', 'note': 'x'},
+        risk_note='7 von 9 risikobasierten Orders wurden gekürzt.',
+    )
+
+    assert verdict['usability'] == 'usable'
+    assert 'Verwertbar' in verdict['note']
+    assert 'Risikobasierte Größe: 7 von 9' in verdict['note']
+
+    row = session.execute(text(
+        'SELECT usability_note FROM backtest_runs WHERE id = 900004'
+    )).fetchone()
+    assert 'Risikobasierte Größe: 7 von 9' in row.usability_note
+
+
+def test_usability_note_unchanged_when_no_risk_warning_is_reported(session, monkeypatch):
+    """Gegenprobe: ohne Meldung bleibt die Note die reine Verwertbarkeits-Bewertung.
+
+    Ein Lauf mit fester Ordergröße liefert gar keinen Bericht, ein Lauf mit
+    ausreichender Kreditlinie einen ohne Meldung — in beiden Fällen kommt hier
+    ``risk_note=None`` an und darf nichts anhängen.
+    """
+    import user_data.utils.database.repository as repo
+
+    _insert_run(session, 900005)
+    _insert_result(session, 900041, 900005, 12)
+    session.commit()
+
+    monkeypatch.setattr(repo, 'get_engine', lambda: session.get_bind())
+    with_none = repo.assess_run_usability(
+        900005, warmup={'level': 'ok', 'note': 'x'}, risk_note=None
+    )
+    without_argument = repo.assess_run_usability(900005, warmup={'level': 'ok', 'note': 'x'})
+
+    assert with_none['note'] == without_argument['note']
+    assert 'Risikobasierte Größe' not in with_none['note']
+    row = session.execute(text(
+        'SELECT usability_note FROM backtest_runs WHERE id = 900005'
+    )).fetchone()
+    assert 'Risikobasierte Größe' not in row.usability_note
