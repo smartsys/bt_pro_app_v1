@@ -2,6 +2,7 @@
 JSON-API Endpoints für Backtest-Daten
 
 GET /api/backtest/runs              — Alle Runs
+GET /api/backtest/runs/{id}         — Einzelner Run (Feldform wie ein Listenelement)
 GET /api/backtest/runs/{id}/results — Results eines Runs
 GET /api/backtest/runs/{id}/results/lookup — Result-Lookup per Parameter-Werten (exakt/±Toleranz)
 GET /api/backtest/results           — Alle Results (mit Filtern)
@@ -52,8 +53,12 @@ from user_data.utils.database.repository import (
     get_run_param_names, lookup_result_rows_by_params,
     get_scope_param_names, lookup_results_across_runs,
 )
+# GEÄNDERT: Ticket 61 — Waisen-Schutz: leere Testset-Läufe beim Run-Löschen mitnehmen
+from user_data.utils.database.repository_testsets import purge_empty_testset_runs
 # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version, SPEC_RUNNER_IMPORT_PATH
+# GEÄNDERT: Ticket 68 — Metrik-Auswahl beim Run-Start
+from user_data.utils.metrics.metric_sets import validate_metrics_selection
 
 # GEÄNDERT: Batch-Größe für Bulk-Delete erhöht (Ticket 08) — 10x weniger Append-Aufrufe über Hypertable-Chunks
 _DELETE_BATCH_SIZE = 5000
@@ -103,6 +108,9 @@ def start_backtest(request_body: dict):
 
     Body (neu, Ticket 11): { "backtest_config_id": int, "indicator_config_id": int, "iteration_id": int }
     Body (legacy): { "backtest_config_id": int, "strategy_config_id": int, "indicator_config_id": int }
+    Optional (Ticket 68): "metrics": "kern" | "voll" | "auto" (Default) | ["gruppe1", ...]
+        — welche Kennzahl-Gruppen der Lauf rechnet. Unbekannte Stufe/Gruppen-Keys
+        werden abgelehnt, bevor ein Run angelegt wird.
     """
     backtest_config_id = request_body.get('backtest_config_id')
     strategy_config_id = request_body.get('strategy_config_id')
@@ -122,6 +130,14 @@ def start_backtest(request_body: dict):
             {'error': 'iteration_id oder strategy_config_id erforderlich'},
             status_code=400,
         )
+
+    # GEÄNDERT: Ticket 68 — Metrik-Auswahl syntaktisch prüfen, BEVOR ein Run angelegt
+    # wird. Die 'auto'-Auflösung selbst (braucht n_combinations) passiert erst in
+    # create_backtest_run.
+    try:
+        metrics_selection = validate_metrics_selection(request_body.get('metrics'))
+    except ValueError as exc:
+        return JSONResponse({'error': str(exc)}, status_code=400)
 
     session = get_session()
     try:
@@ -175,6 +191,12 @@ def start_backtest(request_body: dict):
                 'size_type': bt.size_type,
                 'init_cash': bt.init_cash,
                 'fees': bt.fees,
+                # GEÄNDERT: Ticket 59 — slippage und die zwei Stop-Ausführungsfelder
+                # aus der BacktestConfig durchreichen. Vorher rechnete der echte Run
+                # still mit den VBT-Defaults, während der Playground die Werte nutzte.
+                'slippage': bt.slippage,
+                'stop_exit_price': bt.stop_exit_price,
+                'stop_order_type': bt.stop_order_type,
                 # GEÄNDERT: Schritt 3c/3d — Stop-Spalten UND Stop-Formate aus der
                 # BacktestConfig entfernt. Stops samt Formaten kommen ausschließlich
                 # aus indicators_json['_stops'] (IndicatorConfig).
@@ -182,6 +204,11 @@ def start_backtest(request_body: dict):
         }
         if import_path:
             backtest_config_json['import_path'] = import_path
+        # GEÄNDERT: Ticket 68 — Metrik-Auswahl (Vorbild chunk_size): nur ablegen, wenn
+        # explizit angegeben. Fehlt der Key, gilt 'auto' (Default), aufgelöst in
+        # create_backtest_run.
+        if metrics_selection is not None:
+            backtest_config_json['metrics'] = metrics_selection
         # GEÄNDERT: Schritt 3b — '_stops' stammt jetzt aus der IndicatorConfig
         # (config_json). Kein Clobbern mehr aus dem portfolio-Block; fehlt '_stops'
         # in der Config, gibt es schlicht keine Stops.
@@ -232,11 +259,27 @@ def start_walk_forward(request_body: dict):
         if not run:
             return JSONResponse({'error': f'Run #{result.run_id} nicht gefunden'}, status_code=404)
 
+        # GEÄNDERT: Ticket 83 — Anker-Lauf ohne Iteration abweisen, BEVOR ein Run
+        # angelegt wird (der Worker scheitert sonst hart, weil die Rules
+        # ausschließlich aus iteration.spec_json kommen). Vorbild: load_anchor_run
+        # in walk_forward_chain_context.py (Ticket 82).
+        if run.iteration_id is None:
+            return JSONResponse(
+                {
+                    'error': (
+                        f'Run #{run.id} hat keine iteration_id — der Walk-Forward-Lauf '
+                        f'hätte keine Regeln. Ein Anker-Lauf muss an einer Iteration hängen.'
+                    )
+                },
+                status_code=400,
+            )
+
         # GEÄNDERT: Ticket 15 — _json-Suffix
         if not result.resolved_config_json:
             return JSONResponse({'error': f'Result #{result_id} hat keine resolved_config_json'}, status_code=400)
 
         parent_run_id = run.id
+        anchor_iteration_id = run.iteration_id
         backtest_config = copy.deepcopy(dict(run.backtest_config_json))
         indicators_config = copy.deepcopy(dict(result.resolved_config_json))
     finally:
@@ -254,6 +297,9 @@ def start_walk_forward(request_body: dict):
         parent_result_id=result_id,
         selection_metric=metric,
         spec_runner_version=_spec_runner_version,
+        # GEÄNDERT: Ticket 83 — iteration_id des Ankers durchreichen (vorher fehlte
+        # sie, der Worker scheiterte hart bei run.iteration_id is None).
+        iteration_id=anchor_iteration_id,
     )
 
     q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
@@ -269,6 +315,137 @@ def start_walk_forward(request_body: dict):
         },
         'error': None,
     }
+
+
+def _serialize_runs(session, runs: list) -> list[dict]:
+    """Reichert BacktestRun-ORM-Objekte zur API-Feldform der Runs-Liste an.
+
+    GEÄNDERT: Ticket 70/C — aus get_runs herausgezogen, damit die Listen-Route
+    (get_runs) und der Einzel-Endpunkt (get_run) exakt dieselbe Serialisierung
+    nutzen, statt sie zu duplizieren.
+    """
+    items = [BacktestRunOut.model_validate(r).model_dump(mode='json') for r in runs]
+    if not items:
+        return items
+
+    run_ids_all = [r.id for r in runs]
+
+    # Result-Anzahl pro Run nur für ABGESCHLOSSENE Runs zählen. Laufende/eingereihte
+    # Runs werden übersprungen: deren Zeilen werden gerade geschrieben (Count langsam,
+    # weil die Visibility Map noch nicht gesetzt ist) und die Zahl wäre ohnehin
+    # unvollständig - das Frontend zeigt dort den Chunk-Fortschritt.
+    #
+    # GEÄNDERT: count(*) statt count(id). Der Filter auf die run_ids allein reicht
+    # nicht: count(id) verlangt die Spalte id, die in keinem der (run_id, ...)-Indizes
+    # steckt - Postgres muss dafür die komplette, sehr breite Tabelle vom Heap lesen
+    # (Parallel Seq Scan, ~744k Blöcke, ~10 s). count(*) zählt nur Zeilen, dafür genügt
+    # ein (run_id, ...)-Index: daraus wird ein Index-Only-Scan (~13k Blöcke, ~0,8 s).
+    stable_run_ids = [r.id for r in runs if r.status in ('completed', 'failed')]
+    result_counts: dict[int, int] = {}
+    if stable_run_ids:
+        result_counts = dict(
+            session.query(BacktestResult.run_id, func.count())
+            .filter(BacktestResult.run_id.in_(stable_run_ids))
+            .group_by(BacktestResult.run_id)
+            .all()
+        )
+
+    # Job-Status pro Run (für Worker-Anzeige). GEÄNDERT: Ticket 70/C — auf die
+    # übergebenen run_ids gefiltert (vorher ungefiltert über die ganze Tabelle);
+    # nötig, seit diese Funktion auch für den Einzel-Run-Endpunkt läuft.
+    job_stats_rows = session.query(
+        BacktestJob.run_id, BacktestJob.status, func.count(BacktestJob.id)
+    ).filter(BacktestJob.run_id.in_(run_ids_all)).group_by(BacktestJob.run_id, BacktestJob.status).all()
+    job_stats: dict[int, dict[str, int]] = {}
+    for run_id_val, status, cnt in job_stats_rows:
+        job_stats.setdefault(run_id_val, {})[status] = cnt
+
+    # TestSet-Namen + IDs über TestSetRun -> TestSet laden
+    # GEÄNDERT: outerjoin statt join und die ID direkt vom Testset-Lauf. Ein gelöschtes
+    # TestSet lässt seine Läufe bewusst stehen; mit dem inneren Join fiel die Zeile
+    # heraus und die Zugehörigkeit verschwand still aus der Runs-Liste. Jetzt bleibt
+    # die testset_id erhalten, nur der Name ist None (Frontend zeigt "gelöscht").
+    ts_run_ids = {r.testset_run_id for r in runs if r.testset_run_id}
+    ts_info: dict[int, dict] = {}
+    if ts_run_ids:
+        ts_rows = (
+            session.query(TestSetRun.id, TestSetRun.testset_id, TestSet.name)
+            .outerjoin(TestSet, TestSet.id == TestSetRun.testset_id)
+            .filter(TestSetRun.id.in_(ts_run_ids))
+            .all()
+        )
+        ts_info = {tsr_id: {'testset_id': ts_id, 'testset_name': ts_name} for tsr_id, ts_id, ts_name in ts_rows}
+
+    # GEÄNDERT: Namen der verknüpften Indikator-Configs laden (lose Referenz über
+    # indicator_config_id; nicht im Schema -> per run_id->config_id-Map). Gelöschte/
+    # fehlende Config -> kein Name.
+    run_to_ind_cfg = {r.id: r.indicator_config_id for r in runs if r.indicator_config_id}
+    ind_cfg_names: dict[int, str] = {}
+    if run_to_ind_cfg:
+        ind_cfg_names = dict(
+            session.query(IndicatorConfig.id, IndicatorConfig.name)
+            .filter(IndicatorConfig.id.in_(set(run_to_ind_cfg.values())))
+            .all()
+        )
+
+    # GEÄNDERT: Konzept + Iterations-Version zu den Runs auflösen (für die Filter
+    # "Strategie"/"Iteration" im Frontend). Runs ohne iteration_id (Alt-Bestand)
+    # bleiben ohne diese Felder.
+    iter_ids_of_runs = {r.iteration_id for r in runs if r.iteration_id}
+    iter_info: dict[int, dict] = {}
+    if iter_ids_of_runs:
+        iter_rows = (
+            session.query(
+                StrategyIteration.id,
+                StrategyIteration.version,
+                StrategyIteration.version_name,
+                StrategyConcept.slug,
+                StrategyConcept.name,
+            )
+            .join(StrategyConcept, StrategyIteration.concept_id == StrategyConcept.id)
+            .filter(StrategyIteration.id.in_(iter_ids_of_runs))
+            .all()
+        )
+        iter_info = {
+            it_id: {
+                'concept_slug': c_slug,
+                'concept_name': c_name,
+                'iteration_version': version_num,
+                'iteration_name': version_name,
+            }
+            for it_id, version_num, version_name, c_slug, c_name in iter_rows
+        }
+
+    for item in items:
+        # GEÄNDERT: None für laufende/eingereihte Runs (Count übersprungen) - das
+        # Frontend zeigt dort "–"; abgeschlossene Runs ohne Treffer bleiben 0.
+        if item['status'] in ('completed', 'failed'):
+            item['result_count'] = result_counts.get(item['id'], 0)
+        else:
+            item['result_count'] = None
+        # GEÄNDERT: Name der Indikator-Config (None wenn keine/gelöscht)
+        item['indicator_config_name'] = ind_cfg_names.get(run_to_ind_cfg.get(item['id']))
+        # GEÄNDERT: Size-Type aus dem eingefrorenen Backtest-Config-Block (unter 'portfolio';
+        # None wenn nicht gesetzt)
+        item['size_type'] = (
+            (item.get('backtest_config_json') or {}).get('portfolio') or {}
+        ).get('size_type')
+        js = job_stats.get(item['id'], {})
+        item['jobs_queued'] = js.get('queued', 0)
+        item['jobs_running'] = js.get('running', 0)
+        item['jobs_completed'] = js.get('completed', 0)
+        item['jobs_failed'] = js.get('failed', 0)
+        ts = ts_info.get(item.get('testset_run_id')) if item.get('testset_run_id') else None
+        item['testset_id'] = ts['testset_id'] if ts else None
+        item['testset_name'] = ts['testset_name'] if ts else None
+        # GEÄNDERT: Konzept/Iteration für die Frontend-Filter (None bei Runs ohne Iteration)
+        info = iter_info.get(item.get('iteration_id')) if item.get('iteration_id') else None
+        item['concept_slug'] = info['concept_slug'] if info else None
+        item['concept_name'] = info['concept_name'] if info else None
+        item['iteration_version'] = info['iteration_version'] if info else None
+        item['iteration_name'] = info['iteration_name'] if info else None
+
+    return items
 
 
 @router.get('/runs', response_model=ApiResponse)
@@ -318,119 +495,37 @@ def get_runs(
 
         total = query.count()
         runs = query.offset(offset).limit(limit).all()
-        items = [BacktestRunOut.model_validate(r).model_dump(mode='json') for r in runs]
-
-        # Result-Anzahl pro Run nur für ABGESCHLOSSENE Runs zählen. Laufende/eingereihte
-        # Runs werden übersprungen: deren Zeilen werden gerade geschrieben (Count langsam,
-        # weil die Visibility Map noch nicht gesetzt ist) und die Zahl wäre ohnehin
-        # unvollständig - das Frontend zeigt dort den Chunk-Fortschritt.
-        #
-        # GEÄNDERT: count(*) statt count(id). Der Filter auf die run_ids allein reicht
-        # nicht: count(id) verlangt die Spalte id, die in keinem der (run_id, ...)-Indizes
-        # steckt - Postgres muss dafür die komplette, sehr breite Tabelle vom Heap lesen
-        # (Parallel Seq Scan, ~744k Blöcke, ~10 s). count(*) zählt nur Zeilen, dafür genügt
-        # ein (run_id, ...)-Index: daraus wird ein Index-Only-Scan (~13k Blöcke, ~0,8 s).
-        stable_run_ids = [r.id for r in runs if r.status in ('completed', 'failed')]
-        result_counts: dict[int, int] = {}
-        if stable_run_ids:
-            result_counts = dict(
-                session.query(BacktestResult.run_id, func.count())
-                .filter(BacktestResult.run_id.in_(stable_run_ids))
-                .group_by(BacktestResult.run_id)
-                .all()
-            )
-
-        # Job-Status pro Run (für Worker-Anzeige)
-
-        job_stats_rows = session.query(
-            BacktestJob.run_id, BacktestJob.status, func.count(BacktestJob.id)
-        ).group_by(BacktestJob.run_id, BacktestJob.status).all()
-        job_stats: dict[int, dict[str, int]] = {}
-        for run_id_val, status, cnt in job_stats_rows:
-            job_stats.setdefault(run_id_val, {})[status] = cnt
-
-        # TestSet-Namen + IDs über TestSetRun -> TestSet laden
-        ts_run_ids = {r.testset_run_id for r in runs if r.testset_run_id}
-        ts_info: dict[int, dict] = {}
-        if ts_run_ids:
-            ts_rows = (
-                session.query(TestSetRun.id, TestSet.id, TestSet.name)
-                .join(TestSet, TestSet.id == TestSetRun.testset_id)
-                .filter(TestSetRun.id.in_(ts_run_ids))
-                .all()
-            )
-            ts_info = {tsr_id: {'testset_id': ts_id, 'testset_name': ts_name} for tsr_id, ts_id, ts_name in ts_rows}
-
-        # GEÄNDERT: Namen der verknüpften Indikator-Configs laden (lose Referenz über
-        # indicator_config_id; nicht im Schema -> per run_id->config_id-Map). Gelöschte/
-        # fehlende Config -> kein Name.
-        run_to_ind_cfg = {r.id: r.indicator_config_id for r in runs if r.indicator_config_id}
-        ind_cfg_names: dict[int, str] = {}
-        if run_to_ind_cfg:
-            ind_cfg_names = dict(
-                session.query(IndicatorConfig.id, IndicatorConfig.name)
-                .filter(IndicatorConfig.id.in_(set(run_to_ind_cfg.values())))
-                .all()
-            )
-
-        # GEÄNDERT: Konzept + Iterations-Version zu den Runs auflösen (für die Filter
-        # "Strategie"/"Iteration" im Frontend). Runs ohne iteration_id (Alt-Bestand)
-        # bleiben ohne diese Felder.
-        iter_ids_of_runs = {r.iteration_id for r in runs if r.iteration_id}
-        iter_info: dict[int, dict] = {}
-        if iter_ids_of_runs:
-            iter_rows = (
-                session.query(
-                    StrategyIteration.id,
-                    StrategyIteration.version,
-                    StrategyIteration.version_name,
-                    StrategyConcept.slug,
-                    StrategyConcept.name,
-                )
-                .join(StrategyConcept, StrategyIteration.concept_id == StrategyConcept.id)
-                .filter(StrategyIteration.id.in_(iter_ids_of_runs))
-                .all()
-            )
-            iter_info = {
-                it_id: {
-                    'concept_slug': c_slug,
-                    'concept_name': c_name,
-                    'iteration_version': version_num,
-                    'iteration_name': version_name,
-                }
-                for it_id, version_num, version_name, c_slug, c_name in iter_rows
-            }
-
-        for item in items:
-            # GEÄNDERT: None für laufende/eingereihte Runs (Count übersprungen) - das
-            # Frontend zeigt dort "–"; abgeschlossene Runs ohne Treffer bleiben 0.
-            if item['status'] in ('completed', 'failed'):
-                item['result_count'] = result_counts.get(item['id'], 0)
-            else:
-                item['result_count'] = None
-            # GEÄNDERT: Name der Indikator-Config (None wenn keine/gelöscht)
-            item['indicator_config_name'] = ind_cfg_names.get(run_to_ind_cfg.get(item['id']))
-            # GEÄNDERT: Size-Type aus dem eingefrorenen Backtest-Config-Block (unter 'portfolio';
-            # None wenn nicht gesetzt)
-            item['size_type'] = (
-                (item.get('backtest_config_json') or {}).get('portfolio') or {}
-            ).get('size_type')
-            js = job_stats.get(item['id'], {})
-            item['jobs_queued'] = js.get('queued', 0)
-            item['jobs_running'] = js.get('running', 0)
-            item['jobs_completed'] = js.get('completed', 0)
-            item['jobs_failed'] = js.get('failed', 0)
-            ts = ts_info.get(item.get('testset_run_id')) if item.get('testset_run_id') else None
-            item['testset_id'] = ts['testset_id'] if ts else None
-            item['testset_name'] = ts['testset_name'] if ts else None
-            # GEÄNDERT: Konzept/Iteration für die Frontend-Filter (None bei Runs ohne Iteration)
-            info = iter_info.get(item.get('iteration_id')) if item.get('iteration_id') else None
-            item['concept_slug'] = info['concept_slug'] if info else None
-            item['concept_name'] = info['concept_name'] if info else None
-            item['iteration_version'] = info['iteration_version'] if info else None
-            item['iteration_name'] = info['iteration_name'] if info else None
+        items = _serialize_runs(session, runs)
 
         return ApiResponse(data=PaginatedData(items=items, total=total, limit=limit, offset=offset))
+    finally:
+        session.close()
+
+
+@router.get('/runs/{run_id}')
+def get_run(run_id: int) -> dict:
+    """Einzelner Backtest-Run in derselben Feldform wie ein Element der Runs-Liste.
+
+    GEÄNDERT: Ticket 70/C — löst die 500er-Grenze der Listen-Route
+    (RUN_LIST_LIMIT in der Toolbox) für den Einzelfall auf: ein Run ist damit
+    unabhängig davon erreichbar, ob er unter den zuletzt N Runs liegt.
+    Nutzt _serialize_runs — dieselbe Serialisierung wie get_runs.
+
+    Args:
+        run_id: Primärschlüssel des Runs.
+
+    Returns:
+        JSON mit dem Run oder 404, wenn die ID nicht existiert.
+    """
+    session = get_session()
+    try:
+        run = session.query(BacktestRun).filter(BacktestRun.id == run_id).first()
+        if run is None:
+            # GEÄNDERT: Ticket 70/C — im Modul etablierte 404-Form (JSONResponse mit
+            # 'error'-Key), nicht HTTPException/'detail' (siehe Nachbarzeilen oben im File).
+            return JSONResponse({'error': f'Run #{run_id} nicht gefunden'}, status_code=404)
+        items = _serialize_runs(session, [run])
+        return {"data": items[0], "error": None}
     finally:
         session.close()
 
@@ -625,6 +720,13 @@ def get_all_results(
                 'sortino_ratio': result.sortino_ratio,
                 'max_drawdown_pct': result.max_drawdown_pct,
                 'total_trades': result.total_trades,
+                # GEÄNDERT: Ticket 58 — offene Positionen mitliefern; die Trefferquote rechnet
+                # über total_trades - open_trades, der Nenner muss mit angezeigt werden.
+                'open_trades': result.open_trades,
+                # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern (long_trades + short_trades
+                # = total_trades). NULL bei Alt-Results.
+                'long_trades': result.long_trades,
+                'short_trades': result.short_trades,
                 'win_rate_pct': result.win_rate_pct,
                 'profit_factor': result.profit_factor,
                 'end_value': result.end_value,
@@ -917,6 +1019,13 @@ def get_results_datatable(request: Request) -> dict:
                 'max_drawdown_pct': result.max_drawdown_pct,
                 'downside_risk': result.downside_risk,
                 'total_trades': result.total_trades,
+                # GEÄNDERT: Ticket 58 — offene Positionen mitliefern; die Trefferquote rechnet
+                # über total_trades - open_trades, der Nenner muss mit angezeigt werden.
+                'open_trades': result.open_trades,
+                # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern (long_trades + short_trades
+                # = total_trades). Speist u.a. die Toolbox-Vergleichstabelle. NULL bei Alt-Results.
+                'long_trades': result.long_trades,
+                'short_trades': result.short_trades,
                 'win_rate_pct': result.win_rate_pct,
                 'profit_factor': result.profit_factor,
                 'end_value': result.end_value,
@@ -926,7 +1035,6 @@ def get_results_datatable(request: Request) -> dict:
                 # GEÄNDERT: ToDo 10 — gewonnene Bestwert-Kriterien als Badge-Objekte {short, long}
                 # (Frontend rendert Kürzel + Hover-Tooltip; Mapping bleibt serverseitig)
                 'best_criteria': criteria_keys_to_badges(result.best_criteria_json),
-                'metrics_level': result.metrics_level,
                 'strategy_family': run.strategy_family,
                 'strategy_name': run.strategy_name,
                 # GEÄNDERT: Ticket 11 — sprechende Strategie-Felder aus Concept/Iteration
@@ -1224,6 +1332,58 @@ def _delete_result_details(session, result_ids: list[int]) -> None:
         session.flush()
 
 
+def _delete_results_and_orphans(session, result_ids: list) -> dict:
+    """Löscht Results + Detail-Daten und räumt die dadurch verwaisten Runs auf.
+
+    Gemeinsame Kernlogik für `bulk_delete_results` und den eingegrenzten Pfad von
+    `delete_all_results` (Ticket 77/B) — eine Löschsemantik, nicht zwei. Der
+    Orphan-Sweep bleibt auf die Runs der übergebenen Result-IDs eingegrenzt (kein
+    globaler Sweep über die gesamte Tabelle, Ticket 75); leer gewordene
+    Testset-Läufe werden mitgeräumt. Committet nicht selbst — der Aufrufer steuert
+    die Transaktion.
+
+    Args:
+        session: Aktive SQLAlchemy-Session.
+        result_ids: Zu löschende Result-IDs (werden auf tatsächlich existierende
+            eingegrenzt; leere Liste ist ein No-op).
+
+    Returns:
+        dict mit deleted_results, deleted_runs, deleted_run_ids.
+    """
+    existing = [r.id for r in session.query(BacktestResult.id).filter(
+        BacktestResult.id.in_(result_ids)
+    ).all()] if result_ids else []
+    if not existing:
+        return {'deleted_results': 0, 'deleted_runs': 0, 'deleted_run_ids': []}
+
+    affected_run_ids = [
+        r[0] for r in session.query(BacktestResult.run_id).filter(
+            BacktestResult.id.in_(existing)
+        ).distinct().all()
+    ]
+
+    _delete_result_details(session, existing)
+
+    deleted_results = session.query(BacktestResult).filter(
+        BacktestResult.id.in_(existing)
+    ).delete(synchronize_session='fetch')
+
+    # GEÄNDERT: Ticket 75 — Orphan-Sweep nur über die von dieser Operation betroffenen
+    # Runs, kein globales NOT IN. Ein fremder, result-loser Run (failed-Lauf, gezielt
+    # geleerte Results) überlebt damit fremde Löschungen. RETURNING liefert die
+    # betroffenen Testset-Läufe mit (Ticket 61).
+    orphan_rows = session.execute(text(
+        "DELETE FROM backtest_runs WHERE id = ANY(:run_ids) "
+        "AND id NOT IN (SELECT DISTINCT run_id FROM backtest_results) "
+        "RETURNING id, testset_run_id"
+    ), {'run_ids': affected_run_ids}).fetchall() if affected_run_ids else []
+    deleted_run_ids = [row[0] for row in orphan_rows]
+    deleted_runs = len(orphan_rows)
+    purge_empty_testset_runs(session, [row[1] for row in orphan_rows])
+
+    return {'deleted_results': deleted_results, 'deleted_runs': deleted_runs, 'deleted_run_ids': deleted_run_ids}
+
+
 @router.delete('/results/{result_id}')
 def delete_result(result_id: int) -> JSONResponse:
     """Löscht ein einzelnes Result mit allen Detail-Daten."""
@@ -1318,6 +1478,9 @@ def delete_run(run_id: int) -> JSONResponse:
         if not run:
             raise HTTPException(status_code=404, detail="Run nicht gefunden")
 
+        # GEÄNDERT: Ticket 61 — Testset-Zugehörigkeit vor dem Löschen merken
+        testset_run_id = run.testset_run_id
+
         result_ids = [r.id for r in session.query(BacktestResult.id).filter(
             BacktestResult.run_id == run_id
         ).all()]
@@ -1329,6 +1492,9 @@ def delete_run(run_id: int) -> JSONResponse:
         ).delete(synchronize_session='fetch')
 
         session.delete(run)
+        session.flush()
+        # GEÄNDERT: Ticket 61 — Testset-Lauf mitnehmen, wenn er dadurch leer wird
+        purge_empty_testset_runs(session, [testset_run_id])
         session.commit()
     finally:
         session.close()
@@ -1366,6 +1532,10 @@ def restart_run(run_id: int) -> JSONResponse:
         run.n_combinations = _count_combinations(run.indicators_config_json)
         run.completed_at = None
         run.created_at = datetime.now()
+        # GEÄNDERT: Ticket 71 — Fortsetzungspunkt zurücksetzen. Der Neustart löscht alle
+        # Results; ein stehengebliebener Zähler würde den Lauf sonst Chunks überspringen
+        # lassen, deren Ergebnisse gerade gelöscht wurden.
+        run.completed_chunks = 0
         session.commit()
     finally:
         session.close()
@@ -1378,6 +1548,68 @@ def restart_run(run_id: int) -> JSONResponse:
     q.enqueue('services.api.worker_tasks.run_backtest_job', run_id=run_id, job_timeout=BACKTEST_JOB_TIMEOUT)
 
     return JSONResponse({'status': 'ok', 'run_id': run_id, 'message': 'Run neugestartet'})
+
+
+@router.post('/runs/{run_id}/resume')
+def resume_run(run_id: int) -> JSONResponse:
+    """Setzt einen abgebrochenen Lauf fort, ohne seine Teilergebnisse zu verwerfen.
+
+    Gegenstück zum Neustart (`/restart`): Der Neustart löscht alle Results und rechnet
+    von vorn, das Fortsetzen behält sie und überspringt die bereits gespeicherten
+    Chunks (Ticket 71). Es ist bewusst ein eigener Einstieg — der Weg „Analyse starten"
+    auf der Run-Analyse-Seite rechnet die fehlenden Zeitreihen einzelner Results nach
+    und hat mit der Rechnung des Laufs nichts zu tun.
+
+    Der Anstoß bleibt manuell (Ticket 69): Es gibt keinen automatischen Neustart
+    abgebrochener Läufe.
+
+    Args:
+        run_id: ID des fortzusetzenden Laufs.
+
+    Returns:
+        JSON mit Status, Run-ID und dem Chunk, ab dem weitergerechnet wird.
+
+    Raises:
+        HTTPException: 404 wenn der Lauf fehlt, 409 wenn er gerade läuft oder bereits
+            abgeschlossen ist.
+    """
+    session = get_session()
+    try:
+        run = session.query(BacktestRun).filter(BacktestRun.id == run_id).first()
+        if not run:
+            raise HTTPException(status_code=404, detail="Run nicht gefunden")
+        if run.status in ('running', 'queued'):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Run {run_id} steht auf '{run.status}' — er rechnet bereits "
+                       f"oder wartet auf einen Worker.",
+            )
+        if run.status == 'completed':
+            raise HTTPException(
+                status_code=409,
+                detail=f"Run {run_id} ist abgeschlossen. Zum Neurechnen den Neustart "
+                       f"nehmen (der löscht die Results).",
+            )
+        completed_chunks = run.completed_chunks or 0
+        run.status = 'queued'
+        run.error_message = None
+        run.completed_at = None
+        session.commit()
+    finally:
+        session.close()
+
+    q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
+    q.enqueue(
+        'services.api.worker_tasks.run_backtest_job', run_id=run_id,
+        job_timeout=BACKTEST_JOB_TIMEOUT,
+    )
+
+    return JSONResponse({
+        'status': 'ok',
+        'run_id': run_id,
+        'completed_chunks': completed_chunks,
+        'message': f'Run wird fortgesetzt (ab Chunk {completed_chunks + 1})',
+    })
 
 
 @router.delete('/runs')
@@ -1420,6 +1652,12 @@ def bulk_delete_runs(payload: dict = Body(...)) -> JSONResponse:
         if not existing:
             return JSONResponse({'status': 'ok', 'deleted_runs': 0, 'deleted_results': 0})
 
+        # GEÄNDERT: Ticket 61 — betroffene Testset-Läufe vor dem Löschen merken
+        affected_testset_run_ids = [
+            r[0] for r in session.query(BacktestRun.testset_run_id)
+            .filter(BacktestRun.id.in_(existing)).distinct().all()
+        ]
+
         result_ids = [r.id for r in session.query(BacktestResult.id).filter(
             BacktestResult.run_id.in_(existing)
         ).all()]
@@ -1433,6 +1671,9 @@ def bulk_delete_runs(payload: dict = Body(...)) -> JSONResponse:
         deleted_runs = session.query(BacktestRun).filter(
             BacktestRun.id.in_(existing)
         ).delete(synchronize_session='fetch')
+
+        # GEÄNDERT: Ticket 61 — Testset-Läufe mitnehmen, die dadurch leer werden
+        purge_empty_testset_runs(session, affected_testset_run_ids)
 
         session.commit()
     finally:
@@ -1448,9 +1689,12 @@ def bulk_delete_runs(payload: dict = Body(...)) -> JSONResponse:
 def bulk_delete_results(payload: dict = Body(...)) -> JSONResponse:
     """Löscht mehrere Results in einer Operation, inkl. Detail-Daten.
 
-    Erwartet Body: {"ids": [1, 2, 3]}. Verwaiste Runs (ohne verbleibende Results)
-    werden ebenfalls entfernt. Favoriten-Schutz wird hier NICHT angewendet —
-    die UI bestimmt die Auswahl explizit.
+    Erwartet Body: {"ids": [1, 2, 3]}. Verwaiste Runs unter den betroffenen Results
+    (ohne verbleibende Results) werden ebenfalls entfernt — der Orphan-Sweep bleibt
+    dabei auf die Runs dieser Results eingegrenzt (Ticket 75), kein globaler Sweep
+    über die gesamte Tabelle. Favoriten-Schutz wird hier NICHT angewendet — die UI
+    bestimmt die Auswahl explizit. Die Antwort nennt die mitgelöschten Run-IDs unter
+    'deleted_run_ids'.
     """
     raw_ids = payload.get('ids') or []
     try:
@@ -1458,32 +1702,16 @@ def bulk_delete_results(payload: dict = Body(...)) -> JSONResponse:
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Ungültige IDs")
     if not result_ids:
-        return JSONResponse({'status': 'ok', 'deleted_results': 0, 'deleted_runs': 0})
+        return JSONResponse({'status': 'ok', 'deleted_results': 0, 'deleted_runs': 0, 'deleted_run_ids': []})
 
     session = get_session()
     try:
-        existing = [r.id for r in session.query(BacktestResult.id).filter(
-            BacktestResult.id.in_(result_ids)
-        ).all()]
-        if not existing:
-            return JSONResponse({'status': 'ok', 'deleted_results': 0, 'deleted_runs': 0})
-
-        _delete_result_details(session, existing)
-
-        deleted_results = session.query(BacktestResult).filter(
-            BacktestResult.id.in_(existing)
-        ).delete(synchronize_session='fetch')
-
-        orphan_result = session.execute(text(
-            "DELETE FROM backtest_runs WHERE id NOT IN (SELECT DISTINCT run_id FROM backtest_results)"
-        ))
-        deleted_runs = orphan_result.rowcount or 0
-
+        outcome = _delete_results_and_orphans(session, result_ids)
         session.commit()
     finally:
         session.close()
 
-    return JSONResponse({'status': 'ok', 'deleted_results': deleted_results, 'deleted_runs': deleted_runs})
+    return JSONResponse({'status': 'ok', **outcome})
 
 
 @router.put('/runs/{run_id}/remarks')
@@ -1549,17 +1777,53 @@ def _collect_active_delete_jobs() -> list:
 
 
 @router.delete('/results')
-def delete_all_results() -> JSONResponse:
-    """Stößt das Löschen aller Results (außer Favoriten) als Hintergrund-Job an.
+def delete_all_results(
+    run_id: Optional[int] = Query(None),
+    testset_run_id: Optional[int] = Query(None),
+) -> JSONResponse:
+    """Löscht Results außer Favoriten — global (Hintergrund-Job) oder eingegrenzt.
 
-    GEÄNDERT (Ticket 45): Läuft asynchron über RQ, damit die UI nicht minutenlang
-    blockiert — das Löschen über die TimescaleDB-Hypertables ist teuer. Die eigentliche
-    Lösch-Logik liegt in worker_tasks.delete_all_results_job; der Fortschritt wird über
-    den globalen Lösch-Job-Toast (GET /delete-jobs/active) angezeigt.
+    GEÄNDERT (Ticket 45): Ohne Eingrenzung unverändert asynchron über RQ, damit die UI
+    nicht minutenlang blockiert — das Löschen über die TimescaleDB-Hypertables ist
+    teuer. Die Lösch-Logik liegt in worker_tasks.delete_all_results_job; der
+    Fortschritt wird über den globalen Lösch-Job-Toast (GET /delete-jobs/active)
+    angezeigt.
+
+    GEÄNDERT (Ticket 77/B): Mit run_id ODER testset_run_id (schließen sich aus) läuft
+    stattdessen eine synchrone, auf die Menge eingegrenzte Löschung — non-favorisierte
+    Results der Menge weg, Favoriten (gelb und rot) sowie fremde Objekte unberührt.
+    Reuses `_delete_results_and_orphans` (dieselbe Löschsemantik wie bulk_delete_results,
+    inkl. der auf die betroffenen Runs eingegrenzten Orphan-Sweep-Regel aus Ticket 75).
     """
-    q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
-    rq_job = q.enqueue(DELETE_ALL_RESULTS_JOB, job_timeout=3600)
-    return JSONResponse({'status': 'queued', 'job_id': rq_job.id}, status_code=202)
+    if run_id is not None and testset_run_id is not None:
+        raise HTTPException(status_code=400, detail="run_id und testset_run_id schließen sich aus")
+
+    if run_id is None and testset_run_id is None:
+        q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
+        rq_job = q.enqueue(DELETE_ALL_RESULTS_JOB, job_timeout=3600)
+        return JSONResponse({'status': 'queued', 'job_id': rq_job.id}, status_code=202)
+
+    session = get_session()
+    try:
+        if run_id is not None:
+            run_ids_scope = [run_id]
+        else:
+            run_ids_scope = [r[0] for r in session.query(BacktestRun.id).filter(
+                BacktestRun.testset_run_id == testset_run_id
+            ).all()]
+
+        candidate_ids = [r[0] for r in session.query(BacktestResult.id).filter(
+            BacktestResult.run_id.in_(run_ids_scope),
+            BacktestResult.is_favorite == 0,
+            BacktestResult.is_doc_favorite == 0,
+        ).all()] if run_ids_scope else []
+
+        outcome = _delete_results_and_orphans(session, candidate_ids)
+        session.commit()
+    finally:
+        session.close()
+
+    return JSONResponse({'status': 'ok', **outcome})
 
 
 @router.get('/delete-jobs/active')
@@ -1608,7 +1872,12 @@ def cancel_delete_job(job_id: str) -> JSONResponse:
 
 @router.post('/results/{result_id}/favorite')
 def toggle_favorite(result_id: int) -> JSONResponse:
-    """Favorit-Status eines Results umschalten (Toggle)."""
+    """Favorit-Status eines Results umschalten (Toggle).
+
+    Bleibt der reine Toggle für den manuellen Frontend-Stern (Ticket 89 rührt daran
+    nicht). Für idempotentes Setzen/Entfernen (z. B. aus der Toolbox) siehe
+    /favorite/mark und /favorite/unmark direkt darunter.
+    """
     session = get_session()
     try:
         result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
@@ -1621,6 +1890,41 @@ def toggle_favorite(result_id: int) -> JSONResponse:
         session.close()
 
 
+# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den gelben
+# Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
+@router.post('/results/{result_id}/favorite/mark')
+def mark_favorite(result_id: int) -> JSONResponse:
+    """Setzt den gelben Favoriten-Stern idempotent (schaltet nie aus)."""
+    session = get_session()
+    try:
+        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Result nicht gefunden")
+        was_set = bool(result.is_favorite)
+        result.is_favorite = 1
+        session.commit()
+        return JSONResponse({'status': 'ok', 'id': result_id, 'is_favorite': True, 'changed': not was_set})
+    finally:
+        session.close()
+
+
+# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+@router.post('/results/{result_id}/favorite/unmark')
+def unmark_favorite(result_id: int) -> JSONResponse:
+    """Entfernt den gelben Favoriten-Stern gezielt und idempotent (schaltet nie an)."""
+    session = get_session()
+    try:
+        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Result nicht gefunden")
+        was_set = bool(result.is_favorite)
+        result.is_favorite = 0
+        session.commit()
+        return JSONResponse({'status': 'ok', 'id': result_id, 'is_favorite': False, 'changed': was_set})
+    finally:
+        session.close()
+
+
 # GEÄNDERT: Doku-Favorit-Toggle (roter Stern, unabhängig vom gelben Favorit)
 @router.post('/results/{result_id}/doc_favorite')
 def toggle_doc_favorite(result_id: int) -> JSONResponse:
@@ -1628,7 +1932,9 @@ def toggle_doc_favorite(result_id: int) -> JSONResponse:
 
     Manueller Weg (Frontend-Stern): setzt keine Bestwert-Kriterien. Beim Ausschalten
     werden vorhandene best_criteria_json mit-geleert — Flag und Kriterien sind gekoppelt,
-    kein verwaistes Label ohne Stern.
+    kein verwaistes Label ohne Stern. Bleibt der reine Toggle (Ticket 89 rührt daran
+    nicht); für idempotentes Setzen/Entfernen siehe /doc_favorite/mark weiter unten und
+    /doc_favorite/unmark.
     """
     session = get_session()
     try:
@@ -1648,18 +1954,26 @@ def toggle_doc_favorite(result_id: int) -> JSONResponse:
 # GEÄNDERT: ToDo 10 — idempotentes Setzen von rotem Stern + gewonnenen Bestwert-Kriterien.
 # Anders als der Toggle schaltet dieser Weg den Stern nie AUS und schreibt die Kriterium-Keys
 # auch dann, wenn der Stern bereits gesetzt ist (run-bestwerte markiert idempotent). Genutzt
-# von der Toolbox (run-bestwerte); der manuelle Frontend-Stern bleibt der reine Toggle oben.
+# von der Toolbox (run-bestwerte, result-doc-favorite); der manuelle Frontend-Stern bleibt
+# der reine Toggle oben.
+# GEÄNDERT: Ticket 89 — criteria ist jetzt echt optional: fehlt der Schlüssel im Body
+# komplett (z. B. beim reinen Setzen über die Toolbox ohne --criteria), bleibt ein
+# bestehendes best_criteria_json unangetastet, statt es auf None zu leeren. Nur ein
+# explizit übergebenes criteria (auch eine leere Liste) überschreibt.
 @router.post('/results/{result_id}/doc_favorite/mark')
 def mark_doc_favorite_criteria(result_id: int, body: dict = Body(default=None)) -> JSONResponse:
-    """Setzt den roten Stern und die gewonnenen Bestwert-Kriterien (idempotent).
+    """Setzt den roten Stern und optional die gewonnenen Bestwert-Kriterien (idempotent).
 
     Body: {"criteria": ["max_return", "sharpe_band", ...]} — Liste stabiler Keys aus
     best_criteria_labels.VALID_CRITERIA_KEYS. Unbekannte Keys -> 400. Der Stern wird
-    gesetzt (nie ausgeschaltet), die Kriterien werden geschrieben/ersetzt.
+    gesetzt (nie ausgeschaltet). Fehlt "criteria" im Body, bleiben vorhandene Kriterien
+    unverändert; ist der Schlüssel vorhanden, werden sie geschrieben/ersetzt (leere Liste
+    -> Kriterien explizit gelöscht).
     """
     from services.api.utils.best_criteria_labels import VALID_CRITERIA_KEYS
 
     payload = body or {}
+    has_criteria = 'criteria' in payload
     criteria = payload.get('criteria') or []
     if not isinstance(criteria, list):
         return JSONResponse({'status': 'error', 'error': 'criteria muss eine Liste von Keys sein'}, status_code=400)
@@ -1674,14 +1988,42 @@ def mark_doc_favorite_criteria(result_id: int, body: dict = Body(default=None)) 
         result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
         if not result:
             raise HTTPException(status_code=404, detail="Result nicht gefunden")
+        was_set = bool(result.is_doc_favorite)
         result.is_doc_favorite = 1
-        # Keys deduplizieren, kanonische Reihenfolge egal (Anzeige mappt selbst)
-        result.best_criteria_json = list(dict.fromkeys(criteria)) if criteria else None
+        if has_criteria:
+            # Keys deduplizieren, kanonische Reihenfolge egal (Anzeige mappt selbst)
+            result.best_criteria_json = list(dict.fromkeys(criteria)) if criteria else None
         session.commit()
         return JSONResponse({
             'status': 'ok', 'id': result_id,
             'is_doc_favorite': True,
             'best_criteria': result.best_criteria_json,
+            'changed': not was_set,
+        })
+    finally:
+        session.close()
+
+
+# GEÄNDERT: Ticket 89 — Gegenstück zu /mark: gezieltes, idempotentes Entfernen (nur über
+# --off in der Toolbox). Leert best_criteria_json mit (gleiche Kopplung wie der manuelle
+# Toggle beim Ausschalten) — kein verwaistes Kriterien-Label ohne Stern.
+@router.post('/results/{result_id}/doc_favorite/unmark')
+def unmark_doc_favorite(result_id: int) -> JSONResponse:
+    """Entfernt den roten Stern und die Bestwert-Kriterien gezielt und idempotent."""
+    session = get_session()
+    try:
+        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Result nicht gefunden")
+        was_set = bool(result.is_doc_favorite)
+        result.is_doc_favorite = 0
+        result.best_criteria_json = None
+        session.commit()
+        return JSONResponse({
+            'status': 'ok', 'id': result_id,
+            'is_doc_favorite': False,
+            'best_criteria': None,
+            'changed': was_set,
         })
     finally:
         session.close()
@@ -1851,6 +2193,16 @@ def get_stats(result_id: int) -> dict:
             'Benchmark Return [%]': result.benchmark_return_pct,
             'Total Orders': result.total_orders,
             'Total Trades': result.total_trades,
+            # GEÄNDERT: Ticket 58 — am Ende des Handelsfensters offene Positionen. Sie
+            # zählen in 'Total Trades' mit, aber nicht in Win Rate und Profit Factor
+            # (die rechnen über geschlossene Trades). NULL bei Results von vor Ticket 58.
+            'Open Trades': result.open_trades,
+            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung (long_trades + short_trades =
+            # total_trades, inklusive einer am Fensterende offenen Position) und die
+            # Balkenzahl des tatsächlich gerechneten Handelsfensters. NULL bei Alt-Results.
+            'Long Trades': result.long_trades,
+            'Short Trades': result.short_trades,
+            'Bar Count': result.bar_count,
             'Win Rate [%]': result.win_rate_pct,
             'Best Trade [%]': result.best_trade_pct,
             'Profit Factor': result.profit_factor,
@@ -1887,53 +2239,12 @@ def get_stats(result_id: int) -> dict:
             'Alpha': result.alpha,
             'Beta': result.beta,
             'Information Ratio': result.information_ratio,
+            # GEÄNDERT: Ticket 64 — Verteilungsform der Renditen je Result. 'Kurtosis' ist
+            # die ROHE Wölbung (Normalverteilung rund 3), nicht die Excess-Wölbung.
+            'Skew': result.skew,
+            'Kurtosis': result.kurtosis,
         }
-        return {'result_id': result_id, 'stats': stats, 'metrics_level': result.metrics_level}
-    finally:
-        session.close()
-
-
-# ========================================================================
-# Full-Metriken (Stufe 3)
-# ========================================================================
-
-@router.post('/results/{result_id}/full-metrics')
-def start_full_metrics(result_id: int) -> dict:
-    """Startet Berechnung der Full-Metriken als Hintergrund-Job.
-
-    Stufe 3: tail_ratio, VaR, CVaR, alpha, beta, information_ratio,
-    deflated_sharpe_ratio etc. — zu langsam für Massen-Backtest.
-    """
-    session = get_session()
-    try:
-        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
-        if not result:
-            raise HTTPException(status_code=404, detail="Result nicht gefunden")
-        if result.metrics_level == 'full':
-            return {'result_id': result_id, 'status': 'already_complete'}
-    finally:
-        session.close()
-
-    # Job in Recompute-Queue einreihen
-    q = Queue(RECOMPUTE_QUEUE_NAME, connection=get_redis_connection())
-    rq_job = q.enqueue(
-        'services.api.worker_tasks.run_full_metrics_job',
-        result_id,
-        job_timeout=600,
-    )
-
-    return {'result_id': result_id, 'status': 'queued', 'job_id': rq_job.id}
-
-
-@router.get('/results/{result_id}/metrics-level')
-def get_metrics_level(result_id: int) -> dict:
-    """Gibt die aktuelle Berechnungsstufe eines Results zurück."""
-    session = get_session()
-    try:
-        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
-        if not result:
-            raise HTTPException(status_code=404, detail="Result nicht gefunden")
-        return {'result_id': result_id, 'metrics_level': result.metrics_level}
+        return {'result_id': result_id, 'stats': stats}
     finally:
         session.close()
 
@@ -2052,7 +2363,8 @@ def get_top_results(
         rows = conn.execute(text(f"""
             SELECT id, actual_params_json, total_return_pct, sharpe_ratio,
                    max_drawdown_pct, win_rate_pct, profit_factor, sortino_ratio,
-                   total_trades, end_value, expectancy, calmar_ratio, omega_ratio,
+                   total_trades, open_trades, long_trades, short_trades, end_value,
+                   expectancy, calmar_ratio, omega_ratio,
                    annualized_return, annualized_volatility, downside_risk,
                    tail_ratio, value_at_risk, cond_value_at_risk,
                    alpha, beta, information_ratio, sqn, edge_ratio,
@@ -2075,6 +2387,11 @@ def get_top_results(
             'profit_factor': r.profit_factor,
             'sortino_ratio': r.sortino_ratio,
             'total_trades': r.total_trades,
+            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            'open_trades': r.open_trades,
+            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern.
+            'long_trades': r.long_trades,
+            'short_trades': r.short_trades,
             'end_value': r.end_value,
             'expectancy': r.expectancy,
             'calmar_ratio': r.calmar_ratio,
@@ -2125,6 +2442,12 @@ def get_analyse_summary(run_id: int) -> dict:
                 MIN(max_drawdown_pct) AS min_dd,
                 SUM(CASE WHEN total_return_pct > 0 THEN 1 ELSE 0 END) AS profitable,
                 SUM(CASE WHEN sharpe_ratio > 1 THEN 1 ELSE 0 END) AS sharpe_gt1,
+                -- GEÄNDERT: Ticket 64 — Nenner der durchschnittlichen Trefferquote
+                -- sichtbar machen. avg_winrate mittelt über win_rate_pct, und die
+                -- rechnet seit Ticket 58 über geschlossene Trades, während
+                -- total_trades die offene Position mitzählt. Ohne diese Zahl stünde
+                -- ein Durchschnitt da, dessen Grundgesamtheit niemand sieht.
+                SUM(CASE WHEN open_trades > 0 THEN 1 ELSE 0 END) AS with_open_position,
                 AVG(sortino_ratio) AS avg_sortino,
                 AVG(calmar_ratio) AS avg_calmar,
                 AVG(omega_ratio) AS avg_omega,
@@ -2162,6 +2485,9 @@ def get_analyse_summary(run_id: int) -> dict:
         'avg_sharpe': _r(row.avg_sharpe),
         'avg_drawdown': _r(row.avg_dd),
         'avg_winrate': _r(row.avg_winrate),
+        # GEÄNDERT: Ticket 64 — „N von M Kombinationen mit offener Position" gehört
+        # neben die durchschnittliche Trefferquote (siehe SQL oben).
+        'with_open_position_count': row.with_open_position,
         'avg_profit_factor': _r(row.avg_pf),
         'max_return': _r(row.max_return),
         'min_return': _r(row.min_return),
@@ -2179,7 +2505,10 @@ def get_analyse_summary(run_id: int) -> dict:
         'avg_edge_ratio': _r(row.avg_edge_ratio),
         'avg_alpha': _r(row.avg_alpha, 4),
         'avg_beta': _r(row.avg_beta),
-        'avg_deflated_sharpe': _r(row.avg_deflated_sharpe),
+        # GEÄNDERT: Ticket 54 — 4 Nachkommastellen wie bei avg_alpha. Die korrigierte
+        # DSR liegt für reale Läufe im Bereich weniger Tausendstel; auf 2 Stellen
+        # gerundet käme durchgängig 0.0 heraus.
+        'avg_deflated_sharpe': _r(row.avg_deflated_sharpe, 4),
         'param_names': [r.param_name for r in param_names],
     }
 

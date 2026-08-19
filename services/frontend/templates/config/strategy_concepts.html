@@ -44,7 +44,15 @@
 <div class="card">
   <div class="card-header">
     <h3 class="card-title">Konzepte (<span id="concepts-total">...</span>)</h3>
-    <div class="card-actions">
+    <div class="card-actions d-flex gap-2 align-items-center">
+      {# GEÄNDERT: Ticket 66 — Status-Filter für die Konzept-Liste (u.a. um "idee" ein-/auszublenden) #}
+      <select id="concepts-status-filter" class="form-select form-select-sm" style="width: 160px;">
+        <option value="">Alle Status</option>
+        <option value="active">active</option>
+        <option value="idee">idee</option>
+        <option value="draft">draft</option>
+        <option value="archived">archived</option>
+      </select>
       {{ search_input('concepts-search', '260px') }}
     </div>
   </div>
@@ -62,7 +70,7 @@
             <th class="text-nowrap">Iterationen</th>
             <th class="text-nowrap">Obsidian</th>
             <th class="text-nowrap">Erstellt</th>
-            <th style="min-width:100px"></th>
+            <th style="min-width:140px"></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -129,6 +137,7 @@
           <label class="form-label">Status</label>
           <select class="form-select" id="concept-status">
             <option value="active">active</option>
+            <option value="idee">idee</option>
             <option value="draft">draft</option>
             <option value="archived">archived</option>
           </select>
@@ -136,6 +145,16 @@
         <div class="mb-3">
           <label class="form-label">Kurzbeschreibung</label>
           <textarea class="form-control" id="concept-description" rows="2" placeholder="Kurze Beschreibung der Strategie"></textarea>
+        </div>
+        {# GEÄNDERT: Ticket 66 — Entwicklungsziel: Original-Auftrag im Wortlaut + strukturierte Zielgrößen #}
+        <div class="mb-3">
+          <label class="form-label">Ziel-Prompt</label>
+          <textarea class="form-control" id="concept-goal-prompt" rows="4" placeholder="Original-Auftrag im Wortlaut, z.B. 'finde eine Strategie mit Sharpe >= 1,5, Risiko 3 % je Trade, ...'"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Ziel-JSON</label>
+          <textarea class="form-control font-monospace" id="concept-goal-json" rows="6" placeholder='{"sharpe_min": 1.5, "risk_per_trade": 0.03}'></textarea>
+          <small class="text-muted">Freie Zielgrößen als JSON-Objekt, kein festes Schema. Kein Gate — dient nur als Referenz.</small>
         </div>
         <div id="concept-modal-error" class="alert alert-danger" style="display:none;"></div>
       </div>
@@ -158,6 +177,11 @@
 // GEÄNDERT: Absoluter Vault-Host-Pfad aus Server-Kontext (aus OBSIDIAN_VAULT_HOST_PATH abgeleitet).
 // Damit bauen wir obsidian://open?path=<absoluter Pfad> — Obsidian findet den Vault selbst, kein Name noetig.
 var OBSIDIAN_VAULT_BASE = {{ obsidian_vault_base | tojson }};
+// GEÄNDERT: Vault-relative Strategie-Basis kommt vom Server (obsidian_paths.strategies_base_rel) — nicht hier hardcoden.
+var OBSIDIAN_STRATEGIES_BASE = {{ obsidian_strategies_base | tojson }};
+// GEÄNDERT: Welten-Ordner (vbt) kommt ebenfalls vom Server — Iterationen liegen darin,
+// die Konzept-Notiz eine Ebene darueber (Vault-Umbau 2026-08-18).
+var OBSIDIAN_WORLD_DIR = {{ obsidian_world_dir | tojson }};
 // Baut einen Obsidian-Deeplink aus einem vault-relativen Dateipfad ueber den absoluten Host-Pfad.
 function buildObsidianUrl(vaultRelativeFile) {
   return 'obsidian://open?path=' + encodeURIComponent(OBSIDIAN_VAULT_BASE + '/' + vaultRelativeFile);
@@ -311,7 +335,7 @@ document.addEventListener("DOMContentLoaded", function() {
             // GEÄNDERT: Obsidian-Link zeigt den Dokumentnamen <slug>-<version> (eindeutig, identisch zur Datei im Pfad)
             var docName = slug + '-' + version;
             if (!slug || !version) return '<span class="text-muted">-</span>';
-            var vaultFile = '30_Trading/strategies/' + slug + '/iterations/' + version + '/' + docName + '.md';
+            var vaultFile = OBSIDIAN_STRATEGIES_BASE + '/' + slug + '/' + OBSIDIAN_WORLD_DIR + '/iterations/' + version + '/' + docName + '.md';
             var url = buildObsidianUrl(vaultFile);
             if (data.vault_exists) {
               return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen (' + version + ')">' +
@@ -395,11 +419,17 @@ document.addEventListener("DOMContentLoaded", function() {
         // GEÄNDERT: ID-Spalte vor Slug (reine Zahl, kein Präfix)
         { data: "id", className: 'w-1 text-nowrap' },
         { data: "slug", render: function(d) { return '<span class="fw-bold">' + d + '</span>'; } },
-        { data: "name" },
+        // GEÄNDERT: Name ohne Link — die Detailseite wird über den Details-Button in der Aktionsspalte geöffnet
+        { data: null, render: function(data, type) {
+            if (type === 'sort' || type === 'type') return data.name;
+            return $('<div>').text(data.name || '').html();
+        }},
         { data: "category", render: function(d) {
             return d ? '<span class="badge bg-purple-lt">' + d + '</span>' : '<span class="text-muted">-</span>';
         }},
         { data: "status", render: function(d) {
+            // GEÄNDERT: Ticket 66 — status=idee bekommt ein eigenes Badge ("Idee", abweichende Farbe)
+            if (d === 'idee') return '<span class="badge bg-orange-lt">Idee</span>';
             var cls = d === 'active' ? 'bg-green-lt' : d === 'archived' ? 'bg-secondary-lt' : 'bg-yellow-lt';
             return '<span class="badge ' + cls + '">' + d + '</span>';
         }},
@@ -410,7 +440,7 @@ document.addEventListener("DOMContentLoaded", function() {
         // GEÄNDERT: Ticket 16 — Obsidian-Link aus slug ableiten, vault_exists für visuellen Status
         { data: null, render: function(data) {
             var slug = data.slug || '';
-            var vaultFile = '30_Trading/strategies/' + slug + '/' + slug + '-concept.md';
+            var vaultFile = OBSIDIAN_STRATEGIES_BASE + '/' + slug + '/' + slug + '-concept.md';
             var url = buildObsidianUrl(vaultFile);
             if (data.vault_exists) {
               return '<a href="' + url + '" class="btn btn-sm btn-ghost-primary py-0" title="In Obsidian öffnen">' +
@@ -431,8 +461,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }},
         { data: null, orderable: false, render: function(data) {
             return '<div class="text-end text-nowrap">' +
+              // GEÄNDERT: Details-Button öffnet die Konzept-Detailseite (Ziel + Befund-Historie)
+              '<a href="/config/strategy-concepts/' + data.id + '" class="btn btn-sm btn-outline-primary me-1" title="Details">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg>' +
+              '</a>' +
               // GEÄNDERT: Ticket 16 — data-obsidian entfernt
-              '<button class="btn btn-sm btn-outline-primary me-1 btn-edit-concept" data-id="' + data.id + '" data-slug="' + (data.slug||'') + '" data-name="' + (data.name||'') + '" data-category="' + (data.category||'') + '" data-status="' + data.status + '" data-description="' + ($('<div>').text(data.description||'').html().replace(/"/g,'&quot;')) + '" data-vault-exists="' + (data.vault_exists ? '1' : '0') + '" title="Bearbeiten">' +
+              // GEÄNDERT: Ticket 66 — data-goal-prompt/data-goal-json fürs Bearbeiten-Modal (HTML-escaped wie data-description)
+              '<button class="btn btn-sm btn-outline-primary me-1 btn-edit-concept" data-id="' + data.id + '" data-slug="' + (data.slug||'') + '" data-name="' + (data.name||'') + '" data-category="' + (data.category||'') + '" data-status="' + data.status + '" data-description="' + ($('<div>').text(data.description||'').html().replace(/"/g,'&quot;')) + '" data-vault-exists="' + (data.vault_exists ? '1' : '0') + '" data-goal-prompt="' + ($('<div>').text(data.goal_prompt||'').html().replace(/"/g,'&quot;')) + '" data-goal-json="' + ($('<div>').text(data.goal_json ? JSON.stringify(data.goal_json) : '').html().replace(/"/g,'&quot;')) + '" title="Bearbeiten">' +
                 '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/><path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"/></svg>' +
               '</button>' +
               '<button class="btn btn-sm btn-outline-secondary me-1 btn-export-concept" data-id="' + data.id + '" title="Konzept als JSON-Datei exportieren">' +
@@ -448,8 +483,8 @@ document.addEventListener("DOMContentLoaded", function() {
       dom: 'rt<"row align-items-center mt-2 justify-content-between dt-footer-row"<"col-auto"l><"col"i><"col-auto"p>>',
       pageLength: 25,
       lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
-      // GEÄNDERT: Slug-Spalte ist nach Einschub der ID-Spalte jetzt Index 2
-      order: [[2, "asc"]],
+      // GEÄNDERT: Standardsortierung nach ID absteigend (Spalte 1)
+      order: [[1, "desc"]],
       language: {
         lengthMenu: "_MENU_ pro Seite",
         info: "_START_ bis _END_ von _TOTAL_",
@@ -461,6 +496,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Eigenes Suchfeld an DataTable binden
     $('#concepts-search').on('input', function() { table.search(this.value).draw(); });
+
+    // GEÄNDERT: Ticket 66 — Status-Filter (exakte Spaltensuche auf der Status-Spalte, Index 5)
+    $('#concepts-status-filter').on('change', function() {
+      var value = this.value;
+      table.column(5).search(value ? '^' + value + '$' : '', true, false).draw();
+    });
 
     // Child-Row öffnen (immer aufgeklappt)
     function openChildRow(tr) {
@@ -561,6 +602,8 @@ document.addEventListener("DOMContentLoaded", function() {
     var editBtn = e.target.closest('.btn-edit-concept');
     if (editBtn) {
       // GEÄNDERT: Ticket 16 — data-obsidian entfernt, data-vault-exists hinzugefügt
+      // GEÄNDERT: Ticket 66 — goal_prompt/goal_json aus den data-Attributen übernehmen
+      var editGoalJsonRaw = editBtn.getAttribute('data-goal-json') || '';
       openConceptModal({
         id: editBtn.getAttribute('data-id'),
         slug: editBtn.getAttribute('data-slug'),
@@ -569,6 +612,8 @@ document.addEventListener("DOMContentLoaded", function() {
         status: editBtn.getAttribute('data-status'),
         description: editBtn.getAttribute('data-description') || '',
         vaultExists: editBtn.getAttribute('data-vault-exists') === '1',
+        goalPrompt: editBtn.getAttribute('data-goal-prompt') || '',
+        goalJson: editGoalJsonRaw ? JSON.parse(editGoalJsonRaw) : null,
         title: 'Konzept bearbeiten'
       });
       return;
@@ -786,7 +831,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // GEÄNDERT: Ticket 16 — obsidian-Feld entfernt; Vault-Button je nach id und vault_exists
   function openConceptModal(opts) {
-    var defaults = { id: '', slug: '', name: '', category: '', status: 'active', description: '', vaultExists: false, title: 'Konzept anlegen' };
+    // GEÄNDERT: Ticket 66 — goalPrompt/goalJson in die Defaults aufgenommen
+    var defaults = { id: '', slug: '', name: '', category: '', status: 'active', description: '', vaultExists: false, goalPrompt: '', goalJson: null, title: 'Konzept anlegen' };
     var o = Object.assign({}, defaults, opts || {});
     document.getElementById("concept-id").value = o.id;
     document.getElementById("concept-slug").value = o.slug;
@@ -794,6 +840,8 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("concept-category").value = o.category;
     document.getElementById("concept-status").value = o.status;
     document.getElementById("concept-description").value = o.description;
+    document.getElementById("concept-goal-prompt").value = o.goalPrompt;
+    document.getElementById("concept-goal-json").value = o.goalJson ? JSON.stringify(o.goalJson, null, 2) : '';
     document.getElementById("modal-concept-title").textContent = o.title;
     document.getElementById("concept-modal-error").style.display = 'none';
 
@@ -898,6 +946,27 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById("concept-modal-error").textContent = "Aus dem Namen liess sich kein gültiger Slug erzeugen.";
         document.getElementById("concept-modal-error").style.display = '';
         return;
+      }
+      // GEÄNDERT: Ticket 66 — goal_prompt verbatim (kein Trim), goal_json client-seitig validiert
+      // (muss ein JSON-Objekt sein) bevor gespeichert wird — kein stilles Verwerfen bei kaputtem JSON.
+      var goalPromptRaw = document.getElementById("concept-goal-prompt").value;
+      if (goalPromptRaw) payload.goal_prompt = goalPromptRaw;
+      var goalJsonRaw = document.getElementById("concept-goal-json").value;
+      if (goalJsonRaw.trim()) {
+        var parsedGoalJson;
+        try {
+          parsedGoalJson = JSON.parse(goalJsonRaw);
+        } catch (e) {
+          document.getElementById("concept-modal-error").textContent = "Ziel-JSON ist kein gültiges JSON: " + e.message;
+          document.getElementById("concept-modal-error").style.display = '';
+          return;
+        }
+        if (typeof parsedGoalJson !== 'object' || parsedGoalJson === null || Array.isArray(parsedGoalJson)) {
+          document.getElementById("concept-modal-error").textContent = "Ziel-JSON muss ein JSON-Objekt sein (kein Array, kein Text, keine Zahl).";
+          document.getElementById("concept-modal-error").style.display = '';
+          return;
+        }
+        payload.goal_json = parsedGoalJson;
       }
       var url = id ? '/api/strategy/concepts/' + id : '/api/strategy/concepts';
       var method = id ? 'PUT' : 'POST';

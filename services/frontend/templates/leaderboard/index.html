@@ -78,7 +78,7 @@
             <th class="text-end">Sum Return %{{ tip("Summe der Total Returns % über alle Configs (nicht kapitalgewichtet).") }}</th>
             <th class="text-end">Tage{{ tip("Anzahl Test-Tage als Vereinigung aller Backtest-Zeitfenster der Winning-Results. Überlappende Fenster werden nur einmal gezählt. Badge erscheint, wenn Überlappungen vorliegen.") }}</th>
             <th class="text-end">R/T %{{ tip("Return pro Tag: Sum Return % geteilt durch die Test-Tage (Intervall-Union).") }}</th>
-            <th class="text-end w-1"></th>
+            <th class="text-end w-1 text-nowrap"></th>
           </tr>
         </thead>
         <tbody>
@@ -138,6 +138,30 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn" data-bs-dismiss="modal">Schließen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Rerun-Bestätigung + Ergebnis (Ticket 63/85) -->
+<div class="modal modal-blur fade" id="modal-rerun" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Erneut ausführen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <div id="rerun-confirm-text">
+          Leaderboard-Eintrag <span id="rerun-entry-id"></span> aus dem gespeicherten
+          Snapshot erneut ausführen? Es entsteht ein neuer Eintrag; der bestehende bleibt
+          unverändert.
+        </div>
+        <div id="rerun-result" class="mt-2" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" data-bs-dismiss="modal" id="rerun-cancel-btn">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="rerun-confirm-btn">Erneut ausführen</button>
       </div>
     </div>
   </div>
@@ -351,14 +375,24 @@ document.addEventListener("DOMContentLoaded", function() {
         {
           data: 'id',
           orderable: false,
-          className: 'text-end',
+          className: 'text-end text-nowrap',
           render: function(d) {
-            return '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-entry" title="Löschen" data-id="' + d + '">'
+            // GEÄNDERT: Beide Aktionen in einer Flex-Zeile mit flex-nowrap. Vorher
+            // standen sie als einzelne Inline-Buttons in einer w-1-Spalte und
+            // brachen dort untereinander um.
+            return '<div class="btn-list flex-nowrap justify-content-end">'
+              + '<button type="button" class="btn btn-sm btn-outline-secondary btn-rerun-entry" title="Erneut ausführen" data-id="' + d + '">'
+              + '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+              + '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/>'
+              + '<path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>'
+              + '</button>'
+              + '<button type="button" class="btn btn-sm btn-outline-danger btn-delete-entry" title="Löschen" data-id="' + d + '">'
               + '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
               + '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/>'
               + '<path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/>'
               + '<path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>'
-              + '</button>';
+              + '</button>'
+              + '</div>';
           }
         }
       ],
@@ -480,6 +514,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Drill-Down bei Zeilenklick / Löschen via Icon
   document.getElementById('leaderboard-table').addEventListener('click', function(e) {
+    var rerunBtn = e.target.closest('.btn-rerun-entry');
+    if (rerunBtn) {
+      e.stopPropagation();
+      openRerunConfirm(rerunBtn.getAttribute('data-id'));
+      return;
+    }
     var delBtn = e.target.closest('.btn-delete-entry');
     if (delBtn) {
       e.stopPropagation();
@@ -519,6 +559,69 @@ document.addEventListener("DOMContentLoaded", function() {
     var rowData = table.row(tr).data();
     if (!rowData) return;
     openDrilldown(rowData);
+  });
+
+  // --- Leaderboard-Rerun (Ticket 63/85): Bestätigungsdialog + Ergebnisanzeige ---
+  var rerunModalEl = document.getElementById('modal-rerun');
+  var rerunModal = null;
+  var rerunTargetId = null;
+
+  function resetRerunModal() {
+    document.getElementById('rerun-entry-id').textContent = rerunTargetId || '';
+    document.getElementById('rerun-confirm-text').style.display = '';
+    document.getElementById('rerun-result').style.display = 'none';
+    document.getElementById('rerun-result').innerHTML = '';
+    var confirmBtn = document.getElementById('rerun-confirm-btn');
+    confirmBtn.style.display = '';
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Erneut ausführen';
+    document.getElementById('rerun-cancel-btn').textContent = 'Abbrechen';
+  }
+
+  function openRerunConfirm(entryId) {
+    rerunTargetId = entryId;
+    resetRerunModal();
+    if (!rerunModal) rerunModal = new tabler.Modal(rerunModalEl);
+    rerunModal.show();
+  }
+
+  function showRerunResult(html) {
+    document.getElementById('rerun-confirm-text').style.display = 'none';
+    document.getElementById('rerun-confirm-btn').style.display = 'none';
+    document.getElementById('rerun-cancel-btn').textContent = 'Schließen';
+    var resultEl = document.getElementById('rerun-result');
+    resultEl.style.display = '';
+    resultEl.innerHTML = html;
+  }
+
+  document.getElementById('rerun-confirm-btn').addEventListener('click', async function() {
+    var confirmBtn = this;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Läuft…';
+    try {
+      var response = await fetch('/api/leaderboard/' + rerunTargetId + '/rerun', { method: 'POST' });
+      var json = await response.json();
+      if (!response.ok || json.error) {
+        var msg = (json && (json.error || json.detail)) || 'unbekannter Fehler';
+        showRerunResult('<div class="text-danger">Rerun fehlgeschlagen: ' + escapeHtml(msg) + '</div>');
+        return;
+      }
+      var d = json.data;
+      var matchTxt = d.bit_exact_match === true
+        ? '<span class="text-success">exakt reproduziert</span>'
+        : d.bit_exact_match === false
+        ? '<span class="text-danger">weicht ab</span>'
+        : '<span class="text-muted">nicht vergleichbar</span>';
+      showRerunResult(
+        '<div>Neuer Leaderboard-Eintrag <strong>' + d.new_entry_id + '</strong> angelegt ('
+        + d.configs_total + ' Configs).</div>'
+        + '<div class="mt-1">Bit-genaue Reproduktion: ' + matchTxt + '</div>'
+      );
+      var sel = document.getElementById('test-set-select');
+      loadLeaderboard(sel.value);
+    } catch (err) {
+      showRerunResult('<div class="text-danger">Netzwerkfehler: ' + escapeHtml(err.message) + '</div>');
+    }
   });
 
   var drilldownTable = null;
@@ -617,7 +720,17 @@ document.addEventListener("DOMContentLoaded", function() {
         {
           data: 'n_trades',
           className: 'text-end',
-          render: function(d) { return d !== null && d !== undefined ? d : '—'; }
+          // GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner:
+          // die Quote rechnet über die geschlossenen Trades (n_trades - open_trades). Die
+          // offenen Positionen stehen deshalb direkt in der Trades-Zelle.
+          render: function(d, type, row) {
+            if (d === null || d === undefined) return '—';
+            if (!row.open_trades) return String(d);
+            var closed = d - row.open_trades;
+            return String(d) + ' <span class="text-muted" title="' + row.open_trades
+              + ' davon am Ende des Handelsfensters offen — Trefferquote und Profitfaktor rechnen über die '
+              + closed + ' geschlossenen">(' + row.open_trades + ' offen)</span>';
+          }
         }
       ],
       order: [[0, 'asc']],

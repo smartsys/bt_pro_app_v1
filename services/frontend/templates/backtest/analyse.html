@@ -24,6 +24,10 @@
 {% endblock %}
 
 {% block content %}
+<!-- GEÄNDERT: Ticket 99 — sichtbare Meldung fuer ungueltige URL-Query-Parameter
+     (Achsenname/Metrik) statt stillem Zurueckfallen auf die Voreinstellung. -->
+<div id="analyse-url-error" class="alert alert-danger d-none mb-3" role="alert"></div>
+
 <!-- Zusammenfassung -->
 <div class="row g-3 mb-3" id="summary-cards">
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Results</div><div class="fw-bold" id="sum-total">—</div></div></div></div>
@@ -34,6 +38,11 @@
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Sharpe > 1</div><div class="fw-bold" id="sum-sharpe-gt1">—</div></div></div></div>
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Best Sharpe</div><div class="fw-bold val-pos" id="sum-max-sharpe">—</div></div></div></div>
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Sharpe</div><div class="fw-bold" id="sum-avg-sharpe">—</div></div></div></div>
+  <!-- GEÄNDERT: Ticket 64 — durchschnittliche Trefferquote samt ihrem Nenner. Die Quote
+       rechnet seit Ticket 58 über geschlossene Trades, die Trade-Zahl zählt eine am
+       Fensterende offene Position mit; ohne den Zusatz stünde ein Durchschnitt da,
+       dessen Grundgesamtheit niemand sieht. -->
+  <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Win Rate</div><div class="fw-bold" id="sum-avg-winrate">—</div><div class="text-muted" style="font-size:0.65rem" id="sum-open-positions">—</div></div></div></div>
 </div>
 
 <!-- Metrik-Auswahl -->
@@ -298,6 +307,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var currentMetric = 'total_return_pct';
   var paramCharts = {};  // ECharts Instanzen
   var paramNames = [];   // Verfügbare Parameter-Namen
+  var hasFatalError = false;  // GEÄNDERT: Ticket 99 — blockiert das Fertig-Signal dauerhaft nach einem endgültigen Fehler
 
   // GEAENDERT: JSON-Fetch mit Retry gegen transiente Verbindungsabbrueche.
   // Ein einzelnes "Failed to fetch" (z.B. uvicorn-Reload-Neustart oder Docker-
@@ -317,6 +327,129 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   }
 
+  // ========================================================================
+  // URL-Zustand und Fertig-Signal (Ticket 99)
+  // ========================================================================
+  // GEÄNDERT: Ticket-99-Nachbesserung — Canvas-PRÄSENZ allein reicht nicht als
+  // Fertig-Kriterium: loadHeatmapInstance() disposed die ECharts-Instanz im
+  // Erfolgsfall nie (nur beim Platzhalter-Zweig "zwei verschiedene Parameter"),
+  // sondern befuellt denselben Canvas per setOption neu — der ALTE Canvas staende
+  // waehrend der gesamten Ladezeit der jeweils ANDEREN Ansicht als "vorhanden" da.
+  // Jede der vier Ansichten fuehrt deshalb ein eigenes Frisch-Flag: reset beim Start
+  // ihres eigenen Ladevorgangs, gesetzt erst nach ihrem eigenen abgeschlossenen
+  // Neuzeichnen. Ready wird nur true, wenn ALLE VIER seit ihrem letzten Reset frisch
+  // gezeichnet sind.
+  var viewsReady = { equity: false, distribution: false, heatmap: false, heatmap2: false };
+
+  // Wird zu Beginn des Ladevorgangs EINER Ansicht aufgerufen — nur deren eigenes Flag
+  // faellt zurueck, die anderen (nicht betroffenen) Ansichten bleiben gueltig.
+  function resetViewReady(view) {
+    viewsReady[view] = false;
+    window.__analyseReady = false;
+  }
+
+  // Wird nach dem tatsaechlich abgeschlossenen Neuzeichnen EINER Ansicht aufgerufen.
+  function markViewReady(view) {
+    viewsReady[view] = true;
+    updateAnalyseReadySignal();
+  }
+
+  // Massgeblich ist der Ist-Zustand (alle vier Ansichten frisch gezeichnet), nicht ein Timer.
+  function updateAnalyseReadySignal() {
+    if (hasFatalError) return;
+    if (viewsReady.equity && viewsReady.distribution && viewsReady.heatmap && viewsReady.heatmap2) {
+      window.__analyseReady = true;
+    }
+  }
+
+  // Endgueltiger Fehler (ungueltiger URL-Parameter oder Ladevorgang fehlgeschlagen):
+  // sichtbare Meldung auf der Seite, Klartext im Fertig-Signal, Ready bleibt aus.
+  function showAnalyseError(msg) {
+    hasFatalError = true;
+    window.__analyseError = msg;
+    window.__analyseReady = false;
+    var el = document.getElementById('analyse-url-error');
+    if (el) {
+      el.textContent = msg;
+      el.classList.remove('d-none');
+    }
+  }
+
+  // Stellt die Heatmap-Ansicht (Achsen, Aggregation, Slider) und die aktive Metrik
+  // aus den Query-Parametern der URL ein. Greift nach dem Befuellen der Auswahlfelder
+  // und vor dem ersten Zeichnen — ein fehlender Parameter laesst das jeweilige Feld
+  // unangetastet.
+  function applyUrlState() {
+    var params = new URLSearchParams(window.location.search);
+    var errors = [];
+
+    if (params.has('metric')) {
+      var m = params.get('metric');
+      var btn = document.querySelector('.metric-btn[data-metric="' + m + '"]');
+      if (btn) {
+        document.querySelectorAll('.metric-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        currentMetric = m;
+      } else {
+        errors.push('Unbekannte Metrik: ' + m);
+      }
+    }
+
+    function applyAxis(selectId, key, value) {
+      if (paramNames.indexOf(value) === -1) {
+        errors.push('Unbekannter Parameter (' + key + '): ' + value);
+        return;
+      }
+      document.getElementById(selectId).value = value;
+    }
+    // z= (leer) bedeutet ausdruecklich "kein Slider" und ueberstimmt damit die
+    // Automatik-Vorbelegung ab fuenf bekannten Parametern.
+    function applySlider(selectId, key, value) {
+      if (value === '') {
+        document.getElementById(selectId).value = '';
+        return;
+      }
+      applyAxis(selectId, key, value);
+    }
+    function applyAgg(selectId, key, value) {
+      if (value !== 'max' && value !== 'avg') {
+        errors.push('Unbekannte Aggregation (' + key + '): ' + value);
+        return;
+      }
+      document.getElementById(selectId).value = value;
+    }
+
+    if (params.has('x')) applyAxis('heatmap-x', 'x', params.get('x'));
+    if (params.has('y')) applyAxis('heatmap-y', 'y', params.get('y'));
+    if (params.has('agg')) applyAgg('heatmap-agg', 'agg', params.get('agg'));
+    if (params.has('z')) applySlider('heatmap-z', 'z', params.get('z'));
+
+    // Heatmap 2: x2/y2/agg2/z2 ueberschreiben gezielt nur Heatmap 2 — ohne eigenen
+    // Wert faellt sie auf den jeweiligen Basis-Wert von Heatmap 1 zurueck.
+    var x2Key = params.has('x2') ? 'x2' : 'x';
+    var x2Val = params.has('x2') ? params.get('x2') : params.get('x');
+    if (x2Val !== null) applyAxis('heatmap2-x', x2Key, x2Val);
+
+    var y2Key = params.has('y2') ? 'y2' : 'y';
+    var y2Val = params.has('y2') ? params.get('y2') : params.get('y');
+    if (y2Val !== null) applyAxis('heatmap2-y', y2Key, y2Val);
+
+    var agg2Key = params.has('agg2') ? 'agg2' : 'agg';
+    var agg2Val = params.has('agg2') ? params.get('agg2') : params.get('agg');
+    if (agg2Val !== null) applyAgg('heatmap2-agg', agg2Key, agg2Val);
+
+    var z2Key = params.has('z2') ? 'z2' : 'z';
+    var z2Val = params.has('z2') ? params.get('z2') : params.get('z');
+    if (z2Val !== null) applySlider('heatmap2-z', z2Key, z2Val);
+
+    if (errors.length > 0) {
+      // Duplikate entfernen: ein ungueltiger Basis-Wert (z.B. x) erzeugt sonst dieselbe
+      // Meldung zweimal, weil x2/y2/agg2/z2 ohne eigenen Wert auf ihn zurueckfallen.
+      var uniqueErrors = errors.filter(function(msg, idx) { return errors.indexOf(msg) === idx; });
+      showAnalyseError(uniqueErrors.join(' | '));
+    }
+  }
+
   // Zusammenfassung laden (mit Retry, weil die Heatmap-Dropdowns davon abhaengen)
   fetchJsonWithRetry('/api/backtest/runs/' + runId + '/analyse/summary', 4, 700)
     .then(function(d) {
@@ -328,6 +461,13 @@ document.addEventListener("DOMContentLoaded", function() {
       document.getElementById('sum-avg-dd').textContent = d.avg_drawdown != null ? d.avg_drawdown.toFixed(2) + '%' : '—';
       document.getElementById('sum-max-return').textContent = d.max_return != null ? d.max_return.toFixed(2) + '%' : '—';
       document.getElementById('sum-max-sharpe').textContent = d.max_sharpe != null ? d.max_sharpe.toFixed(2) : '—';
+      // GEÄNDERT: Ticket 64 — durchschnittliche Trefferquote samt „N von M Kombinationen
+      // mit offener Position" (Nenner der Quote sichtbar machen).
+      document.getElementById('sum-avg-winrate').textContent = d.avg_winrate != null ? d.avg_winrate.toFixed(2) + '%' : '—';
+      var openCount = d.with_open_position_count != null ? d.with_open_position_count : 0;
+      var totalCount = d.total_results != null ? d.total_results : 0;
+      document.getElementById('sum-open-positions').textContent =
+        openCount.toLocaleString('de-DE') + ' von ' + totalCount.toLocaleString('de-DE') + ' Kombinationen mit offener Position';
       var avgRetEl = document.getElementById('sum-avg-return');
       avgRetEl.className = 'fw-bold ' + (d.avg_return >= 0 ? 'val-pos' : 'val-neg');
       var avgShEl = document.getElementById('sum-avg-sharpe');
@@ -363,6 +503,10 @@ document.addEventListener("DOMContentLoaded", function() {
         sel2Y.value = paramNames[1];
       }
 
+      // GEÄNDERT: Ticket 99 — URL-Zustand greift hier: nach der Automatik-Vorbelegung,
+      // vor dem ersten Zeichnen. Ueberstimmt damit gezielt die Automatik oben.
+      applyUrlState();
+
       // 3D-Volumen-Achsen befüllen (braucht drei variierte Parameter)
       var volX = document.getElementById('volume-x');
       var volY = document.getElementById('volume-y');
@@ -391,7 +535,11 @@ document.addEventListener("DOMContentLoaded", function() {
     })
     .catch(function(e) {
       // GEAENDERT: Nach erschoepften Retries den Fehler sichtbar machen statt still leer zu lassen.
+      // Ticket-99-Nachbesserung: ohne showAnalyseError() bliebe __analyseError ungesetzt
+      // und ein Wartender liefe ohne sichtbaren Grund in seinen Timeout — die Selects
+      // bleiben leer, loadHeatmap()/loadHeatmap2() laufen danach gar nicht erst an.
       console.error('[ANALYSE] Summary konnte nicht geladen werden — Heatmaps bleiben leer:', e);
+      showAnalyseError('Zusammenfassung konnte nicht geladen werden — Analyse-Ansicht unvollständig.');
     });
 
   // Metrik-Buttons
@@ -432,6 +580,17 @@ document.addEventListener("DOMContentLoaded", function() {
     if (v === null || v === undefined) return '—';
     return parseFloat(v).toFixed(2);
   }
+  // GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+  // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
+  // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
+  function fmtTrades(total, open) {
+    if (total === null || total === undefined) return '<span class="text-muted">-</span>';
+    if (!open) return String(total);
+    var closed = total - open;
+    return String(total) + ' <span class="text-muted" title="' + open
+      + ' davon am Ende des Handelsfensters offen — Trefferquote und Profitfaktor rechnen über die '
+      + closed + ' geschlossenen">(' + open + ' offen)</span>';
+  }
   function fmtColor(v) {
     if (v === null || v === undefined) return '<span class="text-muted">—</span>';
     var n = parseFloat(v);
@@ -444,6 +603,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var distChart = null;
 
   function loadDistribution() {
+    resetViewReady('distribution');
     fetch('/api/backtest/runs/' + runId + '/analyse/distribution')
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -502,6 +662,13 @@ document.addEventListener("DOMContentLoaded", function() {
             barWidth: '90%'
           }]
         });
+        markViewReady('distribution');
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
+        console.error('[ANALYSE] Verteilung konnte nicht geladen werden:', e);
+        showAnalyseError('Verteilung konnte nicht geladen werden.');
       });
   }
 
@@ -511,6 +678,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var equityChart = null;
 
   function loadEquityOverview() {
+    resetViewReady('equity');
     fetch('/api/backtest/runs/' + runId + '/analyse/equity-overview')
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -617,6 +785,13 @@ document.addEventListener("DOMContentLoaded", function() {
             }
           ]
         });
+        markViewReady('equity');
+      })
+      .catch(function(e) {
+        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
+        console.error('[ANALYSE] Equity-Uebersicht konnte nicht geladen werden:', e);
+        showAnalyseError('Equity-Übersicht konnte nicht geladen werden.');
       });
   }
 
@@ -820,13 +995,29 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       }]
     });
+    // GEÄNDERT: Ticket-99-Nachbesserung — prefix ist hier 'heatmap' bzw. 'heatmap2' und
+    // markiert damit gezielt NUR die Ansicht als frisch, die soeben tatsaechlich neu
+    // gezeichnet wurde (nicht mehr die blosse Canvas-Praesenz der jeweils anderen).
+    markViewReady(prefix);
   }
 
   function loadHeatmapInstance(prefix) {
+    // GEÄNDERT: Ticket-99-Nachbesserung — nur das Frisch-Flag DIESER Ansicht faellt
+    // zurueck; die jeweils andere Heatmap sowie Equity-Uebersicht/Verteilung bleiben
+    // gueltig, solange sie nicht selbst neu geladen werden. Verhindert, dass Ready waehrend
+    // eines Metrik-/Achsenwechsels kurz true wird, weil der ALTE Canvas der jeweils anderen
+    // Heatmap noch im DOM steht (loadHeatmapInstance disposed im Erfolgsfall nie, nur
+    // setOption).
+    resetViewReady(prefix);
     var paramX = document.getElementById(prefix + '-x').value;
     var paramY = document.getElementById(prefix + '-y').value;
     var paramZ = document.getElementById(prefix + '-z').value;
     var inst = heatmapInstances[prefix] || {};
+
+    // GEÄNDERT: laufende Anfrage dieser Instanz abbrechen, bevor eine neue gestartet
+    // wird — sonst kann die Antwort einer überholten Anfrage später eintreffen und
+    // die inzwischen aktuelle Achsenwahl im Chart überschreiben (Ticket 76).
+    if (inst.abortController) { inst.abortController.abort(); }
 
     if (!paramX || !paramY || paramX === paramY) {
       var el = document.getElementById(prefix + '-chart');
@@ -836,6 +1027,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (inst.chart) { inst.chart.dispose(); }
       el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Zwei verschiedene Parameter auswählen</div>';
       inst.chart = null;
+      inst.abortController = null;
       heatmapInstances[prefix] = inst;
       return;
     }
@@ -851,7 +1043,11 @@ document.addEventListener("DOMContentLoaded", function() {
     var url = '/api/backtest/runs/' + runId + '/analyse/heatmap?metric=' + currentMetric + '&param_x=' + paramX + '&param_y=' + paramY + '&agg=' + agg;
     if (paramZ) url += '&param_z=' + paramZ;
 
-    fetch(url)
+    var controller = new AbortController();
+    inst.abortController = controller;
+    heatmapInstances[prefix] = inst;
+
+    fetch(url, { signal: controller.signal })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var sliderWrap = document.getElementById(prefix + '-slider-wrap');
@@ -892,6 +1088,24 @@ document.addEventListener("DOMContentLoaded", function() {
           var data = buildHeatmapData(d.cells, d.x_values, d.y_values);
           renderHeatmapChart(prefix, data, d.x_values, d.y_values, paramX, paramY);
         }
+      })
+      .catch(function(e) {
+        // GEÄNDERT: abgebrochene Anfrage (überholt durch neuere Umschaltung) gezielt
+        // schlucken — kein Fehlerbild, keine unbehandelte Promise-Rejection.
+        if (e.name === 'AbortError') { return; }
+        console.error('[ANALYSE] Heatmap-Laden fehlgeschlagen:', e);
+        var el = document.getElementById(prefix + '-chart');
+        el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Fehler beim Laden</div>';
+        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
+        showAnalyseError('Heatmap (' + prefix + ') konnte nicht geladen werden.');
+      })
+      .finally(function() {
+        // GEÄNDERT: Referenz nur löschen, wenn seither kein neuerer Controller gesetzt
+        // wurde — sonst würde eine gerade laufende Folgeanfrage sich selbst „vergessen".
+        if (heatmapInstances[prefix] && heatmapInstances[prefix].abortController === controller) {
+          heatmapInstances[prefix].abortController = null;
+        }
       });
   }
 
@@ -902,8 +1116,15 @@ document.addEventListener("DOMContentLoaded", function() {
   // 3D-Volumen (VBT volume() via Plotly)
   // ========================================================================
   var volumeLoaded = false;
+  var volumeAbortController = null;
 
   function loadVolume() {
+    // GEÄNDERT: laufende Anfrage abbrechen, bevor eine neue gestartet wird — sonst kann
+    // die Antwort einer überholten Anfrage später eintreffen und die inzwischen aktuelle
+    // Achsenwahl im Chart überschreiben (Ticket 78, analog Ticket 76 bei der Heatmap).
+    if (volumeAbortController) { volumeAbortController.abort(); }
+    volumeAbortController = null;
+
     if (paramNames.length < 3) return;
     var px = document.getElementById('volume-x').value;
     var py = document.getElementById('volume-y').value;
@@ -920,7 +1141,10 @@ document.addEventListener("DOMContentLoaded", function() {
       '&param_x=' + encodeURIComponent(px) + '&param_y=' + encodeURIComponent(py) +
       '&param_z=' + encodeURIComponent(pz);
 
-    fetch(url)
+    var controller = new AbortController();
+    volumeAbortController = controller;
+
+    fetch(url, { signal: controller.signal })
       .then(function(r) { return r.json(); })
       .then(function(fig) {
         if (!fig || !fig.data || fig.figure === null) {
@@ -935,8 +1159,18 @@ document.addEventListener("DOMContentLoaded", function() {
         Plotly.react(el, fig.data, fig.layout, {responsive: true, displaylogo: false});
       })
       .catch(function(e) {
+        // GEÄNDERT: abgebrochene Anfrage (überholt durch neuere Umschaltung) gezielt
+        // schlucken — kein Fehlerbild, keine unbehandelte Promise-Rejection.
+        if (e.name === 'AbortError') { return; }
         console.error('[ANALYSE] Volumen-Plot fehlgeschlagen:', e);
         el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Fehler beim Laden</div>';
+      })
+      .finally(function() {
+        // GEÄNDERT: Referenz nur löschen, wenn seither kein neuerer Controller gesetzt
+        // wurde — sonst würde eine gerade laufende Folgeanfrage sich selbst „vergessen".
+        if (volumeAbortController === controller) {
+          volumeAbortController = null;
+        }
       });
   }
 
@@ -985,7 +1219,7 @@ document.addEventListener("DOMContentLoaded", function() {
           html += '<td>' + (r.max_drawdown_pct != null ? '<span class="val-neg">' + fmtVal(r.max_drawdown_pct) + '</span>' : '—') + '</td>';
           html += '<td>' + fmtVal(r.win_rate_pct) + '</td>';
           html += '<td>' + fmtColor(r.profit_factor) + '</td>';
-          html += '<td>' + (r.total_trades || '—') + '</td>';
+          html += '<td>' + fmtTrades(r.total_trades, r.open_trades) + '</td>';
           // GEÄNDERT: Ticket 42 — Playground-Button (flüchtig, kein Setup)
           html += '<td><a href="/backtest/results/' + r.id + '/chart" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1">Chart</a>'
                + ' <a href="/chart-playground?resultid=' + r.id + '" target="_blank" class="btn btn-sm btn-outline-success py-0 px-1" title="Im Playground öffnen (flüchtig)">PG</a></td>';

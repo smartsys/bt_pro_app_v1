@@ -6,10 +6,15 @@ Abdeckung:
 - Frontend-Smoke: /config/strategy -> 200 mit Konzept-Template
 - Frontend-Smoke: /backtest/results, /backtest/start -> 200
 
-Strategie: API-Tests über http://localhost:5570 (laufender Container),
+Strategie: API-Tests gegen die laufende App (Adresse aus APP_BASE_URL),
 Repository-Tests direkt gegen DB (ohne rq-Dependency).
+
+ACHTUNG: Diese Tests sprechen mit der laufenden App und damit mit der ARBEITS-DB;
+`/api/backtest/start` legt dort echte Runs an. Sie sind deshalb als `integration`
+markiert und laufen nicht im Standardlauf mit — bewusst mit `-m integration` starten.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +29,10 @@ load_dotenv(_ROOT / '.env')
 
 # DB-Verbindung kommt aus den Umgebungsvariablen (.env), kein Fallback
 
-BASE_URL = 'http://localhost:5570'
+# GEÄNDERT (Nachtrag Ticket 88): Adresse der laufenden App aus der Umgebung. Im
+# Test-Container ist 'localhost' der Container selbst — dort gilt der Dienstname
+# (http://app:8000), vom Host aus der gemappte Port.
+BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:5570')
 
 
 # ============================================================================
@@ -32,7 +40,7 @@ BASE_URL = 'http://localhost:5570'
 # ============================================================================
 
 def container_available() -> bool:
-    """Prüft ob der Frontend-Container erreichbar ist."""
+    """Prüft ob die App unter BASE_URL erreichbar ist."""
     try:
         r = requests.get(BASE_URL + '/api/strategy/concepts', timeout=3)
         return r.status_code == 200
@@ -40,10 +48,14 @@ def container_available() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(
-    not container_available(),
-    reason="Frontend-Container nicht erreichbar (http://localhost:5570)"
-)
+pytestmark = [
+    # Schreibt über /api/backtest/start in die Arbeits-DB — kein Unit-Test-Charakter.
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not container_available(),
+        reason=f"App nicht erreichbar ({BASE_URL})"
+    ),
+]
 
 
 # ============================================================================

@@ -14,6 +14,9 @@
   - [Erweiterte Datenberechnung](#erweiterte-datenberechnung)
   - [Verfügbare Daten vor und nach der Analyse](#verfügbare-daten-vor-und-nach-der-analyse)
   - [Warum drei Stufen?](#warum-drei-stufen)
+- [Abgebrochenen Lauf fortsetzen](#abgebrochenen-lauf-fortsetzen) — Teilergebnisse behalten statt neu rechnen
+- [Konzept-Detailseite](#konzept-detailseite) — Ziel neben Befund-Historie, klickbare Verweise
+- [Leaderboard-Rerun](#leaderboard-rerun) — Eintrag aus dem Snapshot reproduzieren
 - [Toolbox-Werkzeuge](#toolbox-werkzeuge) — alle Werkzeuge des Helfer-Skripts `toolbox.py`
 
 ---
@@ -72,33 +75,54 @@ entscheidend, *was*:
 ### Verfügbare Daten vor und nach der Analyse
 
 Bezugsfall: ein **Multiparameter-Lauf**. Pro Kombination existiert eine Zeile in
-`backtest_results`. Welche Felder dieser Zeile schon gefüllt sind, hängt von der
-Berechnungsstufe (`metrics_level`) ab.
+`backtest_results`.
+
+**Die Kennzahlen sind vollständig, bevor die Analyse startet.** Seit Ticket 64 entstehen
+sie in genau einer Funktion, die für jeden Lauf denselben Satz liefert — egal ob der Lauf
+eine Kombination hatte oder dreitausend. Die früheren Berechnungsstufen (`partial`,
+`chart`, `full`), das Feld `metrics_level` und der Knopf „Vollanalyse starten" gibt es
+nicht mehr. Die Frage „welchen Rechenpfad ist dieses Result gelaufen?" ist damit nicht
+mehr stellbar.
+
+> **Bruch mit dem Altbestand — bewusst und ohne Umrechnung:** Results, die vor Ticket 64
+> entstanden sind, tragen weiterhin nur die Felder ihrer damaligen Stufe; bei ihnen sind
+> unter anderem `sqn`, `edge_ratio`, `tail_ratio` oder die Trade-Detail-Felder leer, und
+> `skew`/`kurtosis` fehlen ganz. Sie werden **nicht** nachgerechnet. Alte und neue Results
+> sind in ihrer Feldmenge nicht vergleichbar.
 
 #### `backtest_results` — Kennzahlen je Kombination
 
-| Feld-Gruppe | Felder | VOR Analyse (`partial`) | NACH Analyse (`chart`) |
+| Feld-Gruppe | Felder | Nach dem Lauf | Nach der Analyse |
 |---|---|---|---|
-| **Identität / Config** (immer gesetzt) | `run_id`, `params_hash`, `actual_params_json`, `resolved_config_json`, `full_config_snapshot_json`, `iteration_id`, `is_favorite`, `is_doc_favorite` | vorhanden | unverändert |
-| **Rendite** | `total_return_pct`, `benchmark_return_pct`, `annualized_return`, `annualized_volatility` | vorhanden | vorhanden (neu berechnet) |
-| **Risiko** | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `downside_risk`, `deflated_sharpe_ratio`, `max_drawdown_pct` | vorhanden | vorhanden |
-| **Trades (Kern)** | `total_trades`, `win_rate_pct`, `profit_factor`, `expectancy` | vorhanden | vorhanden |
-| **Portfolio (Endwert)** | `end_value` | vorhanden | vorhanden |
-| **Zeitraum** | `start_index`, `end_index`, `total_duration` | **leer** | wird gefüllt |
-| **Portfolio (Verlauf)** | `start_value`, `min_value`, `max_value` | **leer** | wird gefüllt |
-| **Exposure** | `position_coverage_pct`, `max_gross_exposure_pct` | **leer** | wird gefüllt |
-| **Drawdown-Dauer** | `max_drawdown_duration` | **leer** | wird gefüllt |
-| **Orders / Kosten** | `total_orders`, `total_fees_paid` | **leer** | wird gefüllt |
-| **Trade-Detail** | `best_trade_pct`, `worst_trade_pct`, `avg_winning_trade_pct`, `avg_losing_trade_pct`, `avg_winning_trade_duration`, `avg_losing_trade_duration` | **leer** | wird gefüllt |
-| **Reproduzierbarkeit** | `spec_runner_version` | ggf. leer | gesetzt |
-| **Voll-Metriken** | `tail_ratio`, `value_at_risk`, `cond_value_at_risk`, `alpha`, `beta`, `information_ratio`, `sqn`, `edge_ratio` | **leer** | **bleibt leer** — siehe Hinweis |
+| **Identität / Config** | `run_id`, `params_hash`, `actual_params_json`, `resolved_config_json`, `full_config_snapshot_json`, `iteration_id`, `is_favorite`, `is_doc_favorite` | vorhanden | unverändert |
+| **Zeitraum / Umfang** | `start_index`, `end_index`, `total_duration`, `bar_count` | vorhanden | unverändert |
+| **Portfolio** | `start_value`, `min_value`, `max_value`, `end_value` | vorhanden | unverändert |
+| **Rendite** | `total_return_pct`, `benchmark_return_pct`, `annualized_return`, `annualized_volatility` | vorhanden | unverändert |
+| **Exposure** | `position_coverage_pct`, `max_gross_exposure_pct` | vorhanden | unverändert |
+| **Drawdown** | `max_drawdown_pct`, `max_drawdown_duration` | vorhanden | unverändert |
+| **Orders / Kosten** | `total_orders`, `total_fees_paid` | vorhanden | unverändert |
+| **Trades** | `total_trades`, `open_trades`, `long_trades`, `short_trades` | vorhanden | unverändert |
+| **Trade-Qualität** | `win_rate_pct`, `profit_factor`, `expectancy`, `sqn`, `edge_ratio`, `best_trade_pct`, `worst_trade_pct`, `avg_winning_trade_pct`, `avg_losing_trade_pct`, `avg_winning_trade_duration`, `avg_losing_trade_duration` | vorhanden | unverändert |
+| **Risiko** | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `omega_ratio`, `downside_risk` | vorhanden | unverändert |
+| **Extremrisiko** | `tail_ratio`, `value_at_risk`, `cond_value_at_risk` | vorhanden | unverändert |
+| **Benchmark-relativ** | `alpha`, `beta`, `information_ratio` | vorhanden | unverändert |
+| **Verteilungsform** | `skew`, `kurtosis` | vorhanden | unverändert |
+| **Overfitting-Kontrolle** | `deflated_sharpe_ratio` | vorhanden | unverändert — siehe Hinweis |
+| **Reproduzierbarkeit** | `spec_runner_version` | vorhanden | unverändert |
 
-> **Voll-Metriken (`metrics_level = full`):** Die letzte Gruppe (Tail-Ratio, VaR, cVaR,
-> Alpha, Beta, Information Ratio, SQN, Edge Ratio) berechnet der Analyse-Lauf **nicht** —
-> sie sind zu rechenintensiv für den Massen-Backtest. Start/Stop/Reset berühren sie nicht.
-> Man startet sie **pro einzelnem Result** über den Button **„Vollanalyse starten"** (im
-> Chart-Playground und auf der Result-Chart-Ansicht). Er rechnet als Hintergrund-Job nur
-> diese acht Felder für das jeweilige Result nach.
+> **`kurtosis` ist die rohe Wölbung**, nicht die Excess-Wölbung: eine Normalverteilung
+> liegt bei rund 3, nicht bei 0.
+
+> **`deflated_sharpe_ratio` entsteht als Nachlauf über den ganzen Lauf** und wird von der
+> Analyse nicht mehr angefasst (seit Ticket 54). Sie misst, ob der beste Kandidat nur der
+> Gewinner einer Zufallsauswahl ist, und rechnet dafür über **alle** Kombinationen des
+> Rasters — ein einzeln nachgerechnetes Result sieht nur sich selbst und könnte sie gar
+> nicht bestimmen. Bis dahin überschrieb jede gestartete Analyse den vorhandenen Wert mit
+> NULL; dieser Schaden ist behoben. Die Zahl ist ein **Report, nie ein Filter**: sie
+> schließt nichts aus und sortiert nichts weg. Ihr Vergleich zwischen Läufen trägt, ihr
+> absoluter Wert ist bei sehr schiefen Renditeverteilungen mit Vorsicht zu lesen. Ein
+> leeres Feld bedeutet: Für dieses Result fehlen die Bausteine (keine Trades, keine
+> Momente) oder es stammt aus einem Lauf vor der Korrektur.
 
 #### Detail-Tabellen je Kombination — vorher leer, Analyse-Lauf füllt sie
 
@@ -149,32 +173,113 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 
 ---
 
+## Abgebrochenen Lauf fortsetzen
+
+Ein Multiparameterlauf mit vielen Kombinationen wird in **Chunks** gerechnet (Blöcke von
+höchstens 5000 Kombinationen). Jeder fertig gerechnete Chunk wird sofort gespeichert. Wird
+der Lauf mittendrin hart beendet — Speichermangel, Container-Neustart, harter Abbruch des
+Worker-Prozesses —, bleiben die Ergebnisse der abgeschlossenen Chunks erhalten; verloren ist
+höchstens der Chunk, an dem gerade gerechnet wurde.
+
+**Bedienung:** In der Run-Liste zeigt ein abgebrochener Lauf mit gespeicherten Chunks einen
+grünen **Fortsetzen**-Knopf. Er reiht den Lauf wieder ein; gerechnet wird ab dem ersten noch
+nicht gespeicherten Chunk. Über die Toolbox: `python3 toolbox.py run-resume <run-id>`.
+
+**Fortsetzen ist nicht Rerun.** Die beiden Knöpfe liegen nebeneinander und tun
+Gegensätzliches:
+
+| Knopf | Was er tut | Was mit den Results passiert |
+|---|---|---|
+| **Fortsetzen** (grün) | Rechnet ab dem ersten fehlenden Chunk weiter. | Bleiben erhalten. |
+| **Rerun** (gelb) | Rechnet den ganzen Lauf von vorn. | Werden gelöscht und neu erzeugt. |
+
+Ein fortgesetzter Lauf liefert am Ende genau dasselbe Ergebnis wie ein Lauf, der in einem
+Stück durchgelaufen ist — gleiche Kombinationszahl, keine Dubletten und dieselben
+Kennzahlen. Das gilt ausdrücklich auch für die Deflated Sharpe Ratio, die über das gesamte
+Raster gerechnet wird: sie entsteht als Nachlauf, nachdem der letzte Chunk gespeichert ist.
+
+**Der Anstoß bleibt manuell.** Abgebrochene Läufe werden nicht automatisch neu gestartet.
+Ein Lauf wird erst fortsetzbar, wenn er als abgebrochen erkannt ist — das erledigt der
+periodische Aufräumer, der tote Läufe von `running` auf `failed` setzt und den Grund
+(z.B. Speichermangel) an den Lauf schreibt.
+
+---
+
+## Konzept-Detailseite
+
+Zeigt das Ziel eines Strategie-Konzepts neben seiner vollständigen Befund-Historie — der
+Abschluss eines Auftrags wird damit im System selbst lesbar: Was war das Soll, was haben
+die Messungen ergeben, wo stehen Sieger-Setup und finale Analyse.
+
+**Aufruf:** aus der Konzept-Übersicht (`/config/strategy-concepts`) über den Konzept-Namen,
+oder direkt `http://localhost:5570/config/strategy-concepts/{concept_id}`.
+
+Die Seite liest nur — Ziel bearbeiten bleibt der Übersicht vorbehalten. Sie zeigt:
+
+- **Ziel:** `goal_prompt` im Wortlaut (Blockzitat) und `goal_json` lesbar formatiert; fehlt
+  beides, steht das explizit da statt eines leeren Kastens.
+- **Befund-Historie:** alle Befunde des Konzepts chronologisch, je Befund einklappbar mit
+  Soll-Schnappschuss neben Ist-Kern (Kandidaten je Bestwert-Kriterium), Robustheit (die
+  Deflated Sharpe Ratio immer zusammen mit Rastergröße N und Rauschlatte SR0),
+  Warnhinweisen und Deutung. Leere Felder zeigen ihren Grund statt zu verschwinden.
+- **Kein Verdict:** keine Ampel, kein Ranking, keine Sortierung nach Kennzahlen — die
+  Reihenfolge ist strikt chronologisch, die Seite zeigt, sie urteilt nicht.
+- **Klickbare Verweise:** URLs und projektinterne Pfade im Deutungstext
+  (`?setupid=`-Deeplinks zum Chart-Playground, `/backtest/runs/{id}/analyse`) werden
+  automatisch als Links erkannt (Auto-Linking); der restliche Text bleibt reiner,
+  escapeter Text — kein HTML aus der Deutung wird ausgeführt.
+
+## Leaderboard-Rerun
+
+Reproduziert einen bestehenden Leaderboard-Eintrag ausschließlich aus seinem eingefrorenen
+Snapshot — unabhängig davon, ob sich die zugrundeliegende Config oder Iteration seither
+geändert hat.
+
+**Aufruf:** Knopf „Erneut ausführen" je Zeile im Leaderboard (`/leaderboard`).
+
+Ein Klick öffnet einen Bestätigungsdialog (`tabler.Modal`, kein `window.bootstrap`); nach
+Bestätigung läuft der Rerun und das Ergebnis erscheint im selben Dialog: die ID des neu
+angelegten Leaderboard-Eintrags plus Anzahl der Configs, dazu die bit-genaue Reproduktion
+(„exakt reproduziert" / „weicht ab" / „nicht vergleichbar" ohne Vergleichswert). Schlägt der
+Rerun fehl — etwa weil der Eintrag keinen verwertbaren Snapshot besitzt —, erscheint die
+Fehlermeldung an derselben Stelle statt einer stumm bleibenden Seite. Der bestehende
+Eintrag bleibt in jedem Fall unverändert.
+
+---
+
 ## Toolbox-Werkzeuge
 
-> Alle Werkzeuge des Helfer-Skripts `toolbox.py` (Pfad B des Skills `ds-strategie-session`).
-> Jede Maßnahme ist ein einzelnes Werkzeug. Kein Loop, keine vorgegebene Reihenfolge.
+> Alle Werkzeuge des Helfer-Skripts `toolbox.py` aus dem Skill `ds-strategie-session`. Der
+> Skill hat zwei Seiten: den **agentischen Entwicklungs-Loop** (Phasen 0–10 vom Auftrag bis
+> zum Abschluss, siehe SKILL.md) und diese **Objekt-Toolbox**, die auch einzeln nutzbar ist.
+> Jede Maßnahme ist ein einzelnes Werkzeug; die Toolbox startet nie von allein einen Loop.
 > Aufruf: `python3 .claude/skills/ds-strategie-session/scripts/toolbox.py <werkzeug> ...`
 >
 > Sehr lange GET-Antworten werden auf 4000 Zeichen gekürzt — die Toolbox weist das dann
-> immer sichtbar mit der Original-Größe aus (`[gekürzt: 4000 von N Zeichen — Filter nutzen]`),
-> nie stillschweigend. Bei betroffenen Werkzeugen gezielt filtern (z.B. `playground-indicators`
-> mit `--group`/`--search`) statt den gekürzten Rohdump zu lesen.
+> immer sichtbar mit der Original-Größe aus (`[gekürzt: 4000 von N Zeichen — --full oder
+> --out <datei> für die volle Antwort]`), nie stillschweigend. Bei betroffenen Werkzeugen
+> gezielt filtern (z.B. `playground-indicators` mit `--group`/`--search`) statt den
+> gekürzten Rohdump zu lesen, oder die Kappung mit `--out [datei]` (vollständig in eine
+> Datei unter `<TEMP>/bt-toolbox-out/`, Konsole nur Pfad + Zeichenzahl) bzw. `--full`
+> (vollständig auf stdout) umgehen. Beide Flags gibt es bei **allen Lese-Werkzeugen**
+> (GET) — nicht nur beim generischen `api`-Verb (siehe „Generisch" unten) — und schließen
+> sich gegenseitig aus.
 
 ### Lesen — ein Objekt als kompaktes Briefing
 
 | Werkzeug | macht |
 |---|---|
 | `concept:<id>` | Liest ein Strategie-Konzept aus und gibt Name, Slug und Kerndaten zurück. |
-| `iteration:<id>` | Liest eine Iteration aus und zeigt Indikatoren und Regeln aus dem spec_json. |
+| `iteration:<id>` | Liest eine Iteration aus und zeigt Indikatoren und Regeln aus dem spec_json, dazu die Anzahl der Log-Einträge und die letzten 3 (Text auf 200 Zeichen gekürzt, Ticket 67) — für den vollen Verlauf `iteration-log-list`. |
 | `indicator-config:<id>` | Liest eine Indicator-Config aus und listet jeden Indikator mit seinen Parametern. |
 | `backtest-config:<id>` | Liest eine Backtest-Config aus (Symbol, Zeitraum, Portfolio-Einstellungen). |
 | `strategy-config:<id>` | Liest eine Strategy-Config aus (Legacy, hardcoded/generic). |
 | `result:<id>` | Liest ein einzelnes Result mit seinen Kennzahlen aus. |
-| `run:<id>` | Liest einen Run aus den letzten Runs (kein Einzel-GET, daher Listen-Filter). |
+| `run:<id>` | Liest einen Run über den Einzel-GET aus (Ticket 70/C — unabhängig von den letzten N Runs). |
 | `testset:<id>` | Liest ein Testset mit seinen zugeordneten Configs aus. |
 | `leaderboard:<id>` | Liest einen Leaderboard-Eintrag im Drilldown aus. |
 | `playground-setup:<id>` | Liest ein Chart-Playground-Setup aus. |
-| `knowledge:"..."` | Semantische Vektorsuche im Vault-Index, gibt die Top-Treffer zurück. |
+| `knowledge:"..." [--k <n>]` | Semantische Vektorsuche im Vault-Index, gibt die Top-Treffer zurück (Default 5, Ticket 70/D). |
 | `vault:<pfad>` | Listet indizierte Vault-Dateien nach Pfad-Substring. |
 
 ### Listen — mehrere Objekte auf einmal
@@ -183,6 +288,7 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 |---|---|
 | `concept-list` | Listet alle Strategie-Konzepte. |
 | `iteration-list [concept_id]` | Listet alle Iterationen, optional auf ein Konzept gefiltert. |
+| `iteration-log-list --id <iteration_id>` | Listet alle Log-Einträge einer Iteration chronologisch aufsteigend mit Zeitstempel, Run-Bezug (falls gesetzt) und Text (Ticket 67). `--json` liefert die rohen Items. |
 | `backtest-config-list` | Listet alle Backtest-Configs. |
 | `indicator-config-list [concept_id] [iteration_id]` | Listet alle Indicator-Configs, optional auf Konzept/Iteration gefiltert. |
 | `result-list --run <id>` | Listet die Results eines Runs, optional nach Symbol/Timeframe gefiltert. |
@@ -191,6 +297,7 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 | `leaderboard-list [testset_id]` | Listet die Leaderboard-Einträge, optional je Testset. |
 | `strategy-config-list` | Listet alle Strategy-Configs (Legacy). |
 | `symbol-list <exchange> <timeframe>` | Listet die verfügbaren Symbole je Exchange und Timeframe. |
+| `symbol-correlation <exchange> <timeframe> --symbols A,B,C` | Misst die Korrelation der Tages-Log-Renditen zwischen Symbolen (je Paar Gesamtwert, Länge der Überlappung, rollierend Minimum/Median/Maximum) und weist die effektive Symbolzahl auf zwei Wegen aus — aus der mittleren Paarkorrelation und über die Eigenwerte. Optional `--start`, `--end`, `--window` (Default 90 Tage), `--min-overlap` (Default 30 Tage), `--json`. |
 | `data-files-list` | Listet die vorhandenen OHLCV-Datendateien. |
 | `data-jobs-list` | Listet die laufenden und vergangenen Daten-Download-Jobs. |
 | `filters-list` | Listet die verfügbaren Backtest-Filter. |
@@ -210,13 +317,21 @@ der interessanten Results, nicht mit der Zahl aller Kombinationen.
 | `run-favorites-reset --run <id> [--doc] [--user]` | Setzt die Favoriten einer Run-Menge zurück (ohne Flag beide Sterne; `--doc` rot/Doku, `--user` gelb/persönlich). Selektoren wie `run-bestwerte`. |
 | `run-favorites-list --run <id> [--doc] [--user]` | Gibt die markierten Favoriten-Results einer Run-Menge mit Kennzahlen und Parametern aus (reiner Read). Selektoren/Flags wie `run-favorites-reset`. |
 | `vergleichstabelle --strategy <slug> [--save <pfad>]` | Iterations-Vergleichstabelle je Testset aus den roten Doku-Favoriten (Zeilen Symbol × Iteration, Spalten Spitze = Max Total Return und robuster Kern = Profitfaktor ≥ 30 Trades). Purge-fest, weil nur markierte Bestwerte gelesen werden; nur Testset-Läufe. `--save` schreibt zusätzlich eine eigenständige Markdown-Notiz (mit Frontmatter) an den Pfad. |
-| `result-lookup --run <id> --params "k=w,…" [--tolerance <t>] [--limit <n>] [--summary]` | Schlägt Results per Parameter-Werten nach (Subset, serverseitig). Ohne Toleranz exakter Lookup der einen Kombination; mit `--tolerance` alle Results je ±t um die Zielwerte. `--summary` verdichtet die Nachbarschaft zum Plateau-Score (Median/Mittel/Streuung, Anteil profitabel, Bester/Schlechtester). |
+| `result-lookup --run <id> --params "k=w,…" [--tolerance <t> \| --tolerance-steps <N>] [--limit <n>] [--summary]` | Schlägt Results per Parameter-Werten nach (Subset, serverseitig). Ohne Toleranz exakter Lookup der einen Kombination; mit `--tolerance` alle Results je ±t um die Zielwerte (absolute Toleranz je Parameter, skalare Nachbarschaft); mit `--tolerance-steps` alle Results je ±N Raster-Schritte je Achse statt einer absoluten Toleranz (beide Flags schließen sich aus). `--summary` verdichtet die Nachbarschaft zum Plateau-Score (Median/Mittel/Streuung, Anteil profitabel, Bester/Schlechtester). |
 | `result-query --run <id> --where "sharpe_ratio>=1.5,total_trades>=100" [--sort <metrik>] [--direction asc\|desc] [--limit <n>]` | Fragt Results mit kombinierten Metrik-Filtern ab (nur `>=`/`<=`, UND-verknüpft, serverseitig). Metriken: total_return_pct, win_rate_pct, sharpe_ratio, profit_factor, max_drawdown_pct, total_trades. |
-| `kreuztest --from-run <A> --to-run <B> [--user] [--tolerance <t>]` | Schlägt die roten Doku-Favoriten (Bestwerte) aus Run A in Run B nach und gibt eine Vergleichstabelle der Metriken aus (`--user` nimmt gelbe Sterne dazu). |
-| `kreuztest --from-testset-run <A> --to-testset-run <B> [--user] [--tolerance <t>]` | Kreuz-Test über ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (BTC-Run zu BTC-Run usw.), je Paar eine Vergleichstabelle; Runs ohne Gegenstück werden ausgewiesen. Deckt die Walk-Forward-Auslesung über eine Fenster-Kette ab. |
+| `kreuztest --from-run <A> --to-run <B> [--user] [--tolerance <t> \| --tolerance-steps <N>]` | Schlägt die roten Doku-Favoriten (Bestwerte) aus Run A in Run B nach und gibt eine Vergleichstabelle der Metriken aus (`--user` nimmt gelbe Sterne dazu). Toleranz-Flags wie bei `result-lookup` (schließen sich aus). |
+| `kreuztest --from-testset-run <A> --to-testset-run <B> [--user] [--tolerance <t> \| --tolerance-steps <N>]` | Kreuz-Test über ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (BTC-Run zu BTC-Run usw.), je Paar eine Vergleichstabelle; Runs ohne Gegenstück werden ausgewiesen. **Achtung:** Bei mehreren Runs mit gleichem Symbol+Timeframe (z.B. eine Fold-Kette über Zeitfenster) trägt die Paarung nicht — je Schlüssel überlebt nur ein Paar, der Rest wird „OHNE PAAR" gemeldet (belegt 14.08.2026; Fold-Ketten-Auslesung kommt mit Roadmap Paket 7). |
 | `combo-trace --params "k=w,…" --testset-run <id> [--tolerance <t>] [--limit <n>]` | Verfolgt eine Parameterkombination über eine Run-Menge (1:N) und listet je Run den Treffer mit Symbol/Timeframe und Kennzahlen; Runs ohne Treffer werden ausgewiesen. Selektoren wie `run-bestwerte` (`--run` \| `--strategy [--version]` \| `--iteration` \| `--testset-run`). |
+| `befund --testset-run <testset_run_id>` | Liefert den jüngsten Befund dieses Testset-Laufs plus Gesamtzahl aller Befunde dieses Laufs (Ticket 77/A) — der direkte Anschluss an `testset-run-start`/`run-wait`, ohne den Umweg über `--iteration` und Ablesen der Befund-Nummer. |
+| `befund --id <befund_id>` | Liefert einen einzelnen Befund per **Befund-ID** (NICHT die Testset-Lauf-Nummer): Kontext + Soll, fünf Ist-Gruppen, Deutung getrennt gekennzeichnet, leere Felder mit Grund (Ticket 56). `--id` und `--testset-run` schließen sich aus. |
+| `befund --iteration <id>` | Befund-Historie einer Iteration, chronologisch (kein Sortieren/Filtern, kein Verdict). |
 
-Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest` und `combo-trace` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen.
+Die Lese-Werkzeuge `result-list`, `symbol-correlation`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest`, `combo-trace`, `iteration-log-list` und `befund` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen. Seit Ticket 77/C kombinierbar mit **`--out [datei]`**/**`--full`** (schließen sich aus, gleiche Semantik wie beim `api`-Verb): `--out` schreibt das vollständige JSON in eine Datei unter `<TEMP>/bt-toolbox-out/` statt auf stdout (Konsole nur Pfad + Zeichenzahl); ohne `--out`/`--full` bleibt die Konsolen-Ausgabe unverändert vollständig (kein 4000-Zeichen-Limit wie bei den GET-Werkzeugen unten — die `--json`-Ausgabe ist als maschinenlesbares, direkt parsebares JSON gedacht).
+
+Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--full`** gegen die 4000-Zeichen-Kappung (gleiche Semantik wie beim `api`-Verb, siehe „Generisch" unten; schließen sich gegenseitig aus):
+
+| Werkzeug | macht |
+|---|---|
 | `run-results <id>` | Rohe Result-Liste eines Runs. |
 | `run-summary <id>` | Zusammenfassung der Analyse eines Runs. |
 | `run-distribution <id>` | Verteilung der Kennzahlen über die Kombinationen eines Runs. |
@@ -229,8 +344,6 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 | `result-positions <id>` | Positionen eines Results. |
 | `result-ohlcv <id>` | OHLCV-Daten eines Results. |
 | `result-chart-data <id>` | Chart-Daten eines Results. |
-| `result-metrics-level <id>` | Metrik-Ebenen eines Results. |
-| `result-full-metrics <id>` | Berechnet und liefert den vollständigen Metrik-Satz eines Results. |
 | `knowledge-run <id>` | Details eines einzelnen Wissens-Indizierungs-Laufs. |
 | `knowledge-stats` | Statistik der Wissens-Datenbank (Anzahl indizierter Dateien usw.). |
 
@@ -249,6 +362,7 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 | `copy iteration:<id>` | Kopiert eine Iteration, das Original bleibt unverändert. |
 | `copy backtest-config:<id>` | Kopiert eine Backtest-Config. |
 | `copy indicator-config:<id>` | Kopiert eine Indicator-Config. |
+| `iteration-log-add --id <iteration_id> --text "..." [--run <run_id>]` | Hängt einen Freitext-Eintrag ans append-only Denkprotokoll einer Iteration (Ticket 67) — warum ein Versuch unternommen wurde, was aus dem Ergebnis geschlossen wird. Kein Update-/Delete-Verb, Einträge sind unveränderlich. `--run` ist eine optionale lose Referenz (kein FK). |
 
 ### Starten — einen Lauf auslösen
 
@@ -260,6 +374,45 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 | `playground-setup-compute` | Berechnet die Indikatoren eines Playground-Setups. |
 | `playground-setup-run-backtest` | Startet einen vollen Backtest aus einem Playground-Setup. |
 | `playground-run-backtest-lite` | Startet einen schnellen Lite-Backtest aus einem Playground-Setup (ohne DB). |
+
+### Prüfen vor dem Start / Warten aufs Ende (Ticket 60)
+
+| Werkzeug | macht |
+|---|---|
+| `preflight --iteration <id> --indicator-config <id> --backtest-config <id>` | Billiger Vorlauf auf EINER Kombination (Startwerte, kein DB-Schreiben): Entry-/Exit-Signalzahl + erster/letzter Signalzeitpunkt, NaN-Anteil je Indikator-Output, tatsächlicher Vorlauf, Kombinationszahl des vollen Rasters, grobe Laufzeit-Hochrechnung. Berichtet nur, startet und verhindert nichts. |
+| `run-wait --run <id> [--timeout <s>]` | Pollt aktiv bis der Run `completed`/`failed` ist (Default-Timeout 1800s), dann Dauer, Result-Zahl, ggf. Fehlermeldung. Timeout meldet sich als Timeout, nicht als Fehlschlag. |
+| `run-wait --testset-run <id> [--timeout <s>]` | Dasselbe für alle Runs eines Testset-Laufs. |
+
+### Signifikanztest je Kandidat (Ticket 79)
+
+Berichtet, filtert nicht: es gibt kein Bestanden-Feld und keine Sortierung nach p-Wert.
+
+| Werkzeug | macht |
+|---|---|
+| `signifikanz-start --result <id> [--method permutation\|bootstrap] [--n <n>] [--seed <n>] [--metrics <a,b>] [--wait [--timeout <s>]]` | Startet einen Signifikanztest. `permutation` (Default, N=300) lässt die Strategie auf N synthetischen Preisreihen laufen und liefert je Metrik einen p-Wert; läuft als Hintergrund-Job und prüft sich vorher selbst (Referenzlauf auf der echten Reihe muss die Result-Kennzahlen reproduzieren, sonst sichtbarer Abbruch). `bootstrap` (Default 2000 Runden) resampelt die gespeicherten Trade-Renditen und liefert Konfidenzbänder — kein Nullmodell, deshalb kein p-Wert; rechnet direkt im Aufruf und bricht ohne Trades mit Hinweis auf den Recompute-Weg ab. `--wait` pollt bis `completed`/`failed` (Exit-Codes wie `run-wait`: 0 fertig, 2 Timeout). |
+| `signifikanz --id <id>` | Ein Test: Methode, N, Seed und je Metrik echter Wert **plus** Null-Verteilungs-Kennwerte **plus** p-Wert nebeneinander — ein p-Wert erscheint nie ohne seine Null-Verteilung. `--json` für die rohen Daten. |
+| `signifikanz-list --result <id>` | Test-Historie eines Results, chronologisch. |
+
+### Walk-Forward-Fold-Kette (Ticket 82)
+
+N-mal „auf einem Zeitfenster optimieren → Sieger einfrieren → auf dem nächsten, ungesehenen
+Zeitfenster testen". Fold-Zahl, Fensterlängen und Auswahlkriterium stehen beim Start fest
+(Vorregistrierung) und werden stur vollzogen; das Ergebnis ist ein nach Abschluss
+unveränderliches Artefakt. Die Kette misst, sie urteilt nicht: kein Verdict, keine
+Güte-Sortierung — und das Aggregat wird nie ohne seine Fold-Tabelle zitiert. Sie ist ein
+**Messwerkzeug, kein Ertragsbringer**.
+
+| Werkzeug | macht |
+|---|---|
+| `walk-forward-chain-start --run <anker-run-id> --folds <n> --oos-monate <m> [--is-monate <k>] --selection-metric <metrik> [--selection-direction max\|min] [--trade-floor <t>] [--metrics kern\|voll\|auto] [--timeout <s>]` | Fährt die komplette Kette im Vordergrund: Kette anlegen (Plan wird vorher gegen die vorhandenen OHLC-Daten geprüft — ein Fenster außerhalb der Abdeckung bricht ab, bevor ein Datensatz oder ein Lauf entsteht) → je Fold IS-Lauf, warten, Sieger nach dem vorregistrierten Kriterium wählen, OOS-Lauf, warten, Kapitalkurve nachrechnen, Fold anhängen → schließen. Fold 1 nutzt den Anker-Lauf selbst als IS-Lauf, wenn sein IS-Fenster exakt das Anker-Fenster ist (also ohne `--is-monate`). Ein Fold ohne Sieger (kein Kandidat über dem Trade-Floor) wird ausgewiesen, die Kette läuft weiter; bricht ein Lauf ab, schließt die Kette als `failed` mit Grund. Es entstehen nur Runs und Results, keine neuen Configs oder Testsets. Exit-Codes wie `run-wait`: 0 fertig, 1 Fehlschlag, 2 Timeout. |
+| `walk-forward-chain --id <id>` | Liest eine Kette: Plan mit Kriterium, Fold-Tabelle mit IS-Wert **neben** OOS-Wert (die Degradation ist die Aussage), Sieger-Kopien, Gesamtblock und Methodenhinweis. Das Aggregat erscheint nie ohne die Fold-Tabelle. `--json` für die rohen Daten. |
+| `walk-forward-chain-list [--iteration <id>]` | Ketten-Historie, chronologisch. Bewusst ohne Kennzahlen — die stehen nur zusammen mit ihrer Fold-Tabelle im Einzel-Read. |
+
+### Analyse-Screenshot (Ticket 100)
+
+| Werkzeug | macht |
+|---|---|
+| `analyse-screenshot --run <id> --x <param> --y <param> [--metric <kennzahl>] [--agg avg\|max] --out <pfad>` | Fotografiert die Analyse-Seite eines Runs serverseitig (Renderer-Container, Playwright) und schreibt das PNG unverändert an `--out` — ein absoluter Pfad wird wörtlich genommen, kein Zwischenschritt über den Temp-Ordner. Ohne `--metric`/`--agg` gelten die Sollwerte (Average, Total Return %). Scheitert die Route (Run ohne Results, ungültiger Achsenname, Renderer-Timeout), bricht das Verb mit dem Server-Fehlertext ab und schreibt keine Datei. Details: [`references/screenshot-standard.md`](../../.claude/skills/ds-strategie-session/references/screenshot-standard.md). |
 
 ### Ändern
 
@@ -299,21 +452,22 @@ Die Lese-Werkzeuge `result-list`, `run-top-results`, `run-best`, `run-favorites-
 |---|---|
 | `<bereich>-delete <id>` | Löscht ein Objekt (concept/iteration zusätzlich mit `--force --delete_vault`). |
 | `<bereich>-bulk-delete --ids 1,2,3` | Löscht mehrere Objekte auf einmal (indicator-config/result/run/playground-setup). |
-| `result-delete-all` | Löscht alle Results außer den geschützten Favoriten. |
-| `run-delete-all` | Löscht alle Runs außer den geschützten Favoriten. |
+| `result-delete-all [--run <id> \| --testset-run <id>]` | Löscht Results außer den geschützten Favoriten. Ohne Flag global (asynchroner Hintergrund-Job). Mit `--run`/`--testset-run` (schließen sich aus, Ticket 77/B) synchron auf die Menge eingegrenzt — Favoriten und fremde Objekte bleiben unberührt; die Antwort benennt `deleted_results`/`deleted_runs`/`deleted_run_ids` (kein globaler Orphan-Sweep, Ticket-75-Scope-Regel). |
+| `run-delete-all` | Löscht alle Runs außer den geschützten Favoriten (ausschließlich global). |
 | `knowledge-reset` | Setzt die Wissens-Datenbank zurück (leert den Index). |
 
 ### Aktionen — Markieren, Vault, Run-Steuerung
 
 | Werkzeug | macht |
 |---|---|
-| `iteration-favorite <id>` | Setzt den persönlichen (gelben) Favoriten-Marker auf eine Iteration. |
-| `iteration-doc-favorite <id>` | Setzt den Doku-Favoriten (roter Stern, geschützt) auf eine Iteration. |
-| `result-favorite <id>` | Setzt den persönlichen (gelben) Favoriten-Marker auf ein Result. |
-| `result-doc-favorite <id>` | Setzt den Doku-Favoriten (roter Stern, geschützt) auf ein Result. |
+| `iteration-favorite <id> [--off]` | Setzt den persönlichen (gelben) Favoriten-Marker auf eine Iteration, idempotent; `--off` entfernt ihn gezielt, ebenso idempotent. |
+| `iteration-doc-favorite <id> [--off]` | Setzt den Doku-Favoriten (roter Stern, geschützt) auf eine Iteration, idempotent; `--off` entfernt ihn gezielt. |
+| `result-favorite <id> [--off]` | Setzt den persönlichen (gelben) Favoriten-Marker auf ein Result, idempotent; `--off` entfernt ihn gezielt. |
+| `result-doc-favorite <id> [--off] [--criteria k1,k2]` | Setzt den Doku-Favoriten (roter Stern, geschützt) auf ein Result, idempotent; `--off` entfernt ihn gezielt (löscht dabei auch die gespeicherten Bestwert-Kriterien). |
 | `concept-vault-create <id>` | Legt die Vault-Doku für ein Konzept an. |
 | `iteration-vault-create <id>` | Legt die Vault-Doku für eine Iteration an. |
-| `run-restart <id>` | Startet einen Run neu. |
+| `run-restart <id>` | Startet einen Run neu: löscht seine Results und rechnet von vorn. |
+| `run-resume <id>` | Setzt einen abgebrochenen Run fort: behält die gespeicherten Chunks und rechnet ab dem ersten fehlenden weiter. |
 | `run-remarks <id> --text "..."` | Schreibt einen Notiz-Text zu einem Run. |
 | `run-analyse-start <id>` | Startet die Analyse eines Runs. |
 | `run-analyse-stop <id>` | Stoppt eine laufende Run-Analyse. |

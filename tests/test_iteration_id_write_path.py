@@ -116,7 +116,6 @@ def test_backtest_result_has_iteration_id_column(db_session, seed_iteration):
         params_hash='abc123',
         # GEÄNDERT: Ticket 15 — _json-Suffix
         actual_params_json={'x': 1},
-        metrics_level='partial',
         is_favorite=0,
         iteration_id=seed_iteration.id,
     )

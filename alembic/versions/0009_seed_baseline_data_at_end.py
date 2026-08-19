@@ -1,56 +1,43 @@
-"""seed grundausstattung am ende der schema-kette
+"""seed grundausstattung am ende der schema-kette (verschoben nach 0021)
 
-Lädt die neutrale Grundausstattung, die jede Neuinstallation von Anfang an
-mitbringen soll: alle ``backtest_configs`` (Symbol-/Zeitraum-/Portfolio-
-Vorlagen) und alle ``testsets`` (Symbol-Körbe inkl. ``leaderboard_enabled``).
-Keine privaten Strategien, Runs oder Leaderboard-Einträge.
+Früher lud diese Migration die Grundausstattung (alle ``backtest_configs`` +
+``testsets``) an der damals aktuellen Kettenspitze. Der Load wurde nach
+``0021_seed_baseline_data_v3`` verschoben und diese Migration ist jetzt eine
+bewusste No-op — exakt derselbe Mechanismus wie schon einmal bei
+``0006_seed_baseline_data`` (siehe dortiger Docstring), nur eine Kettenstufe
+weiter.
 
-Löst die frühere Daten-Migration 0006 ab (jetzt No-op): Der Load muss am
-ECHTEN Ende der Schema-Kette laufen, damit das via ``seed/export_baseline.py``
-regenerierte SQL alle Spalten der Baseline-Tabellen tragen kann - z.B. die in
-0008 ergänzte Spalte ``testsets.leaderboard_enabled``. Läge der Load (wie
-0006) vor 0008, würde er brechen, sobald pg_dump diese Spalte mit ausgibt.
+Grund (Ticket 59): ``0020_bc_portfolio_params`` fügt
+``backtest_configs.slippage/stop_exit_price/stop_order_type`` hinzu - eine
+weitere Schema-Änderung an einer Baseline-Tabelle nach dieser Migration. Der
+Load muss am ECHTEN Ende der Schema-Kette laufen, damit das per pg_dump
+regenerierte SQL alle Spalten der Baseline-Tabellen trägt. Läge der Load (wie
+hier ursprünglich) vor 0020, würde er brechen, sobald pg_dump die drei neuen
+Spalten mit ausgibt.
 
-Idempotenz: Es wird nur in eine leere DB eingefügt. Bestehende DBs (die die
-Daten über das alte 0006 oder anderweitig bereits haben) überspringen den
-Insert sichtbar - so entsteht kein PK-Konflikt.
+Sicher für bestehende DBs: Alembic führt bereits angewandte Revisionen nie
+erneut aus. DBs, die über dieses (damals ladende) 0009 hochgezogen sind,
+behalten ihre Daten; 0021 überspringt sie per Leerheits-Check. Frische
+Installationen laufen hier durch und laden erst in 0021.
 
 Revision ID: 0009_seed_baseline_data_at_end
 Revises: 0008_testset_leaderboard_flag
 Create Date: 2026-06-19
 """
-from pathlib import Path
 from typing import Sequence, Union
-
-import sqlalchemy as sa
-from alembic import op
 
 revision: str = '0009_seed_baseline_data_at_end'
 down_revision: Union[str, Sequence[str], None] = '0008_testset_leaderboard_flag'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-_SQL_DIR = Path(__file__).parent / '_sql'
-
 
 def upgrade() -> None:
-    """Lädt die Grundausstattung - nur in eine leere DB."""
-    conn = op.get_bind()
-    bc_count = conn.execute(sa.text('SELECT count(*) FROM backtest_configs')).scalar() or 0
-    ts_count = conn.execute(sa.text('SELECT count(*) FROM testsets')).scalar() or 0
-    if bc_count or ts_count:
-        # Sichtbar überspringen statt still scheitern (kein PK-Konflikt auf
-        # bestehenden DBs, die die Daten schon haben).
-        print(
-            f'0009_seed_baseline_data_at_end: Grundausstattung übersprungen - Tabellen '
-            f'nicht leer (backtest_configs={bc_count}, testsets={ts_count}).'
-        )
-        return
-    data_sql = (_SQL_DIR / '0009_baseline_data.sql').read_text(encoding='utf-8')
-    op.execute(data_sql)
+    """No-op: Der Grundausstattungs-Load liegt jetzt in 0021 (Kettenende)."""
+    pass
 
 
 def downgrade() -> None:
-    # Bewusst no-op: Aus dem Seed eingefügte Zeilen sind nachträglich nicht von
-    # echten Nutzerdaten unterscheidbar - ein DELETE würde fremde Daten treffen.
+    # Bewusst no-op (war schon immer no-op: Seed-Zeilen sind nachträglich nicht
+    # von echten Nutzerdaten unterscheidbar).
     pass

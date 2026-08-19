@@ -269,9 +269,6 @@
 
       <!-- Tab 2: Stats (Platzhalter vor erstem Run, danach via ResultTabs befüllt) -->
       <div class="tab-pane" id="cp-tab-stats" role="tabpanel">
-        <div id="cp-stats-bar" class="mb-3" style="display:none!important;">
-          <button class="btn btn-primary" data-full-metrics-btn id="cp-btn-full-metrics">Vollanalyse starten</button>
-        </div>
         <div id="cp-tab-stats-content">
           <div class="text-muted py-3">In Kürze.</div>
         </div>
@@ -473,6 +470,7 @@
               <th data-sort-key="ohlc_start">OHLC Start</th><th data-sort-key="start">Start</th><th data-sort-key="end">End</th><th data-sort-key="ohlc_end">OHLC End</th>
               <th class="text-center" data-sort-key="size">Size</th><th data-sort-key="size_type">Size Type</th>
               <th class="text-center" data-sort-key="init_cash">Init Cash</th><th class="text-center" data-sort-key="fees">Fees</th>
+              <th class="text-center" data-sort-key="slippage">Slippage</th>
             </tr>
           </thead>
           <tbody id="cpBtCfgBrowseBody"></tbody>
@@ -797,7 +795,7 @@
 
   // GEÄNDERT: Sortierzustand + Wert-Accessor je Spalte (Qualität aus dem Cache)
   const btCfgSort = { key: 'id', dir: 1 };
-  const BTCFG_NUMERIC_KEYS = new Set(['id', 'quality', 'size', 'init_cash', 'fees']);
+  const BTCFG_NUMERIC_KEYS = new Set(['id', 'quality', 'size', 'init_cash', 'fees', 'slippage']);
   function btCfgSortValue(c, key) {
     if (key === 'quality') return (btCfgQuality || {})[c.id];
     return c[key];
@@ -846,7 +844,7 @@
     });
     body.innerHTML = '';
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3">Keine Backtest-Config gefunden</td></tr>';
+      body.innerHTML = '<tr><td colspan="15" class="text-center text-muted py-3">Keine Backtest-Config gefunden</td></tr>';
       return;
     }
     rows.forEach(c => {
@@ -874,6 +872,7 @@
       tr.appendChild(cell(c.size_type));
       const cashTd = cell(c.init_cash); cashTd.className = 'text-center'; tr.appendChild(cashTd);
       const feesTd = cell(c.fees); feesTd.className = 'text-center'; tr.appendChild(feesTd);
+      const slippageTd = cell(c.slippage); slippageTd.className = 'text-center'; tr.appendChild(slippageTd);
       tr.addEventListener('click', () => {
         const sel = document.getElementById('cpBacktestCfgSelect');
         sel.value = String(c.id);
@@ -2320,7 +2319,7 @@
   function defaultPortfolio() {
     // GEÄNDERT: Schritt 4c — Stops aus Portfolio entfernt; sie leben jetzt in state.stops (indicators._stops)
     return {
-      size: 100, size_type: 'value', init_cash: 100, fees: 0.001,
+      size: 100, size_type: 'value', init_cash: 100, fees: 0.001, slippage: 0.0,
       stop_exit_price: null, stop_order_type: null,
     };
   }
@@ -2329,7 +2328,9 @@
     { key: 'size_type',         label: 'size_type',         type: 'select', options: ['value','percent','percent100','amount','targetpercent'] },
     { key: 'init_cash',         label: 'init_cash',         type: 'number', step: 'any' },
     { key: 'fees',              label: 'fees',              type: 'number', step: '0.0001' },
-    { key: 'stop_exit_price',   label: 'stop_exit_price',   type: 'select', options: ['','Stop','HardStop','Close','CloseOrStop','Price'] },
+    { key: 'slippage',          label: 'slippage',          type: 'number', step: '0.0001' },
+    // GEÄNDERT: Ticket 59 — Phantom-Optionen CloseOrStop/Price entfernt (in der installierten VBT-Version nicht vorhanden)
+    { key: 'stop_exit_price',   label: 'stop_exit_price',   type: 'select', options: ['','Stop','HardStop','Close'] },
     { key: 'stop_order_type',   label: 'stop_order_type',   type: 'select', options: ['','market','limit'] },
   ];
   // ========= Stops =========
@@ -2524,7 +2525,7 @@
     if (!cfg) return;
     // GEÄNDERT: API liefert Portfolio-Felder flach (top-level), nicht als verschachteltes Objekt
     // GEÄNDERT: Schritt 4c — Stop-/Format-Felder raus; BacktestConfig trägt keine Stops mehr
-    const portfolioFields = ['size', 'size_type', 'init_cash', 'fees',
+    const portfolioFields = ['size', 'size_type', 'init_cash', 'fees', 'slippage',
       'stop_exit_price', 'stop_order_type'];
     const source = cfg.portfolio || cfg;
     const overrides = {};
@@ -2946,18 +2947,6 @@
   document.getElementById('cpToggleEquity').addEventListener('change', cpApplyEquityVisibility);
   // Hinweis: Der Entry-Hintergrund-Schalter sitzt jetzt pro Block in der Bedingungsgruppe;
   // sein change-Handler wird in renderRuleGroup (data-entry-bg) verdrahtet.
-
-  // Vollanalyse-Button im Playground-Stats-Tab
-  document.getElementById('cp-btn-full-metrics').setAttribute('data-full-metrics-btn', '1');
-  document.getElementById('cp-btn-full-metrics').addEventListener('click', function() {
-    if (!cpCurrentResultId) return;
-    ResultTabs.startFullMetrics(cpCurrentResultId, {
-      contentEl: document.getElementById('cp-tab-stats-content'),
-      fullMetricsBarEl: document.getElementById('cp-stats-bar'),
-      extendedMetricsEl: document.getElementById('cp-extended-metrics'),
-      extendedMetricsContentEl: document.getElementById('cp-extended-metrics-content'),
-    });
-  });
 
   // Benennt einen Indikator um - propagiert die AEnderung in allen anderen Indikatoren,
   // die ihn über 'indicator:<oldName>:<out>' in inputs referenzieren, sowie in den Rules.

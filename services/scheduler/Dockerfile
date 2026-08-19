@@ -31,5 +31,13 @@ RUN chmod 0644 /etc/cron.d/reindex && \
 # Log-Datei anlegen
 RUN touch /var/log/cron.log
 
+# GEÄNDERT (Ticket 86): Entrypoint schreibt die Container-Umgebung einmal beim Start
+# nach /etc/cron_env.sh, damit die Cron-Jobs sie per "source" bekommen (cron vererbt
+# seine eigene Umgebung sonst nicht an die Job-Prozesse, siehe entrypoint.sh).
+COPY services/scheduler/entrypoint.sh /entrypoint.sh
+RUN chmod 0755 /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+
 # Cron im Vordergrund starten
 CMD ["cron", "-f"]

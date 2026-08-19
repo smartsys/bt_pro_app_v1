@@ -1,0 +1,8 @@
+# Renderer-Dienst (Ticket 100) — bewusst schlank.
+# Das Basis-Image mcr.microsoft.com/playwright/python liefert nur die Browser unter
+# /ms-playwright, NICHT die Python-Bibliothek. Die Version muss deshalb exakt zum
+# Image-Tag passen (v1.55.0-noble), sonst sucht playwright einen anderen Chromium-Build.
+playwright==1.55.0
+# Versionen wie in services/api/requirements.txt gehalten.
+fastapi==0.135.2
+uvicorn==0.42.0

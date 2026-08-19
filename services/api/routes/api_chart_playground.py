@@ -34,6 +34,8 @@ from services.api.redis_conn import (
     BACKTEST_QUEUE_NAME,
     get_redis_connection,
 )
+# GEÄNDERT: Ticket 102 — Genau-eines-Regel für die Raster-Quelle des Preflights
+from services.api.utils.indicator_source import require_exactly_one_indicator_source
 from user_data.strategies.generic.indicator_factory import (
     STOP_PARAM_KEYS,
     count_total_combos,
@@ -48,12 +50,23 @@ from user_data.strategies.generic.tf_resample import (
 )
 from user_data.utils.database.db import get_session
 from user_data.utils.database.models import (
+    BacktestConfig,
     ChartPlaygroundSetup,
+    IndicatorConfig,
     StrategyConcept,
     StrategyIteration,
 )
 from user_data.utils.database.repository import create_backtest_run
+# GEÄNDERT: Ticket 92 — Sondierungs-Zähler am Konzept (atomare Erhöhung)
+from user_data.utils.database.repository_strategies import increment_concept_probe_count
+# GEÄNDERT: Ticket 58 — Kennzahlen des Schnellbacktests laufen über das Handelsfenster.
+from user_data.utils.metrics.trading_window import (
+    count_open_trades,
+    slice_to_trading_window,
+)
 from user_data.utils.ohlc.loader import EXCHANGE_DATA_CLASS
+# GEÄNDERT: Ticket 59 — Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
+from user_data.utils.portfolio_enums import validate_portfolio_enums
 
 
 router = APIRouter(prefix='/api/chart-playground', tags=['chart-playground'])
@@ -814,6 +827,15 @@ def get_result_config(result_id: int) -> dict:
             },
         }
 
+        # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter nur übernehmen, wenn sie im
+        # Snapshot tatsächlich stehen. Ein fehlender Key ist etwas anderes als ein
+        # gesetzter Nullwert: Alt-Results (vor Ticket 59) dürfen im Playground nicht als
+        # "slippage = 0" erscheinen. Das Prefill prüft die Felder per hasOwnProperty und
+        # lässt sie unangetastet, solange sie fehlen.
+        for portfolio_key in ('slippage', 'stop_exit_price', 'stop_order_type'):
+            if portfolio_key in bc:
+                backtest_config_json['portfolio'][portfolio_key] = bc[portfolio_key]
+
         # GEÄNDERT: Rückführung der Dropdown-Auswahl aus dem zugehoerigen BacktestRun.
         # iteration_id liegt direkt am Result (FK), Config-Herkunft am Run (lose Refs).
         run = session.query(BacktestRun).filter(BacktestRun.id == result.run_id).first()
@@ -872,7 +894,7 @@ class RunBacktestIn(BaseModel):
     # Top-Level des Eintrags (kein 'inputs'-Wrapper), siehe buildBacktestPayload().
     indicators: dict      # {name -> {indicator, tf, enabled, <inputs>, <params>}, _stops: {tp_stop, sl_stop, ...}}
     rules: dict           # {entry: {...}, exit: None|{...}}
-    portfolio: dict       # {size, size_type, init_cash, fees, stop_exit_price, stop_order_type}
+    portfolio: dict       # {size, size_type, init_cash, fees, slippage, stop_exit_price, stop_order_type}
     data: dict            # {exchange, symbols, timeframe, start, end, ohlc_start, ohlc_end}
     name: Optional[str] = None           # optional Strategie-Name für DB
     concept_slug: Optional[str] = None  # Strategie-Konzept (nur informativ)
@@ -881,6 +903,27 @@ class RunBacktestIn(BaseModel):
     # GEÄNDERT: Herkunfts-Referenzen der im Playground gewählten Configs (lose, optional)
     backtest_config_id: Optional[int] = None
     indicator_config_id: Optional[int] = None
+    # GEÄNDERT: Ticket 92 — Konzept, dem eine Lite-Sondierung zugerechnet wird.
+    # Nur /run-backtest-lite wertet das Feld aus (Sondierungs-Zähler am Konzept).
+    concept_id: Optional[int] = None
+
+
+# GEÄNDERT: Ticket 59 — Eingabegrenze 2 von 2. Der Playground-Portfolio-Block kommt
+# direkt aus dem Request-Body und passiert keine BacktestConfig; ein Phantom-Wert würde
+# sonst erst tief in VBT als roher KeyError auffallen.
+def _check_portfolio_enums(portfolio: dict) -> None:
+    """Weist ungültige Stop-Enum-Werte im Playground-Request klar ab.
+
+    Args:
+        portfolio: Der Portfolio-Block aus dem Request.
+
+    Raises:
+        HTTPException: 422 mit Nennung der gültigen Werte.
+    """
+    try:
+        validate_portfolio_enums(portfolio)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 def _build_backtest_config(req: RunBacktestIn) -> dict:
@@ -890,6 +933,8 @@ def _build_backtest_config(req: RunBacktestIn) -> dict:
     Stellt sicher, dass Portfolio-Eingabeparameter unverändert durchgereicht werden.
     """
     from user_data.strategies.generic.spec_runner import SPEC_RUNNER_IMPORT_PATH
+
+    _check_portfolio_enums(req.portfolio)
     strategy_name = req.name or f'pg_spec_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
     return {
         **req.data,
@@ -945,16 +990,59 @@ def _reduce_to_start_values(indicators: dict) -> dict:
     return reduced
 
 
+def _count_concept_probe(concept_id: Optional[int]) -> Optional[int]:
+    """Zählt eine Lite-Sondierung am Konzept mit und liefert den neuen Stand.
+
+    GEÄNDERT: Ticket 92 — ohne `concept_id` passiert nichts (None zurück, kein
+    DB-Zugriff); mit `concept_id` wird der Zähler atomar erhöht. Ein unbekanntes
+    Konzept endet als 404, statt still nicht zu zählen.
+
+    Args:
+        concept_id: Konzept aus dem Request oder None.
+
+    Returns:
+        Neuer Zählerstand oder None, wenn kein Konzept angegeben war.
+
+    Raises:
+        HTTPException: 404, wenn das angegebene Konzept nicht existiert.
+    """
+    if concept_id is None:
+        return None
+    session = get_session()
+    try:
+        return increment_concept_probe_count(session, concept_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    finally:
+        session.close()
+
+
 @router.post('/run-backtest-lite')
 def run_backtest_lite(req: RunBacktestIn) -> dict:
-    """Lite-Backtest: nur Total Return + Trade-Anzahl, kein DB-Schreiben.
+    """Lite-Backtest: EINE Kombination (Startwerte), kein DB-Schreiben.
 
+    GEÄNDERT: Ticket 91 — Docstring nachgezogen. Antwort enthält total_return,
+    benchmark_return, profit_factor, max_drawdown, sharpe_ratio,
+    position_coverage_pct, trades, open_trades, duration_ms, equity und
+    trades_data (siehe Rückgabe-Dict unten) — nicht mehr nur Total Return +
+    Trade-Anzahl (seit Ticket 90).
     Kein create_backtest_run, kein save_strategy_results.
     Wird genutzt für den Schnellbacktest-Button im Chart-Playground.
+
+    GEÄNDERT: Ticket 92 — optionales `concept_id`: ist es gesetzt, zählt der
+    Aufruf als Sondierung am Konzept (`strategy_concepts.probe_count`, atomar
+    erhöht) und die Antwort trägt den neuen Stand als `concept_probe_count`.
+    Gezählt wird der Aufruf, nicht sein Ausgang — die Erhöhung passiert vor der
+    Rechnung, damit ein abgebrochener Versuch nicht aus der Statistik fällt (ein
+    Überschätzen des Suchumfangs ist die vorsichtige Seite; unterschätzt werden
+    darf er nicht). Ohne `concept_id` verhält sich die Route unverändert und
+    fasst die Datenbank nicht an. Der Zähler wird ausgewiesen, nicht bewertet.
     """
     import time
     from user_data.strategies.generic.spec_runner import run_spec_strategy
     from user_data.utils.ohlc.loader import load_ohlc_data
+
+    concept_probe_count = _count_concept_probe(req.concept_id)
 
     # GEÄNDERT: Ticket 23 — gemeinsame Helper-Funktion nutzen (DRY)
     backtest_config = _build_backtest_config(req)
@@ -1094,27 +1182,54 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
     # GEÄNDERT: Zusätzliche Kennzahlen für den Schnellbacktest-Badge — billige
     # Portfolio-Properties (kein teures pf.stats(), passt zum Lite-Charakter).
     # total_market_return = Benchmark-Buy-and-Hold-Rendite als Fraction (z.B. 0.25 = 25 %).
+    # GEÄNDERT: Ticket 58 — die Kennzahlen rechnen auf dem Handelsfenster start..end,
+    # nicht auf dem geladenen Datenfenster inkl. Vorlauf. Equity-Kurve und Trade-Marker
+    # oben bleiben bewusst am vollen pf: der Chart soll den Vorlauf weiter zeigen.
+    # Profitfaktor über geschlossene Trades — dieselbe Konvention wie im gespeicherten
+    # Result (_extract_metrics).
+    pf_window = slice_to_trading_window(pf, backtest_config)
     try:
-        profit_factor = _pf_scalar(pf.trades.profit_factor)
+        profit_factor = _pf_scalar(pf_window.trades.status_closed.profit_factor)
     except Exception:
         profit_factor = None
     try:
-        benchmark_return = _pf_scalar(pf.total_market_return)
+        benchmark_return = _pf_scalar(pf_window.total_market_return)
     except Exception:
         benchmark_return = None
     try:
-        max_drawdown = _pf_scalar(pf.max_drawdown)
+        max_drawdown = _pf_scalar(pf_window.max_drawdown)
     except Exception:
         max_drawdown = None
+    try:
+        open_trades = int(count_open_trades(pf_window))
+    except (TypeError, ValueError):
+        open_trades = None
+    # GEÄNDERT: Ticket 90 — risikoadjustierte Kennzahl + Marktpräsenz aus dem bereits
+    # gerechneten Portfolio (Attribute wie in repository.py._extract_metrics: sharpe_ratio,
+    # position_coverage), keine Ersatzrechnung aus der Kapitalkurve. Naming an
+    # 'position_coverage_pct' aus dem Result-Modell angelehnt.
+    try:
+        sharpe_ratio = _pf_scalar(pf_window.sharpe_ratio)
+    except Exception:
+        sharpe_ratio = None
+    try:
+        position_coverage_pct = _pf_scalar(pf_window.position_coverage * 100)
+    except Exception:
+        position_coverage_pct = None
 
     return {
         'data': {
-            'total_return': _pf_scalar(pf.total_return),
+            'total_return': _pf_scalar(pf_window.total_return),
             'benchmark_return': benchmark_return,
             'profit_factor': profit_factor,
             'max_drawdown': max_drawdown,
-            'trades': len(pf.trades.records_readable),
+            'sharpe_ratio': sharpe_ratio,
+            'position_coverage_pct': position_coverage_pct,
+            'trades': int(pf_window.trades.count()),
+            'open_trades': open_trades,
             'duration_ms': duration_ms,
+            # GEÄNDERT: Ticket 92 — neuer Zählerstand des Konzepts (None ohne concept_id)
+            'concept_probe_count': concept_probe_count,
             'equity': equity,
             'trades_data': trades_data,
         },
@@ -1231,6 +1346,10 @@ def run_backtest(req: RunBacktestIn) -> dict:
         import_path = iteration.import_path if iteration.type == 'hardcoded' else SPEC_RUNNER_IMPORT_PATH
     finally:
         session.close()
+
+    # GEÄNDERT: Ticket 59 — auch der volle Playground-Run prüft die Enum-Werte, bevor
+    # der Job in die Queue geht (sonst scheitert er erst im Worker).
+    _check_portfolio_enums(req.portfolio)
 
     backtest_config = {
         **req.data,
@@ -1374,3 +1493,261 @@ def entry_signals(req: RunBacktestIn) -> dict:
         if bool(val)
     ]
     return {'data': {'signals': signals}, 'error': None}
+
+
+# ---------------------------------------------------------------------------
+# Preflight (Ticket 60, Anforderung 5) — billiger Vorlauf auf EINER Kombination,
+# adressiert über gespeicherte Objekte (Iteration + IndicatorConfig + BacktestConfig)
+# statt über einen Playground-Request. Rechnet auf `_reduce_to_start_values` und
+# denselben Bausteinen wie /run-backtest-lite und /entry-signals — kein zweiter
+# Rechenweg. Berichtet, blockiert nicht (Out of Scope: automatisches Verhindern).
+# ---------------------------------------------------------------------------
+class PreflightIn(BaseModel):
+    iteration_id: int
+    # GEÄNDERT: Ticket 102 — dieselbe Alternative wie beim Testset-Lauf: Raster
+    # entweder als gespeicherte IndicatorConfig oder inline (Inhalt von config_json
+    # inklusive '_stops'). Genau eines von beiden ist Pflicht.
+    indicator_config_id: Optional[int] = None
+    indicators: Optional[dict] = None
+    backtest_config_id: int
+
+
+def _preflight_backtest_config(bt: BacktestConfig, import_path: str) -> dict:
+    """Baut backtest_config_json aus einer gespeicherten BacktestConfig-Zeile.
+
+    Dieselbe Form wie beim echten Run-Start (api_backtest.start_backtest) — hier
+    noch einmal zusammengesetzt, weil beim Preflight eine DB-Zeile statt eines
+    Playground-Request-Bodys die Quelle ist.
+    """
+    return {
+        'symbols': [bt.symbol],
+        'start': bt.start,
+        'end': bt.end,
+        'ohlc_start': bt.ohlc_start,
+        'ohlc_end': bt.ohlc_end,
+        'exchange': bt.exchange,
+        'timeframe': bt.timeframe,
+        'import_path': import_path,
+        'portfolio': {
+            'size': bt.size,
+            'size_type': bt.size_type,
+            'init_cash': bt.init_cash,
+            'fees': bt.fees,
+            'slippage': bt.slippage,
+            'stop_exit_price': bt.stop_exit_price,
+            'stop_order_type': bt.stop_order_type,
+        },
+    }
+
+
+def _preflight_mask_summary(long_mask: Any, short_mask: Any, backtest_config: dict) -> dict:
+    """Fasst eine Long/Short-Maskenpaar zu Zahl + erstem/letztem Zeitpunkt zusammen.
+
+    Wie /entry-signals: Long- und Short-Maske werden ODER-verknüpft und auf das
+    Handelsfenster start..end zugeschnitten (_apply_entry_date_window), bevor
+    gezählt wird — sonst zählte der Vorlauf-Bereich mit.
+    """
+    mask = _entry_mask_to_series(long_mask) | _entry_mask_to_series(short_mask)
+    mask = _apply_entry_date_window(mask, backtest_config.get('start'), backtest_config.get('end'))
+    hit_times = mask.index[mask]
+    return {
+        'count': int(mask.sum()),
+        'first_time': str(hit_times[0]) if len(hit_times) else None,
+        'last_time': str(hit_times[-1]) if len(hit_times) else None,
+        'note': None,
+    }
+
+
+def _preflight_signal_counts(rules_json: dict, ohlc_data: Any, indicators: dict, backtest_config: dict) -> tuple:
+    """Zählt Entry- und Exit-Signale über `evaluate_rules` (reiner Masken-Pfad).
+
+    Der native Motor (evaluate_rules_native) liefert keine Roh-Signalmasken zurück
+    ("Roh-Signale nicht verfügbar", spec_runner.py) — für die Preflight-Auskunft
+    wird deshalb derselbe Masken-Pfad genutzt wie in /entry-signals. Er kennt keine
+    State-Primitiven (`since_entry` & Co.) in Exit-Bedingungen; trifft das zu, bleibt
+    die betroffene Seite mit einer erklärenden Notiz leer statt den ganzen Preflight
+    scheitern zu lassen (Report statt Gate).
+
+    Returns:
+        (entry_signals, exit_signals) — je ein Dict mit 'count', 'first_time',
+        'last_time', 'note'.
+    """
+    from user_data.strategies.generic.rules_engine import evaluate_rules
+
+    entry_spec = rules_json.get('entry') or {}
+    exit_spec = rules_json.get('exit')
+
+    try:
+        entry_masks = evaluate_rules({'entry': entry_spec, 'exit': None}, ohlc_data, indicators)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f'Entry-Regeln nicht auswertbar: {e}')
+    entry_signals = _preflight_mask_summary(entry_masks.long_entries, entry_masks.short_entries, backtest_config)
+
+    if not exit_spec or not (exit_spec.get('blocks') or []):
+        exit_signals = {
+            'count': 0, 'first_time': None, 'last_time': None,
+            'note': 'keine Exit-Regeln konfiguriert (spec_json.rules.exit ist leer)',
+        }
+    else:
+        try:
+            full_masks = evaluate_rules({'entry': entry_spec, 'exit': exit_spec}, ohlc_data, indicators)
+        except ValueError as e:
+            exit_signals = {
+                'count': None, 'first_time': None, 'last_time': None,
+                'note': f'nicht auswertbar im Masken-Pfad (vermutlich State-Primitiv wie since_entry): {e}',
+            }
+        else:
+            exit_signals = _preflight_mask_summary(full_masks.long_exits, full_masks.short_exits, backtest_config)
+
+    return entry_signals, exit_signals
+
+
+def _preflight_nan_ratios(indicators: dict) -> dict:
+    """NaN-Anteil je Indikator-Output (0..1), Key `<indikator>.<output>`.
+
+    Reduzierte Startwert-Kombi vorausgesetzt (eine Spalte je Output) — bei einer
+    verbliebenen Param-Achse wird defensiv die erste Spalte genommen.
+    """
+    ratios: dict = {}
+    for ind_id, inst in indicators.items():
+        for oname in (getattr(inst, 'output_names', ()) or ()):
+            series = getattr(inst, oname, None)
+            if series is None:
+                continue
+            if isinstance(series, pd.DataFrame):
+                series = series.iloc[:, 0] if series.shape[1] > 0 else pd.Series(dtype=float)
+            try:
+                ratios[f'{ind_id}.{oname}'] = float(pd.isna(series).mean())
+            except Exception:
+                continue
+    return ratios
+
+
+@router.post('/preflight')
+def preflight(req: PreflightIn) -> dict:
+    """Billiger Vorlauf auf einer Kombination — gespeicherte Iteration + BacktestConfig
+    statt Playground-Request; das Raster kommt aus einer gespeicherten IndicatorConfig
+    oder inline (Ticket 102, genau eines von beiden).
+
+    Rechnet exakt EINE Kombination (Startwerte aller Sweep-Achsen, über
+    `_reduce_to_start_values` — derselbe Baustein wie /run-backtest-lite) und meldet:
+    Entry-/Exit-Signalzahl, NaN-Anteil je Indikator-Output, erster/letzter
+    Signalzeitpunkt, tatsächlicher Vorlauf (`check_warmup` — Anforderung 4, nicht neu
+    gerechnet), Kombinationszahl des vollen Rasters (`count_total_combos` — die
+    einzige Zähl-Wahrheit) und eine grobe Laufzeit-Hochrechnung.
+
+    Berichtet, blockiert nicht: auch ein Null-Signal-Fall liefert 200 mit den
+    Zahlen, die das belegen — kein automatisches Verhindern des vollen Laufs.
+    """
+    from user_data.strategies.generic.indicator_factory import build_indicators
+    from user_data.strategies.generic.spec_runner import SPEC_RUNNER_IMPORT_PATH, run_spec_strategy
+    from user_data.strategies.generic.warmup import check_warmup
+    from user_data.utils.ohlc.loader import load_ohlc_data
+    import time as _time
+
+    # GEÄNDERT: Ticket 102 — Raster-Quelle prüfen, bevor irgendetwas geladen wird.
+    try:
+        require_exactly_one_indicator_source(req.indicator_config_id, req.indicators)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    session = get_session()
+    try:
+        iteration = session.query(StrategyIteration).filter(
+            StrategyIteration.id == req.iteration_id
+        ).first()
+        if not iteration:
+            raise HTTPException(status_code=404, detail=f'Iteration #{req.iteration_id} nicht gefunden')
+        if iteration.type == 'hardcoded':
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f'Iteration #{req.iteration_id} ist hartcodiert — Preflight rechnet nur über '
+                    'den Spec-Runner (indicators_json/rules_json).'
+                ),
+            )
+        rules_json = (iteration.spec_json or {}).get('rules')
+        if not rules_json or not (rules_json.get('entry') or {}).get('blocks'):
+            raise HTTPException(
+                status_code=400,
+                detail=f'Iteration #{req.iteration_id} hat keine Entry-Regeln in spec_json.rules.',
+            )
+
+        # GEÄNDERT: Ticket 102 — bei inline übergebenem Raster entfällt der Lookup.
+        if req.indicator_config_id is not None:
+            ind_cfg = session.query(IndicatorConfig).filter(
+                IndicatorConfig.id == req.indicator_config_id
+            ).first()
+            if not ind_cfg:
+                raise HTTPException(status_code=404, detail=f'Indicator-Config #{req.indicator_config_id} nicht gefunden')
+            indicators_full = dict(ind_cfg.config_json or {})
+        else:
+            indicators_full = dict(req.indicators or {})
+
+        bt = session.query(BacktestConfig).filter(BacktestConfig.id == req.backtest_config_id).first()
+        if not bt:
+            raise HTTPException(status_code=404, detail=f'Backtest-Config #{req.backtest_config_id} nicht gefunden')
+        backtest_config = _preflight_backtest_config(bt, SPEC_RUNNER_IMPORT_PATH)
+    finally:
+        session.close()
+
+    # Vorlauf-Prüfung — dieselbe Funktion wie beim Run-Start (Anforderung 4), hier
+    # nicht neu gerechnet, sondern derselbe Aufruf.
+    warmup = check_warmup(backtest_config, indicators_full)
+
+    # Kombinationszahl des vollen Rasters — die einzige Zähl-Wahrheit.
+    try:
+        n_combinations = count_total_combos(indicators_full)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f'{e}')
+
+    # Auf den Startwert reduzieren — exakt derselbe Baustein wie /run-backtest-lite.
+    indicators_reduced = _reduce_to_start_values(indicators_full)
+
+    try:
+        ohlc_data = load_ohlc_data(backtest_config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'OHLC-Daten laden fehlgeschlagen: {e}')
+
+    try:
+        indicators = build_indicators(
+            indicators_reduced, ohlc_data, base_tf=backtest_config.get('timeframe')
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'{e}')
+
+    nan_ratios = _preflight_nan_ratios(indicators)
+    entry_signals, exit_signals = _preflight_signal_counts(
+        rules_json, ohlc_data, indicators, backtest_config
+    )
+
+    # Laufzeit-Schätzung: EINE echte Kombination timen — derselbe Aufruf wie
+    # /run-backtest-lite — und linear auf die volle Rastergröße hochrechnen. Grob,
+    # weil ein echter Multi-Kombi-Lauf vektorisiert rechnet und typischerweise
+    # günstiger als linear ist; als Schätzung für "lohnt sich das?" reicht das.
+    t_start = _time.monotonic()
+    try:
+        run_spec_strategy(ohlc_data, indicators_reduced, backtest_config, rules_json)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'{e}')
+    single_combo_ms = int((_time.monotonic() - t_start) * 1000)
+
+    return {
+        'data': {
+            'iteration_id': req.iteration_id,
+            'indicator_config_id': req.indicator_config_id,
+            'backtest_config_id': req.backtest_config_id,
+            'n_combinations': n_combinations,
+            'warmup': warmup,
+            'entry_signals': entry_signals,
+            'exit_signals': exit_signals,
+            'indicator_nan_ratio': nan_ratios,
+            'single_combo_duration_ms': single_combo_ms,
+            'estimated_full_runtime_ms': single_combo_ms * n_combinations,
+            'estimated_full_runtime_note': (
+                'Grobe lineare Hochrechnung (Einzelkombi-Dauer x Rastergröße) — der echte '
+                'Multi-Kombi-Lauf rechnet vektorisiert und ist typischerweise günstiger.'
+            ),
+        },
+        'error': None,
+    }

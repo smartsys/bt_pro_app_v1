@@ -11,6 +11,7 @@ umgeleitet, damit kein echter Repo-Ordner beschrieben wird.
 
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -19,10 +20,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from services.api.utils import strategy_io
-from user_data.utils.database.models import IndicatorConfig
+from user_data.utils.database.models import IndicatorConfig, IterationLog
 from user_data.utils.database.repository_strategies import (
     create_concept,
     create_iteration,
+    delete_concept,
+    list_iteration_logs,
     next_iteration_version,
 )
 
@@ -48,6 +51,15 @@ def _make_iteration(session, concept_id, version_name='v1'):
         version_name=version_name, spec_json=spec, spec_hash='abc123',
         type='generic', status='active', description='erste Iteration',
     )
+
+
+def _make_log(session, iteration_id, text, run_id=None, created_at=None):
+    log = IterationLog(iteration_id=iteration_id, run_id=run_id, text=text,
+                       created_at=created_at or datetime.now())
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    return log
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +100,35 @@ def test_import_concept_rejects_invalid(session):
         strategy_io.import_concept(session, {'concept': {'name': 'ohne slug'}})
 
 
+def test_concept_roundtrip_keeps_goal_fields_verbatim(session):
+    goal_json = {'target_metric': 'sharpe', 'target_value': 1.5, 'notes': ['a', 'b']}
+    concept = create_concept(
+        session, slug='goal-roundtrip', name='Goal RT', category='unit',
+        description='Beschreibung', status='active',
+        goal_json=goal_json, goal_prompt='Originaltext des Auftrags',
+    )
+    path = strategy_io.export_concept(session, concept.id)
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    assert payload['concept']['goal_json'] == goal_json
+    assert payload['concept']['goal_prompt'] == 'Originaltext des Auftrags'
+
+    delete_concept(session, concept.id)  # DB für diesen Slug wieder leer
+
+    imported, action = strategy_io.import_concept(session, payload)
+    assert action == 'created'
+    assert imported.goal_json == goal_json
+    assert imported.goal_prompt == 'Originaltext des Auftrags'
+
+
+def test_import_concept_without_goal_fields_succeeds(session):
+    """Alt-Export ohne goal_json/goal_prompt: fehlende Felder werden NULL, kein Fehler."""
+    payload = {'concept': {'slug': 'legacy-concept', 'name': 'Legacy', 'status': 'active'}}
+    concept, action = strategy_io.import_concept(session, payload)
+    assert action == 'created'
+    assert concept.goal_json is None
+    assert concept.goal_prompt is None
+
+
 # ---------------------------------------------------------------------------
 # Iteration
 # ---------------------------------------------------------------------------
@@ -111,6 +152,39 @@ def test_iteration_roundtrip(session):
 def test_import_iteration_rejects_unknown_concept(session):
     with pytest.raises(ValueError):
         strategy_io.import_iteration(session, 999999, {'iteration': {}})
+
+
+def test_iteration_roundtrip_preserves_log_entries(session):
+    concept = _make_concept(session)
+    original = _make_iteration(session, concept.id)
+    ts1 = datetime(2026, 1, 5, 9, 30, 0)
+    ts2 = datetime(2026, 1, 6, 14, 15, 30, 500000)
+    _make_log(session, original.id, 'erster Log-Eintrag', run_id=101, created_at=ts1)
+    _make_log(session, original.id, 'zweiter Log-Eintrag', run_id=None, created_at=ts2)
+
+    path = strategy_io.export_iteration(session, original.id)
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    assert len(payload['iteration_logs']) == 2
+
+    imported = strategy_io.import_iteration(session, concept.id, payload)
+    imported_logs = list_iteration_logs(session, imported.id)
+    assert len(imported_logs) == 2
+    assert imported_logs[0].text == 'erster Log-Eintrag'
+    assert imported_logs[0].created_at == ts1
+    assert imported_logs[0].run_id == 101
+    assert imported_logs[1].text == 'zweiter Log-Eintrag'
+    assert imported_logs[1].created_at == ts2
+    assert imported_logs[1].run_id is None
+
+
+def test_import_iteration_without_logs_key_succeeds(session):
+    """Alt-Export ohne iteration_logs: kein Fehler, keine Log-Einträge entstehen."""
+    concept = _make_concept(session)
+    payload = {'iteration': {'version_name': 'legacy', 'spec_json': {'a': 1},
+                             'type': 'generic', 'status': 'active'}}
+    imported = strategy_io.import_iteration(session, concept.id, payload)
+    assert imported.id is not None
+    assert list_iteration_logs(session, imported.id) == []
 
 
 # ---------------------------------------------------------------------------

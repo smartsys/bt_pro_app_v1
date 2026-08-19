@@ -8,8 +8,9 @@ volle Kopie an — die Einzel-Detailzeilen vervielfachen sich, während das
 Aggregat (z.B. total_trades) korrekt bleibt.
 
 Getestet wird der extrahierte Helper `_clear_result_details`, der den
-Lösch-Vertrag kapselt. Lauf nur mit dem Projekt-venv (hat PostgreSQL-Test-DB):
-    ./.venv/Scripts/python.exe -m pytest tests/test_recompute_idempotent_details.py
+Lösch-Vertrag kapselt. Lauf im Test-Container (hat PostgreSQL-Test-DB):
+    docker compose -f docker-compose-local.yml run --rm test \
+        python -m pytest tests/test_recompute_idempotent_details.py
 """
 
 import datetime

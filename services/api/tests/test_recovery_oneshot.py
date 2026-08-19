@@ -22,13 +22,19 @@ sys.path.insert(0, str(_ROOT))
 
 # rq via sys.modules mocken bevor recovery_oneshot importiert wird
 # (rq ist nur im Docker/WSL-venv verfügbar, nicht im Windows-venv)
+# GEÄNDERT: Ticket 70/E — bewusst überschreiben statt setdefault. Andere Testdateien
+# legen beim Import einen minimalen rq-Stub in sys.modules ab (z.B.
+# tests/test_doc_favorite_criteria.py setzt StartedJobRegistry = object). Wurde der
+# zuerst gesetzt, übernahm setdefault ihn, und recover_stale_runs() scheiterte an
+# StartedJobRegistry(queue=…) mit "object() takes no arguments" — je nach
+# Collect-Reihenfolge grün oder rot.
 _mock_rq = MagicMock()
 _mock_queue_cls = MagicMock()
 _mock_rq.Queue = _mock_queue_cls
-sys.modules.setdefault('rq', _mock_rq)
+sys.modules['rq'] = _mock_rq
 # Submodule separat mocken — 'from rq.job import Job' sucht sys.modules['rq.job']
-sys.modules.setdefault('rq.job', MagicMock())
-sys.modules.setdefault('rq.registry', MagicMock())
+sys.modules['rq.job'] = MagicMock()
+sys.modules['rq.registry'] = MagicMock()
 
 import services.api.recovery_oneshot  # noqa: E402, F401
 import user_data.utils.database.db as _db_module  # noqa: E402

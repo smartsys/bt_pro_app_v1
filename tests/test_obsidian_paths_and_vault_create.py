@@ -105,14 +105,14 @@ class TestPathFunctions:
     def test_iteration_dir(self, tmp_path):
         with patch.dict(os.environ, {'OBSIDIAN_VAULT_PATH': str(tmp_path)}):
             result = iteration_dir('teststrategie-dws', 'v2.0')
-            assert result == tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'iterations' / 'v2.0'
+            assert result == tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'vbt' / 'iterations' / 'v2.0'
 
     def test_iteration_md_path(self, tmp_path):
         with patch.dict(os.environ, {'OBSIDIAN_VAULT_PATH': str(tmp_path)}):
             result = iteration_md_path('teststrategie-dws', 'v2.0')
             # Dateiname-Konvention: {slug}-{version}.md (sprechender Name mit Slug-Präfix)
             assert result == (
-                tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'iterations' / 'v2.0' / 'teststrategie-dws-v2.0.md'
+                tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'vbt' / 'iterations' / 'v2.0' / 'teststrategie-dws-v2.0.md'
             )
 
     def test_iteration_md_path_complex_version(self, tmp_path):
@@ -121,7 +121,7 @@ class TestPathFunctions:
             version = 'dyn-v0.31o_robustness-bestvariante'
             result = iteration_md_path('teststrategie-dws', version)
             assert result == (
-                tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'iterations' / version / f'teststrategie-dws-{version}.md'
+                tmp_path / '30_Trading' / 'strategies' / 'teststrategie-dws' / 'vbt' / 'iterations' / version / f'teststrategie-dws-{version}.md'
             )
 
     def test_vault_root_default(self):
@@ -232,9 +232,11 @@ class TestConceptVaultCreate:
         # Frontmatter korrekt
         content = md_path.read_text(encoding='utf-8')
         assert 'type: strategy-concept' in content
-        assert f'concept_id: {sample_concept["id"]}' in content
         assert 'slug: test-slug-16' in content
-        assert 'name: Test Strategie 16' in content
+        # GEÄNDERT: Ticket 57 — concept_id ist im neuen Frontmatter-Schema (seit Vault-Pfad-Migration,
+        # siehe build_concept_note in services/api/utils/obsidian_notes.py) bewusst nicht mehr enthalten;
+        # der Name steht nur noch als Überschrift im Body, nicht mehr als Frontmatter-Feld.
+        assert '# Test Strategie 16' in content
 
     def test_idempotent_second_call(self, strategy_client, tmp_path, sample_concept):
         """Zweiter Aufruf gibt created: false, exists: true zurück ohne Datei zu überschreiben."""
@@ -278,7 +280,7 @@ class TestIterationVaultCreate:
         version = sample_iteration['version']
         it_path = (
             tmp_path / '30_Trading' / 'strategies' / 'test-slug-16'
-            / 'iterations' / str(version) / f'test-slug-16-{version}.md'
+            / 'vbt' / 'iterations' / str(version) / f'test-slug-16-{version}.md'
         )
         assert it_path.exists()
 
@@ -293,7 +295,7 @@ class TestIterationVaultCreate:
         # result.md NICHT vorhanden
         result_path = (
             tmp_path / '30_Trading' / 'strategies' / 'test-slug-16'
-            / 'iterations' / str(version) / 'result.md'
+            / 'vbt' / 'iterations' / str(version) / 'result.md'
         )
         assert not result_path.exists()
 

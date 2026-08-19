@@ -89,6 +89,9 @@
             <th>Size Type</th>
             <th class="text-center">Init Cash</th>
             <th class="text-center">Fees</th>
+            <th class="text-center">Slippage</th>
+            <th>Stop Exit</th>
+            <th>Stop Order</th>
             <th style="min-width:120px"></th>
           </tr>
         </thead>
@@ -357,6 +360,11 @@ document.addEventListener("DOMContentLoaded", function() {
       { data: "size_type" },
       { data: "init_cash", className: "text-center" },
       { data: "fees", className: "text-center" },
+      // GEÄNDERT: Ticket 59 — Slippage/Stop-Felder analog Fees. NULL bei den Stop-Feldern
+      // bedeutet „VBT-Default" und wird ausdrücklich als Strich dargestellt, nicht als leer/0.
+      { data: "slippage", className: "text-center" },
+      { data: "stop_exit_price", render: function(d) { return d ? d : '<span class="text-muted">–</span>'; } },
+      { data: "stop_order_type", render: function(d) { return d ? d : '<span class="text-muted">–</span>'; } },
       {
         data: "id",
         orderable: false,

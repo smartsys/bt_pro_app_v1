@@ -1,10 +1,14 @@
-"""Doku-Favorit + gewonnene Bestwert-Kriterien (roter Stern, ToDo 10).
+"""Doku-Favorit + gewonnene Bestwert-Kriterien (roter Stern, ToDo 10 + Ticket 89).
 
 Verifiziert services/api/routes/api_backtest.py:
 - mark_doc_favorite_criteria: setzt roten Stern + best_criteria_json (idempotent), überschreibt
   Keys auch bei bereits gesetztem Stern, dedupliziert
+- mark_doc_favorite_criteria (Ticket 89): 'criteria' ist echt optional — fehlt der
+  Schlüssel im Body, bleiben vorhandene Kriterien unangetastet; 'changed' zeigt die
+  tatsächliche Zustandsänderung
 - unbekannter Key -> 400, unbekanntes Result -> 404
 - toggle_doc_favorite: beim Ausschalten werden die Kriterien mit-geleert (Kopplung)
+- unmark_doc_favorite (Ticket 89): gezieltes, idempotentes Entfernen inkl. Kriterien
 """
 
 import json
@@ -120,3 +124,77 @@ def test_toggle_off_leert_kriterien(test_engine, monkeypatch):
     assert saved.is_doc_favorite == 0
     assert saved.best_criteria_json is None
     s.close()
+
+
+# ---------------------------------------------------------------------------
+# Ticket 89 — setzend statt umschaltend: criteria echt optional, changed-Flag,
+# gezieltes idempotentes Entfernen über unmark_doc_favorite.
+# ---------------------------------------------------------------------------
+
+def test_mark_ohne_criteria_laesst_bestehende_kriterien_unveraendert(test_engine, monkeypatch):
+    """mark ohne 'criteria' im Body setzt nur den Stern, best_criteria_json bleibt stehen."""
+    Session = sessionmaker(bind=test_engine)
+    s = Session()
+    rid = _make_result(s, doc_fav=1, criteria=['max_return'])
+    s.close()
+    monkeypatch.setattr(api_backtest_module, 'get_session', lambda: Session())
+
+    resp = api_backtest_module.mark_doc_favorite_criteria(rid, {})
+    body = _decode(resp)
+    assert body['is_doc_favorite'] is True
+    assert body['best_criteria'] == ['max_return']
+
+    s = Session()
+    saved = s.get(BacktestResult, rid)
+    assert saved.is_doc_favorite == 1
+    assert saved.best_criteria_json == ['max_return']
+    s.close()
+
+
+def test_mark_changed_flag_nur_beim_ersten_setzen(test_engine, monkeypatch):
+    """changed=True beim ersten mark (Stern war aus), changed=False beim zweiten (bereits gesetzt)."""
+    Session = sessionmaker(bind=test_engine)
+    s = Session()
+    rid = _make_result(s)
+    s.close()
+    monkeypatch.setattr(api_backtest_module, 'get_session', lambda: Session())
+
+    first = _decode(api_backtest_module.mark_doc_favorite_criteria(rid, {}))
+    assert first['changed'] is True
+
+    second = _decode(api_backtest_module.mark_doc_favorite_criteria(rid, {}))
+    assert second['changed'] is False
+
+
+def test_unmark_entfernt_stern_und_kriterien_idempotent(test_engine, monkeypatch):
+    """unmark_doc_favorite entfernt Stern + Kriterien; zweiter Aufruf bleibt aus, changed=False."""
+    Session = sessionmaker(bind=test_engine)
+    s = Session()
+    rid = _make_result(s, doc_fav=1, criteria=['max_return', 'sharpe_band'])
+    s.close()
+    monkeypatch.setattr(api_backtest_module, 'get_session', lambda: Session())
+
+    first = _decode(api_backtest_module.unmark_doc_favorite(rid))
+    assert first['is_doc_favorite'] is False
+    assert first['changed'] is True
+
+    s = Session()
+    saved = s.get(BacktestResult, rid)
+    assert saved.is_doc_favorite == 0
+    assert saved.best_criteria_json is None
+    s.close()
+
+    second = _decode(api_backtest_module.unmark_doc_favorite(rid))
+    assert second['is_doc_favorite'] is False
+    assert second['changed'] is False
+
+
+def test_unmark_unbekanntes_result_404(test_engine, monkeypatch):
+    """unmark auf nicht existierendes Result liefert 404."""
+    import pytest
+    from fastapi import HTTPException
+    Session = sessionmaker(bind=test_engine)
+    monkeypatch.setattr(api_backtest_module, 'get_session', lambda: Session())
+    with pytest.raises(HTTPException) as exc:
+        api_backtest_module.unmark_doc_favorite(999999)
+    assert exc.value.status_code == 404

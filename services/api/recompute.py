@@ -4,7 +4,9 @@ Recompute — Einzelnen Backtest nachberechnen
 Wird aufgerufen wenn ein Chart für ein Result aus einem Multi-Kombination-Run
 geöffnet wird und keine Equity-Daten vorhanden sind.
 Führt die Strategie mit den exakten Parametern nochmal aus und speichert
-alle Detail-Daten (Equity, Trades, Orders, Positions, Indikatoren, volle Metriken).
+alle Detail-Daten (Equity, Trades, Orders, Positions, Indikatoren). Die
+Kennzahlen entstehen dabei über dieselbe Funktion wie im Lauf
+(`_extract_metrics` mit N=1, Ticket 64) — dieses Modul rechnet keine eigenen.
 """
 
 import os
@@ -19,7 +21,7 @@ from user_data.utils.database.models import (
 # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
 from user_data.utils.database.repository import (
-    _extract_chart_metrics, _extract_full_metrics, _safe_float, _safe_datetime, _safe_int,
+    _extract_metrics, _safe_float, _safe_datetime, _safe_int,
     _build_resolved_config,
 )
 from sqlalchemy import text
@@ -43,9 +45,9 @@ def _clear_result_details(conn, result_id: int) -> None:
     """Löscht alle Detail-Zeilen eines Results vor dem Neu-Einfügen (Idempotenz).
 
     Ohne dieses DELETE hängt jeder erneute Recompute (mehrere Trigger-Pfade:
-    chart-data, trades/orders/positions, full-metrics, Worker-Job) eine weitere
-    volle Kopie an — die Einzel-Detailzeilen vervielfachen sich (Faktor 3x bei
-    drei Triggern), während das Aggregat korrekt bleibt.
+    chart-data, trades/orders/positions, Worker-Job) eine weitere volle Kopie an
+    — die Einzel-Detailzeilen vervielfachen sich (Faktor 3x bei drei Triggern),
+    während das Aggregat korrekt bleibt.
 
     Args:
         conn: Aktive SQLAlchemy-Connection (innerhalb einer Transaktion).
@@ -162,11 +164,18 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
     columns = portfolios.wrapper.columns
     pf = portfolios[columns[0]]
 
-    # Volle Metriken extrahieren und Result aktualisieren
+    # Kennzahlen extrahieren und Result aktualisieren
     _t0 = _time.time()
-    # GEÄNDERT: Nur Chart-Metriken (schnell), Full-Metriken kommen per Hintergrund-Job
-    all_metrics = _extract_chart_metrics(pf)
-    print(f"  [RECOMPUTE] Chart-Metriken extrahiert ({_time.time() - _t0:.1f}s)")
+    # GEÄNDERT: Ticket 64 — der Recompute rechnet nichts Eigenes mehr. Er ruft dieselbe
+    # Funktion auf wie der Lauf, mit N=1 (die Strategie läuft hier mit den exakten
+    # Einzel-Parametern und _disable_chunked=True, das Portfolio hat also genau eine
+    # Spalte). Die Gleichheit zwischen Einzel- und Multiparameterlauf ist damit keine
+    # Vereinbarung mehr, die jemand einhalten muss — es gibt nur noch einen Weg.
+    # GEÄNDERT: Ticket 58 — Kennzahlen über das Handelsfenster start..end. Die weiter
+    # unten gespeicherte Equity-Kurve bleibt bewusst über den vollen geladenen Zeitraum,
+    # damit der Chart den Vorlauf weiter zeigt.
+    all_metrics = _extract_metrics(portfolios, columns, backtest_config)[0]
+    print(f"  [RECOMPUTE] Kennzahlen extrahiert ({_time.time() - _t0:.1f}s)")
 
     # Phase 1: Metriken + Equity + Trades + Orders (sofort, blockiert Response)
     _t_phase1 = _time.time()
@@ -338,108 +347,4 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
                 logger.error(f"[RECOMPUTE BG] Fehler bei Result {result_id}: {e}")
         threading.Thread(target=_bg, daemon=True).start()
 
-    return True
-
-
-def compute_full_metrics(result_id: int) -> bool:
-    """Berechnet die langsamen Full-Metriken für ein einzelnes Result.
-
-    Stufe 3: Führt den Backtest nochmal aus und berechnet nur die Metriken
-    die zu langsam für partial sind (tail_ratio, VaR, alpha, beta etc.).
-    Wird als Hintergrund-Job ausgeführt.
-
-    Args:
-        result_id: ID des BacktestResult
-
-    Returns:
-        True wenn erfolgreich, False bei Fehler
-    """
-    import time as _time
-
-    session = get_session()
-    try:
-        result = session.query(BacktestResult).filter(BacktestResult.id == result_id).first()
-        if not result:
-            logger.error(f"[FULL-METRICS] Result {result_id} nicht gefunden")
-            return False
-
-        run = session.query(BacktestRun).filter(BacktestRun.id == result.run_id).first()
-        if not run:
-            logger.error(f"[FULL-METRICS] Run {result.run_id} nicht gefunden")
-            return False
-
-        # GEÄNDERT: Ticket 15 — _json-Suffix
-        actual_params = result.actual_params_json
-        strategy_name = run.strategy_name
-        backtest_config = dict(run.backtest_config_json)
-        indicators_config = dict(run.indicators_config_json)
-        symbol = run.symbol
-        exchange = run.exchange
-        timeframe = run.timeframe
-        # GEÄNDERT: rules_json aus iteration.spec_json laden (analog worker_tasks).
-        # Seit Ticket 12 ist rules_json für den Spec-Runner Pflicht — ohne diese
-        # Übergabe scheiterte der Recompute/Full-Metrics eines Multi-Combo-Results
-        # mit 'rules_json fehlt' (Chart blieb ohne Equity/Indikatoren).
-        if run.iteration_id is not None and run.iteration is not None:
-            rules_json = (run.iteration.spec_json or {}).get('rules')
-        else:
-            rules_json = None
-    finally:
-        session.close()
-
-    # Strategie-Funktion laden
-    import_path = backtest_config.get('import_path')
-    if not import_path:
-        logger.error(f"[FULL-METRICS] Kein import_path in backtest_config für Run {result.run_id}")
-        return False
-
-    strategy_fn = load_strategy_function(import_path)
-
-    # OHLCV-Daten laden
-    _t_total = _time.time()
-    from user_data.utils.ohlc.loader import load_ohlc_data
-    ohlc_data = load_ohlc_data({
-        'symbols': [symbol],
-        'exchange': exchange,
-        'timeframe': timeframe,
-        'ohlc_start': backtest_config.get('ohlc_start'),
-        'ohlc_end': backtest_config.get('ohlc_end'),
-    })
-    print(f"  [FULL-METRICS] OHLCV geladen ({_time.time() - _t_total:.1f}s)")
-
-    # Strategie ausführen
-    _t0 = _time.time()
-    # GEÄNDERT: Ticket 18 — _build_resolved_config statt hartcodierter Mapping-Funktion
-    single_indicators = _build_resolved_config(indicators_config, actual_params)
-    # GEÄNDERT: Schritt 3b — '_stops' stammt jetzt aus dem Run-Snapshot (3a-Backfill in
-    # indicators_config_json), nicht mehr aus dem portfolio-Block. _build_resolved_config
-    # strippt alle '_'-Meta-Keys, daher hier explizit aus indicators_config re-injizieren.
-    single_indicators['_stops'] = indicators_config.get('_stops', {})
-    backtest_config['_disable_chunked'] = True
-    # GEÄNDERT: rules_json nur übergeben, wenn die Strategie-Funktion es akzeptiert
-    # (Spec-Runner: Pflicht; hartgecodete Strategien haben keinen rules_json-Parameter).
-    if 'rules_json' in inspect.signature(strategy_fn).parameters:
-        strategy_result = strategy_fn(ohlc_data, single_indicators, backtest_config, rules_json=rules_json)
-    else:
-        strategy_result = strategy_fn(ohlc_data, single_indicators, backtest_config)
-    print(f"  [FULL-METRICS] Strategie ausgeführt ({_time.time() - _t0:.1f}s)")
-
-    # Full-Metriken berechnen
-    _t0 = _time.time()
-    portfolios = strategy_result['portfolios']
-    columns = portfolios.wrapper.columns
-    pf = portfolios[columns[0]]
-    full_metrics = _extract_full_metrics(pf)
-    print(f"  [FULL-METRICS] Metriken berechnet ({_time.time() - _t0:.1f}s)")
-
-    # Result updaten
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(
-            BacktestResult.__table__.update()
-            .where(BacktestResult.id == result_id)
-            .values(**full_metrics)
-        )
-
-    print(f"[FULL-METRICS] Result {result_id} vollständig ({_time.time() - _t_total:.1f}s)")
     return True

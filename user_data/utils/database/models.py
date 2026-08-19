@@ -7,10 +7,12 @@ Duplikat-Erkennung bei Results über MD5-Hash (params_hash).
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Index, Integer, String, Float, DateTime, Text, Enum, JSON, Numeric, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Index, Integer, String, Float, DateTime, Text, Enum, JSON, Numeric, Boolean, ForeignKey, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import JSONB as _PgJSONB
 from sqlalchemy.types import TypeDecorator, UserDefinedType
 from sqlalchemy.orm import DeclarativeBase, relationship
+# GEÄNDERT: Ticket 56 — Attribut-Historie für den Schreibschutz auf Phase-1-Feldern
+from sqlalchemy.orm.attributes import get_history
 
 try:
     from pgvector.sqlalchemy import Vector as _PgVector
@@ -33,7 +35,19 @@ class _VectorCompat(TypeDecorator):
         self.dim = dim
 
     def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql' and _PGVECTOR_AVAILABLE:
+        # GEÄNDERT (Nachtrag Ticket 88): Fehlt pgvector unter PostgreSQL, fiel der Typ
+        # bisher still auf JSON zurück. Die Spalte ist dort aber als 'vector' angelegt —
+        # jeder Schreibzugriff scheiterte danach in der Datenbank, mit einem Fehler, der
+        # nicht mehr auf die fehlende Abhängigkeit zeigte. Der JSON-Weg ist allein für
+        # SQLite gedacht (Unit-Tests ohne PostgreSQL).
+        if dialect.name == 'postgresql':
+            if not _PGVECTOR_AVAILABLE:
+                raise RuntimeError(
+                    'pgvector ist nicht installiert, die Spalte vault_chunks.embedding '
+                    'hat in PostgreSQL aber den Typ vector(1024). Ohne das Paket gibt es '
+                    'keinen tragfähigen Ersatz — bitte pgvector in die Umgebung aufnehmen, '
+                    'in der dieses Modell benutzt wird.'
+                )
             return dialect.type_descriptor(_PgVector(self.dim))
         return dialect.type_descriptor(JSON())
 
@@ -43,14 +57,23 @@ class _JsonbCompat(TypeDecorator):
 
     Ermöglicht JSONB-Semantik in Produktion (PostgreSQL) und kompatiblen
     Fallback in Testumgebungen (SQLite In-Memory).
+
+    GEÄNDERT: Ticket 56 — optionales ``none_as_null``. Standard bleibt False (Python
+    ``None`` landet als JSON-``null`` in der Spalte, unverändertes Verhalten für alle
+    Bestandsspalten). Mit ``none_as_null=True`` wird ``None`` als echtes SQL-NULL
+    geschrieben — nötig überall dort, wo „leer" per ``IS NULL`` abfragbar sein muss.
     """
     impl = JSON
     cache_ok = True
 
+    def __init__(self, none_as_null: bool = False):
+        super().__init__()
+        self.none_as_null = none_as_null
+
     def load_dialect_impl(self, dialect):
         if dialect.name == 'postgresql':
-            return dialect.type_descriptor(_PgJSONB())
-        return dialect.type_descriptor(JSON())
+            return dialect.type_descriptor(_PgJSONB(none_as_null=self.none_as_null))
+        return dialect.type_descriptor(JSON(none_as_null=self.none_as_null))
 
 
 class Base(DeclarativeBase):
@@ -81,6 +104,15 @@ class BacktestConfig(Base):
     size_type = Column(String(20), nullable=False, default='value')
     init_cash = Column(Float, nullable=False, default=100)
     fees = Column(Float, nullable=False, default=0.001)
+    # GEÄNDERT: Ticket 59 — slippage als regulärer Portfolio-Parameter (analog fees).
+    # Default 0.0 entspricht dem bisherigen impliziten VBT-Default, kein stiller
+    # Verhaltenswechsel für Bestandsconfigs.
+    slippage = Column(Float, nullable=False, default=0.0, server_default='0')
+    # GEÄNDERT: Ticket 59 — stop_exit_price/stop_order_type persistiert statt nur
+    # transient im Playground-Formular. None = VBT-Default (keine erzwungene
+    # Voreinstellung), dieselbe Konvention wie im Playground-JS.
+    stop_exit_price = Column(String(20), nullable=True)
+    stop_order_type = Column(String(20), nullable=True)
 
     # GEÄNDERT: Schritt 3d — Format-Spalten (delta_format/time_delta_format) entfernt.
     # Die Stop-Formate leben jetzt im Meta-Key indicators_json['_stops']
@@ -159,6 +191,15 @@ class StrategyConcept(Base):
     created_by = Column(String(120), nullable=True)
     # GEÄNDERT: High-Water-Mark der vergebenen Iterations-Nummern (nur steigend, kein Reuse nach Löschen)
     iteration_counter = Column(Integer, nullable=False, default=0, server_default='0')
+    # GEÄNDERT: Ticket 66 — Entwicklungsziel des Konzepts. goal_json (strukturierte
+    # Zielgrößen, frei formuliert, kein festes Schema) + goal_prompt (Original-Auftrag
+    # im Wortlaut). Beide nullable, kein Gate — reine Anzeige/Speicherung/Übernahme.
+    goal_json = Column(_JsonbCompat, nullable=True)
+    goal_prompt = Column(Text, nullable=True)
+    # GEÄNDERT: Ticket 92 — Zähler der Lite-Sondierungen dieses Konzepts (nur steigend,
+    # kein Zurücksetzen). Macht den Suchumfang sichtbar, der nicht im Raster steht;
+    # wird ausgewiesen, nicht bewertet (keine Schwelle, keine Verrechnung in die DSR).
+    probe_count = Column(Integer, nullable=False, default=0, server_default='0')
 
 
 class StrategyIteration(Base):
@@ -207,6 +248,28 @@ class StrategyIteration(Base):
     created_by = Column(String(120), nullable=True)
 
 
+class IterationLog(Base):
+    """Append-only Denkprotokoll einer Iteration (Ticket 67).
+
+    Freitext-Eintrag, der festhält, warum ein Versuch unternommen wurde und was
+    aus dem Ergebnis geschlossen wird. Bewusst kein Update-/Delete-Pfad — die
+    Nachvollziehbarkeit entsteht strukturell durch Unveränderlichkeit, nicht
+    durch Disziplin. run_id ist eine lose Referenz ohne ForeignKey (Runs sind
+    löschbar, der Log-Eintrag bleibt gültig).
+    """
+    __tablename__ = 'iteration_logs'
+
+    __table_args__ = (
+        Index('idx_iteration_logs_iteration', 'iteration_id'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=False)
+    run_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    text = Column(Text, nullable=False)
+
+
 class BacktestRun(Base):
     """Ein Backtest-Lauf mit Konfiguration und Metadaten."""
     __tablename__ = 'backtest_runs'
@@ -238,6 +301,37 @@ class BacktestRun(Base):
     # Frontend "Chunk 7/13" anzeigen kann. NULL bei ungechunkten oder Alt-Runs.
     current_chunk = Column(Integer, nullable=True)
     total_chunks = Column(Integer, nullable=True)
+
+    # GEÄNDERT: Ticket 71 — Fortsetzungspunkt. Zählt die von vorn her vollständig
+    # gerechneten UND gespeicherten Chunks; wird in derselben Transaktion wie die
+    # Results des Chunks geschrieben und kann deshalb nie mehr behaupten, als in der
+    # Datenbank steht. Ein fortgesetzter Lauf überspringt genau diese Chunks, ein
+    # Neustart (Rerun, löscht alle Results) setzt den Wert auf 0 zurück.
+    completed_chunks = Column(Integer, nullable=False, server_default='0', default=0)
+
+    # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs. 'usable' | 'no_signals' |
+    # 'insufficient_history'; NULL bei Alt-Runs und bei Runs, die nie bis zur
+    # Bewertung kamen (failed). Der lesbare Grund steht in usability_note. Der Lauf
+    # bleibt in jedem Fall vollständig erhalten — Kennzeichnung, kein Ausblenden.
+    usability = Column(String(32), nullable=True)
+    usability_note = Column(Text, nullable=True)
+
+    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung beim Run-Start (siehe
+    # user_data/strategies/generic/warmup.py). warmup_bars = tatsächlich vorhandener
+    # Vorlauf zwischen ohlc_start und start in Basis-Balken, warmup_required_bars =
+    # längste konfigurierte Indikator-Periode, warmup_note = lesbare Meldung.
+    warmup_bars = Column(Integer, nullable=True)
+    warmup_required_bars = Column(Integer, nullable=True)
+    warmup_note = Column(Text, nullable=True)
+
+    # GEÄNDERT: Ticket 54 — Annualisierungsfaktor des Laufs, genau der Wert, den VBT
+    # selbst benutzt (`ReturnsAccessor.ann_factor` = Jahresfrequenz / Balkenfrequenz).
+    # Der gespeicherte `backtest_results.sharpe_ratio` ist annualisiert; die Deflated
+    # Sharpe Ratio braucht den Sharpe je Balken. Mit diesem Faktor ist die Rückrechnung
+    # `SR_bar = SR_ann / sqrt(ann_factor)` exakt (VBT schließt mit
+    # `mean / std * sqrt(ann_factor)`, am Quelltext von `sharpe_ratio_1d_nb` gelesen).
+    # NULL bei Läufen von vor diesem Ticket.
+    ann_factor = Column(Float, nullable=True)
 
     # Bemerkung
     remarks = Column(Text, nullable=True)
@@ -273,6 +367,8 @@ class BacktestRun(Base):
     __table_args__ = (
         Index('ix_backtest_runs_testset_run_id', 'testset_run_id'),
         Index('idx_backtest_runs_iteration', 'iteration_id'),
+        # GEÄNDERT: Ticket 60 — Filter "welche Läufe sind nicht verwertbar?"
+        Index('idx_backtest_runs_usability', 'usability'),
     )
 
 
@@ -293,9 +389,15 @@ class BacktestResult(Base):
     resolved_config_json = Column(JSON, nullable=True)
 
     # Zeitraum
+    # GEÄNDERT: Ticket 60 — start_index/end_index/total_duration sind seit Ticket 58 das
+    # tatsächlich gerechnete Handelsfenster start..end (nicht das Datenfenster ab
+    # ohlc_start). Seit Ticket 64 füllt sie _extract_metrics für jeden Lauf.
     start_index = Column(DateTime, nullable=True)
     end_index = Column(DateTime, nullable=True)
     total_duration = Column(String(50), nullable=True)
+    # GEÄNDERT: Ticket 60 — Zahl der Balken im gerechneten Handelsfenster
+    # (pf.wrapper.shape[0]). NULL bei Alt-Results vor Ticket 60.
+    bar_count = Column(Integer, nullable=True)
 
     # Portfolio-Werte
     start_value = Column(Float, nullable=True)
@@ -319,6 +421,18 @@ class BacktestResult(Base):
     total_orders = Column(Integer, nullable=True)
     total_fees_paid = Column(Float, nullable=True)
     total_trades = Column(Integer, nullable=True)
+    # GEÄNDERT: Ticket 58 — Anzahl der am Ende des Handelsfensters (start..end) offenen
+    # Positionen. Sie gehen marktbewertet in total_return_pct/end_value ein, aber NICHT
+    # in win_rate_pct und profit_factor (die rechnen über geschlossene Trades).
+    # total_trades - open_trades = Grundgesamtheit von Trefferquote und Profitfaktor.
+    # NULL bei Results, die vor Ticket 58 entstanden sind (spec_runner_version < 3.0.0).
+    open_trades = Column(Integer, nullable=True)
+    # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung je Result (trades.direction_long/
+    # .direction_short.count()), wie total_trades inklusive einer am Fensterende
+    # offenen Position. long_trades + short_trades = total_trades. NULL bei
+    # Alt-Results vor Ticket 60.
+    long_trades = Column(Integer, nullable=True)
+    short_trades = Column(Integer, nullable=True)
 
     # Trade-Metriken
     win_rate_pct = Column(Float, nullable=True)
@@ -356,11 +470,15 @@ class BacktestResult(Base):
     sqn = Column(Float, nullable=True)
     edge_ratio = Column(Float, nullable=True)
 
+    # GEÄNDERT: Ticket 64 — Verteilungsform der Renditen je Kombination. Bausteine der
+    # Deflated Sharpe Ratio, ohne die sie nicht nachrechenbar ist (Ticket 54).
+    # kurtosis ist die ROHE Wölbung (Normalverteilung rund 3), nicht die
+    # Excess-Wölbung. NULL bei Results, die vor Ticket 64 entstanden sind.
+    skew = Column(Float, nullable=True)
+    kurtosis = Column(Float, nullable=True)
+
     # GEÄNDERT: Overfitting-Kontrolle
     deflated_sharpe_ratio = Column(Float, nullable=True)
-
-    # GEÄNDERT: Berechnungsstufe (partial, chart, full)
-    metrics_level = Column(String(10), nullable=False, default='partial')
 
     # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
     spec_runner_version = Column(String(20), nullable=True)
@@ -593,6 +711,16 @@ class TestSetRun(Base):
     # GEÄNDERT: kein FK mehr — TestSetRuns sind lose an das TestSet gekoppelt
     # (wie LeaderboardEntry.testset_id). Löschen eines TestSets blockiert nicht
     # und lässt die operativen Läufe unangetastet.
+    # GEÄNDERT: Ticket 62 — diese Zusage gilt seit der Migration
+    # 0019_drop_testset_runs_fk auch in der Datenbank. Bis dahin trug
+    # `0001_baseline.sql` hier fälschlich den Fremdschlüssel
+    # fk_testset_runs_testset_id (Modell/DB-Drift, Ursache des HTTP-500 aus
+    # Ticket 61). Diesen Constraint nicht versehentlich wieder einführen.
+    # Ergänzung: Auf Anwendungsebene zieht delete_testset (siehe
+    # repository_testsets.py) die Zusage inzwischen nach — es löscht ausschließlich
+    # die TestSet-Zeile. Hängen noch Läufe dran, fragt die Oberfläche einmal nach
+    # (HTTP 409 ohne force); bestätigt der User, bleiben Läufe, Backtest-Runs und
+    # Results bestehen und ihre testset_id zeigt auf ein gelöschtes TestSet.
     testset_id = Column(Integer, nullable=False)
     strategy_family = Column(String(100), nullable=False)
     strategy_name = Column(String(100), nullable=False)
@@ -659,6 +787,235 @@ class LeaderboardEntry(Base):
     mini_report = Column(Text, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+# ============================================================================
+# Befund je Testset-Lauf (Ticket 56)
+# ============================================================================
+
+class FindingImmutableError(Exception):
+    """Ein bereits angelegter Befund sollte in einem geschützten Feld geändert werden.
+
+    Wird vom ORM-Wächter unter dieser Klasse ausgelöst (siehe
+    ``_block_testset_run_finding_phase1_updates``). Bewusst ein eigener Fehlertyp
+    und keine stille Rücknahme der Änderung — Projekt-Prinzip „Altlasten sichtbar
+    machen".
+    """
+
+
+class TestSetRunFinding(Base):
+    """Befund eines Testset-Laufs — Soll beim Start, Ist beim Abschluss (Ticket 56).
+
+    Zweiphasiger, unveränderlicher Datensatz: Phase 1 legt Kontext und Soll beim
+    Start an, Phase 2 ergänzt die Ist-Werte genau einmal beim Abschluss. Eine
+    Deutung darf nachträglich dazukommen — als Freitext, getrennt von den Zahlen
+    und ausdrücklich als Interpretation gekennzeichnet.
+
+    **Kein Verdict.** Es gibt bewusst kein ``passed``, keinen Gesamtscore, keine
+    Ampel und keinen Sortier-Rang. Sobald es eine solche Zahl gäbe, würde danach
+    sortiert — und damit wäre das entfernte Goal-Gate unter anderem Namen zurück.
+
+    **Warum eigene Tabelle und keine Spalte am TestSetRun:** Der ``TestSetRun`` ist
+    per Entwurf wegwerfbar (siehe dessen Docstring), der Befund muss das Aufräumen
+    aber überleben — seine Historie ist der eigentliche Wert.
+
+    **Warum ohne Fremdschlüssel:** Alle Kontext-Referenzen (``testset_run_id``,
+    ``iteration_id``, ``concept_id``, ``testset_id``, ``indicator_config_id``) sind
+    lose Referenzen ohne FK — genau wie ``LeaderboardEntry.testset_id`` und
+    ``LeaderboardEntry.testset_run_id``, die aus demselben Grund ohne FK stehen: Der
+    langlebige Datensatz darf nicht daran hängen, ob die operativen Objekte noch
+    existieren. Ein FK auf ``testset_runs.id`` würde entweder das Löschen blockieren
+    oder den Befund mitreißen; beides widerspricht dem Akzeptanzkriterium „ein Befund
+    überlebt das Aufräumen". Der Kontext wird deshalb hier selbst festgehalten und
+    nicht über den ``TestSetRun`` hergeleitet.
+
+    **Kein Unique-Constraint auf ``testset_run_id``:** Ein erneuter Lauf erzeugt einen
+    neuen Befund; überschrieben wird nie.
+
+    Fehlende Werte bleiben NULL und tragen ihren Grund im zugehörigen ``*_reason``-
+    bzw. ``*_missing_reason``-Feld — nicht mit 0 gefüllt und nicht stillschweigend
+    weggelassen.
+    """
+    __tablename__ = 'testset_run_findings'
+
+    __table_args__ = (
+        Index('idx_testset_run_findings_iteration', 'iteration_id'),
+        Index('idx_testset_run_findings_testset_run', 'testset_run_id'),
+        # GEÄNDERT: Ticket 85 — Index für die Konzept-Detailseite (by-concept-Route)
+        Index('idx_testset_run_findings_concept', 'concept_id'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # --- Kontext (Phase 1, echte Spalten — danach wird gesucht) ---
+    # Lose Referenz: der TestSetRun darf gelöscht werden, der Befund bleibt lesbar.
+    testset_run_id = Column(Integer, nullable=True)
+    iteration_id = Column(Integer, nullable=False)
+    # Herkunft des Soll-Schnappschusses (goal_json hängt am Konzept, nicht an der Iteration).
+    concept_id = Column(Integer, nullable=True)
+    testset_id = Column(Integer, nullable=False)
+    indicator_config_id = Column(Integer, nullable=True)
+    spec_runner_version = Column(String(20), nullable=True)
+    # Zeitpunkt der Anlage = Startzeitpunkt des Laufs.
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+    # --- Soll (Phase 1) ---
+    # Schnappschuss von strategy_concepts.goal_json. Bleibt JSON, weil goal_json per
+    # Ticket 66 bewusst kein festes Schema hat und sich nicht in Spalten zerlegen lässt.
+    goal_snapshot_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # Grund, wenn kein Soll vorliegt (z.B. "kein Ziel am Konzept hinterlegt").
+    goal_missing_reason = Column(Text, nullable=True)
+    # Stabile Keys der Bestwert-Kriterien (Single Source: best_criteria_labels.py).
+    best_criteria_json = Column(_JsonbCompat, nullable=False, default=list)
+    # Geplante Rastergröße als echte Spalten (ohne JSON-Auspacken abfragbar).
+    planned_n_runs = Column(Integer, nullable=False)
+    planned_combos_per_run = Column(Integer, nullable=True)
+    planned_combos_total = Column(Integer, nullable=True)
+    planned_grid_reason = Column(Text, nullable=True)
+
+    # --- Ist (Phase 2, wird beim Abschluss genau einmal ergänzt) ---
+    scope_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    candidates_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    robustness_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    benchmarks_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    warnings_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # Vorgesehen, aber bis auf Weiteres nicht befüllt: es gibt noch keinen markierten
+    # Holdout-Zeitraum (Ticket 56, Out of Scope). Bleibt NULL statt False.
+    holdout_touched = Column(Boolean, nullable=True)
+    # Abschlusszeitpunkt der zweiten Phase. Gesetzt = Befund geschlossen.
+    closed_at = Column(DateTime, nullable=True)
+
+    # --- Deutung (nachträglich, getrennt von den Zahlen) ---
+    interpretation_text = Column(Text, nullable=True)
+    interpretation_at = Column(DateTime, nullable=True)
+
+
+# Geschützte Phase-1-Felder: Kontext und Soll sind ab der Anlage unveränderlich.
+# Absichtlich nicht enthalten sind die Ist-Felder (Phase 2 ergänzt sie einmal) und
+# die Deutungs-Felder (nachträglich pflegbar).
+_FINDING_PHASE1_COLUMNS: tuple = (
+    'testset_run_id',
+    'iteration_id',
+    'concept_id',
+    'testset_id',
+    'indicator_config_id',
+    'spec_runner_version',
+    'created_at',
+    'goal_snapshot_json',
+    'goal_missing_reason',
+    'best_criteria_json',
+    'planned_n_runs',
+    'planned_combos_per_run',
+    'planned_combos_total',
+    'planned_grid_reason',
+)
+
+
+# Geschützte Phase-2-Felder: die Ist-Werte werden beim Abschluss genau einmal gesetzt.
+# Der Schutz greift erst, wenn `closed_at` bereits stand — vorher ist der Befund offen
+# und Phase 2 darf schreiben. Absichtlich nicht enthalten sind die Deutungs-Felder: die
+# Deutung wird nachträglich ergänzt, ohne die Zahlen zu berühren.
+_FINDING_PHASE2_COLUMNS: tuple = (
+    'scope_json',
+    'candidates_json',
+    'robustness_json',
+    'benchmarks_json',
+    'warnings_json',
+    'holdout_touched',
+    'closed_at',
+)
+
+
+def _finding_changed_fields(target, fields: tuple) -> list:
+    """Sammelt die Feldnamen, deren Wert sich in diesem Flush tatsächlich ändert.
+
+    Args:
+        target: Die zu aktualisierende TestSetRunFinding-Instanz.
+        fields: Zu prüfende Spaltennamen.
+
+    Returns:
+        Namen der geänderten Felder in der Reihenfolge von ``fields``.
+    """
+    changed: list[str] = []
+    for field in fields:
+        history = get_history(target, field)
+        if not history.has_changes():
+            continue
+        old_value = history.deleted[0] if history.deleted else None
+        new_value = history.added[0] if history.added else None
+        if old_value != new_value:
+            changed.append(field)
+    return changed
+
+
+@event.listens_for(TestSetRunFinding, 'before_update')
+def _block_testset_run_finding_phase1_updates(mapper, connection, target) -> None:
+    """Weist jede Änderung an Kontext oder Soll eines bestehenden Befunds ab.
+
+    Der Schutz sitzt am ORM-Mapper und nicht in einer Hilfsfunktion, damit er für
+    jeden Schreibweg gilt, der über eine Session läuft — auch für Code, der die
+    Repository-Funktionen umgeht. Nachträgliches Nachschärfen der Vorregistrierung
+    ist damit eine Eigenschaft des Systems und keine Anweisung.
+
+    Nicht abgedeckt sind rohe SQL-UPDATEs an der Session vorbei; dafür gibt es im
+    Projekt bewusst keinen Schreibpfad.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende TestSetRunFinding-Instanz.
+
+    Raises:
+        FindingImmutableError: Wenn mindestens ein geschütztes Feld geändert wurde.
+    """
+    changed = _finding_changed_fields(target, _FINDING_PHASE1_COLUMNS)
+    if changed:
+        raise FindingImmutableError(
+            f'Befund {target.id}: Kontext und Soll sind nach dem Start unveränderlich. '
+            f'Abgewiesene Felder: {", ".join(changed)}.'
+        )
+
+
+@event.listens_for(TestSetRunFinding, 'before_update')
+def _block_testset_run_finding_phase2_updates(mapper, connection, target) -> None:
+    """Weist jede Änderung an den Ist-Werten eines geschlossenen Befunds ab.
+
+    Phase 2 schreibt genau einmal: solange ``closed_at`` leer ist, darf der Abschluss
+    seine Zahlen setzen; sobald es steht, ist der Befund geschlossen und jeder weitere
+    Ist-Schreibvorgang wird abgewiesen — kein stilles Überschreiben.
+
+    Maßgeblich ist der Wert von ``closed_at`` **vor** diesem Flush. Der Abschluss selbst
+    setzt die Ist-Felder und ``closed_at`` in einem Zug; für ihn war der Befund vorher
+    offen und der Schutz greift noch nicht. Der zweite Versuch trifft ein gesetztes
+    ``closed_at`` und läuft auf.
+
+    Die Deutungs-Felder (``interpretation_text``/``interpretation_at``) sind bewusst
+    nicht geschützt — sie werden nachträglich ergänzt, ohne die Zahlen zu berühren.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende TestSetRunFinding-Instanz.
+
+    Raises:
+        FindingImmutableError: Wenn ein Ist-Feld eines geschlossenen Befunds
+            geändert wurde.
+    """
+    closed_history = get_history(target, 'closed_at')
+    if closed_history.has_changes():
+        previous_closed_at = closed_history.deleted[0] if closed_history.deleted else None
+    else:
+        previous_closed_at = target.closed_at
+    if previous_closed_at is None:
+        return
+
+    changed = _finding_changed_fields(target, _FINDING_PHASE2_COLUMNS)
+    if changed:
+        raise FindingImmutableError(
+            f'Befund {target.id}: der Befund ist seit {previous_closed_at} geschlossen, '
+            f'die Ist-Werte sind unveränderlich. Abgewiesene Felder: '
+            f'{", ".join(changed)}. Ein erneuter Lauf erzeugt einen neuen Befund.'
+        )
 
 
 # ============================================================================
@@ -749,3 +1106,340 @@ class VaultReindexRun(Base):
     # Format: {"reindexed": [...], "deleted": [...]}; NULL wenn Lauf abgebrochen
     files_changed = Column(_JsonbCompat, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+# ============================================================================
+# Signifikanztest je Kandidat (Ticket 79)
+# ============================================================================
+
+# Zulässige Methoden. `permutation` = Monte-Carlo-Permutationstest gegen
+# strukturlose Preisreihen (Nullmodell), `bootstrap` = Resampling der eigenen
+# Trade-Renditen (Unsicherheitsband, kein Nullmodell).
+SIGNIFICANCE_METHODS: tuple = ('permutation', 'bootstrap')
+
+# Status-Lebenslauf. `completed`/`failed` sind Endzustände — ab dann ist der
+# Datensatz unveränderlich.
+SIGNIFICANCE_TERMINAL_STATUS: tuple = ('completed', 'failed')
+
+
+class SignificanceTestImmutableError(Exception):
+    """Ein abgeschlossener Signifikanztest sollte geändert werden.
+
+    Eigener Fehlertyp statt stiller Rücknahme — wie ``FindingImmutableError``.
+    Ein neuer Test erzeugt einen neuen Datensatz; überschrieben wird nie.
+    """
+
+
+class SignificanceTest(Base):
+    """Ein statistischer Signifikanztest für genau einen Kandidaten (Ticket 79).
+
+    Ein Kandidat ist ein Result: Iteration × eingefrorene Parameterkombination ×
+    BacktestConfig. Zwei Methoden teilen sich diese Tabelle, weil beide dieselbe
+    Frage-Form beantworten („wie belastbar ist diese Zahl?") und dieselben
+    Kontext-, Status- und Ergebnis-Felder brauchen:
+
+    * ``permutation`` — die Strategie läuft auf N synthetischen Preisreihen
+      (Bar-Permutation, ``user_data/utils/analysis/synthetic_series.py``). Der
+      p-Wert sagt, wie oft ein so gutes Ergebnis aus strukturlosen Daten entsteht.
+    * ``bootstrap`` — Resampling der Trade-Renditen des Kandidaten liefert
+      Konfidenzbänder. **Kein Nullmodell**, also auch kein p-Wert.
+
+    **Kein Verdict.** Es gibt bewusst kein ``passed``, keine Ampel, keinen Score
+    und keine Güte-Sortierung — dieselbe Regel wie bei DSR und Befund. Ein p-Wert
+    wird berichtet, nicht angewandt.
+
+    **Warum ohne Fremdschlüssel:** ``result_id``, ``run_id`` und ``iteration_id``
+    sind lose Referenzen — genau wie bei ``TestSetRunFinding`` und
+    ``LeaderboardEntry``. Rechenspuren (Results, Runs) werden regelmäßig
+    aufgeräumt; der Test muss das überleben, sonst wäre seine Historie wertlos.
+    Deshalb trägt der Datensatz seinen Kontext selbst: ``params_json`` hält die
+    eingefrorene Kombination, ``config_snapshot_json`` Symbol, Timeframe,
+    Zeitraum und Portfolio-Kern.
+
+    **Unveränderlich nach Abschluss:** Sobald ``status`` auf ``completed`` oder
+    ``failed`` steht, weist der ORM-Wächter jede weitere Änderung ab.
+    """
+    __tablename__ = 'significance_tests'
+
+    __table_args__ = (
+        Index('idx_significance_tests_result', 'result_id'),
+        Index('idx_significance_tests_created', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # --- Kontext (lose Referenzen, kein FK) ---
+    result_id = Column(Integer, nullable=False)
+    run_id = Column(Integer, nullable=True)
+    iteration_id = Column(Integer, nullable=True)
+    # Eingefrorene Parameterkombination des Kandidaten (aus resolved_config_json
+    # plus die aufgelösten Stops) — der Test bleibt ohne das Result deutbar.
+    params_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # Symbol, Exchange, Timeframe, Handelsfenster, Portfolio-Kern.
+    config_snapshot_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+
+    # --- Methode und Aufbau ---
+    method = Column(String(20), nullable=False)
+    n_iterations = Column(Integer, nullable=False)
+    seed = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False, default='queued')
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    duration_seconds = Column(Float, nullable=True)
+
+    # --- Ergebnis ---
+    # Echte Werte des Kandidaten je Metrik: {"sharpe_ratio": 2.07, ...}
+    real_values_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # VOLLSTÄNDIGE Wertelisten je Metrik: {"sharpe_ratio": [...N Zahlen...], ...}.
+    # Absichtlich nicht auf Kennwerte eingekocht — nur so sind Nachanalysen
+    # möglich, und N Zahlen sind billig.
+    distribution_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # Kennwerte je Metrik (mean/median/p05/p95/max) plus p-Wert bzw.
+    # Konfidenzbänder, dazu der Anteil der Läufe ohne Trades.
+    summary_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+
+
+@event.listens_for(SignificanceTest, 'before_update')
+def _block_completed_significance_test_updates(mapper, connection, target) -> None:
+    """Weist jede Änderung an einem abgeschlossenen Signifikanztest ab.
+
+    Maßgeblich ist der Status **vor** diesem Flush: der Abschluss selbst setzt
+    Ergebnisse und ``status`` in einem Zug und läuft durch; jeder weitere
+    Schreibversuch trifft einen Endzustand und wird abgewiesen. Der Wächter sitzt
+    am ORM-Mapper, damit er für jeden Schreibweg über eine Session gilt — nicht
+    nur für die Repository-Funktionen.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende SignificanceTest-Instanz.
+
+    Raises:
+        SignificanceTestImmutableError: Wenn der Test bereits abgeschlossen war.
+    """
+    status_history = get_history(target, 'status')
+    if status_history.has_changes():
+        previous_status = status_history.deleted[0] if status_history.deleted else None
+    else:
+        previous_status = target.status
+    if previous_status not in SIGNIFICANCE_TERMINAL_STATUS:
+        return
+    raise SignificanceTestImmutableError(
+        f'Signifikanztest {target.id}: der Test ist mit Status "{previous_status}" '
+        f'abgeschlossen und damit unveränderlich. Ein erneuter Test erzeugt einen '
+        f'neuen Datensatz.'
+    )
+
+
+# ============================================================================
+# Walk-Forward-Fold-Kette (Ticket 82)
+# ============================================================================
+
+# Status-Lebenslauf. `completed`/`failed` sind Endzustände — ab dann ist der
+# Datensatz unveränderlich.
+WALK_FORWARD_CHAIN_TERMINAL_STATUS: tuple = ('completed', 'failed')
+
+# Felder, die während `running` geschrieben werden dürfen: das Anhängen von Folds
+# und der Abschluss. Alles andere (Plan, Kontext, Anlagezeitpunkt) steht ab der
+# Anlage fest — das ist die Vorregistrierung, strukturell statt disziplinarisch.
+WALK_FORWARD_CHAIN_MUTABLE_COLUMNS: tuple = (
+    'folds_json',
+    'aggregate_json',
+    'method_note',
+    'status',
+    'error_message',
+    'completed_at',
+)
+
+# Geschützte Felder: Plan und Kontext der Vorregistrierung.
+WALK_FORWARD_CHAIN_FROZEN_COLUMNS: tuple = (
+    'anchor_run_id',
+    'iteration_id',
+    'concept_id',
+    'config_snapshot_json',
+    'plan_json',
+    'created_at',
+)
+
+
+class WalkForwardChainImmutableError(Exception):
+    """An einer Kette sollte ein geschütztes Feld geändert werden.
+
+    Eigener Fehlertyp statt stiller Rücknahme — wie ``FindingImmutableError`` und
+    ``SignificanceTestImmutableError``. Eine neue Kette erzeugt einen neuen
+    Datensatz; überschrieben wird nie.
+    """
+
+
+class WalkForwardChain(Base):
+    """Eine Walk-Forward-Fold-Kette: Plan, Fold-Ergebnisse, Gesamtbewertung (Ticket 82).
+
+    Die Kette führt N-mal nacheinander „auf einem Zeitfenster optimieren → Sieger
+    einfrieren → auf dem nächsten, ungesehenen Zeitfenster testen" aus. Der
+    vollständige Plan (Fold-Zahl, Fensterlängen, konkrete Fold-Fenster,
+    Auswahlkriterium) wird beim Anlegen festgeschrieben und danach stur vollzogen
+    — das ist die Vorregistrierung.
+
+    **Kein Verdict.** Es gibt bewusst kein ``passed``, keine Ampel, keinen Score
+    und keine Güte-Sortierung — dieselbe Regel wie bei DSR, Befund und
+    Signifikanztest. Die Kette misst, sie urteilt nicht.
+
+    **Warum ohne Fremdschlüssel:** ``anchor_run_id``, ``iteration_id`` und
+    ``concept_id`` sind lose Referenzen — genau wie bei ``TestSetRunFinding`` und
+    ``SignificanceTest``. Die Ketten-Läufe und -Results sind per Entwurf
+    wegwerfbar; die Kette muss ihr Aufräumen überleben. Deshalb trägt sie alle
+    tragenden Werte als Kopie: ``config_snapshot_json`` den Kontext,
+    ``plan_json`` den Plan, ``folds_json`` je Fold die eingefrorene
+    Sieger-Kombination samt IS- und OOS-Kennzahlen, ``aggregate_json`` die
+    Gesamtbewertung.
+
+    **Unveränderlich nach Abschluss:** Sobald ``status`` auf ``completed`` oder
+    ``failed`` steht, weist der ORM-Wächter jede weitere Änderung ab. Während
+    ``running`` sind ausschließlich das Anhängen von Folds und der Abschluss
+    erlaubt; ``folds_json`` wächst dabei streng append-only.
+    """
+    __tablename__ = 'walk_forward_chains'
+
+    __table_args__ = (
+        Index('idx_walk_forward_chains_iteration', 'iteration_id'),
+        Index('idx_walk_forward_chains_anchor', 'anchor_run_id'),
+        Index('idx_walk_forward_chains_created', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # --- Kontext (lose Referenzen, kein FK) ---
+    anchor_run_id = Column(Integer, nullable=False)
+    iteration_id = Column(Integer, nullable=True)
+    concept_id = Column(Integer, nullable=True)
+    # Symbol, Exchange, Timeframe, Portfolio-Kern, Anker-Fenster.
+    config_snapshot_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+
+    # --- Plan (Vorregistrierung, beim Anlegen geschrieben) ---
+    # Fold-Zahl, IS-/OOS-Fensterlänge, die konkreten Fold-Fenster als Datumsliste,
+    # Auswahlkriterium (Metrik, Richtung, Trade-Floor), Metrik-Stufe der IS-Läufe.
+    plan_json = Column(_JsonbCompat(none_as_null=True), nullable=False)
+
+    # --- Folds (append-only nach Fold-Abschluss) ---
+    # Liste je Fold: Index, IS-Fenster + IS-Run-ID, Sieger-Kopie mit IS-Wert des
+    # Kriteriums, OOS-Fenster + OOS-Run-ID + OOS-Result-ID, OOS-Kennzahlen.
+    # Ein Fold ohne Sieger steht mit ``winner: null`` und ``no_winner_reason`` drin.
+    folds_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+
+    # --- Abschluss ---
+    aggregate_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
+    # Fester Methodenhinweis zur Verkettung statt Signal-Splice.
+    method_note = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default='running')
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    completed_at = Column(DateTime, nullable=True)
+
+
+def _walk_forward_chain_changed_columns(target, columns: tuple) -> list:
+    """Sammelt die Feldnamen, deren Wert sich in diesem Flush tatsächlich ändert.
+
+    Args:
+        target: Die zu aktualisierende WalkForwardChain-Instanz.
+        columns: Zu prüfende Spaltennamen.
+
+    Returns:
+        Namen der geänderten Felder in der Reihenfolge von ``columns``.
+    """
+    changed: list[str] = []
+    for column in columns:
+        history = get_history(target, column)
+        if not history.has_changes():
+            continue
+        old_value = history.deleted[0] if history.deleted else None
+        new_value = history.added[0] if history.added else None
+        if old_value != new_value:
+            changed.append(column)
+    return changed
+
+
+@event.listens_for(WalkForwardChain, 'before_update')
+def _block_completed_walk_forward_chain_updates(mapper, connection, target) -> None:
+    """Weist jede Änderung an einer abgeschlossenen Kette ab.
+
+    Maßgeblich ist der Status **vor** diesem Flush: der Abschluss selbst setzt
+    Aggregat und ``status`` in einem Zug und läuft durch; jeder weitere
+    Schreibversuch trifft einen Endzustand und wird abgewiesen.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende WalkForwardChain-Instanz.
+
+    Raises:
+        WalkForwardChainImmutableError: Wenn die Kette bereits abgeschlossen war.
+    """
+    status_history = get_history(target, 'status')
+    if status_history.has_changes():
+        previous_status = status_history.deleted[0] if status_history.deleted else None
+    else:
+        previous_status = target.status
+    if previous_status not in WALK_FORWARD_CHAIN_TERMINAL_STATUS:
+        return
+    raise WalkForwardChainImmutableError(
+        f'Walk-Forward-Kette {target.id}: die Kette ist mit Status "{previous_status}" '
+        f'abgeschlossen und damit unveränderlich. Ein erneuter Lauf erzeugt eine neue '
+        f'Kette.'
+    )
+
+
+@event.listens_for(WalkForwardChain, 'before_update')
+def _block_walk_forward_chain_plan_updates(mapper, connection, target) -> None:
+    """Weist jede Änderung an Plan oder Kontext einer laufenden Kette ab.
+
+    Der Plan ist die Vorregistrierung: Fold-Fenster und Auswahlkriterium stehen ab
+    der Anlage fest. Nachjustieren nach einem Zwischenblick scheitert damit am
+    System und nicht an der Disziplin.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende WalkForwardChain-Instanz.
+
+    Raises:
+        WalkForwardChainImmutableError: Wenn ein geschütztes Feld geändert wurde.
+    """
+    changed = _walk_forward_chain_changed_columns(
+        target, WALK_FORWARD_CHAIN_FROZEN_COLUMNS,
+    )
+    if changed:
+        raise WalkForwardChainImmutableError(
+            f'Walk-Forward-Kette {target.id}: Plan und Kontext sind ab der Anlage '
+            f'unveränderlich (Vorregistrierung). Abgewiesene Felder: '
+            f'{", ".join(changed)}.'
+        )
+
+
+@event.listens_for(WalkForwardChain, 'before_update')
+def _block_walk_forward_chain_fold_rewrites(mapper, connection, target) -> None:
+    """Erzwingt, dass ``folds_json`` ausschließlich wächst (append-only).
+
+    Ein bereits angehängter Fold darf nicht nachträglich umgeschrieben oder
+    entfernt werden: die bisherige Liste muss Präfix der neuen bleiben.
+
+    Args:
+        mapper: Der auslösende SQLAlchemy-Mapper (von der Event-API vorgegeben).
+        connection: Die aktive Verbindung (von der Event-API vorgegeben).
+        target: Die zu aktualisierende WalkForwardChain-Instanz.
+
+    Raises:
+        WalkForwardChainImmutableError: Wenn ein bestehender Fold geändert oder
+            entfernt wurde.
+    """
+    history = get_history(target, 'folds_json')
+    if not history.has_changes():
+        return
+    old_folds = (history.deleted[0] if history.deleted else None) or []
+    new_folds = (history.added[0] if history.added else None) or []
+    if len(new_folds) >= len(old_folds) and new_folds[:len(old_folds)] == old_folds:
+        return
+    raise WalkForwardChainImmutableError(
+        f'Walk-Forward-Kette {target.id}: bereits angehängte Folds sind '
+        f'unveränderlich — Folds werden ausschließlich angehängt '
+        f'({len(old_folds)} vorhanden, {len(new_folds)} übergeben).'
+    )

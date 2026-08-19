@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from user_data.utils.database.models import (
     BacktestResult,
     BacktestRun,
+    IterationLog,
     StrategyConcept,
     StrategyIteration,
 )
@@ -184,6 +185,10 @@ def force_delete_concept(session: Session, concept_id: int) -> bool:
         session.query(BacktestRun).filter(
             BacktestRun.iteration_id.in_(iteration_ids)
         ).delete(synchronize_session=False)
+        # GEÄNDERT: Ticket 67 — Log-Einträge der betroffenen Iterationen mitlöschen (FK)
+        session.query(IterationLog).filter(
+            IterationLog.iteration_id.in_(iteration_ids)
+        ).delete(synchronize_session=False)
         # Selbstreferenzen aufheben, damit DELETE ohne Reihenfolge-Problem funktioniert
         session.query(StrategyIteration).filter(
             StrategyIteration.parent_iteration_id.in_(iteration_ids)
@@ -196,6 +201,40 @@ def force_delete_concept(session: Session, concept_id: int) -> bool:
     session.delete(concept)
     session.commit()
     return True
+
+
+def increment_concept_probe_count(session: Session, concept_id: int) -> int:
+    """Zählt die Lite-Sondierungen eines Konzepts atomar hoch (Ticket 92).
+
+    Die Erhöhung läuft als einzelnes `UPDATE ... SET probe_count = probe_count + 1
+    RETURNING probe_count` — der Wert wird nie in Python gelesen, erhöht und
+    zurückgeschrieben. Damit zählen auch gleichzeitige Sondierungen aus mehreren
+    Prozessen korrekt (dieselbe Mechanik wie `next_iteration_version`).
+
+    Der Zähler sinkt nie und wird nirgends bewertet: keine Schwelle, keine
+    Verrechnung in die Deflated Sharpe Ratio — reiner Ausweis des Suchumfangs.
+
+    Args:
+        session: SQLAlchemy-Session.
+        concept_id: ID des Strategie-Konzepts.
+
+    Returns:
+        Der neue Zählerstand (>= 1).
+
+    Raises:
+        ValueError: Wenn das Konzept nicht existiert. Ein unbekanntes Konzept
+            wird gemeldet, nicht still übergangen.
+    """
+    row = session.execute(
+        update(StrategyConcept)
+        .where(StrategyConcept.id == concept_id)
+        .values(probe_count=StrategyConcept.probe_count + 1)
+        .returning(StrategyConcept.probe_count)
+    ).first()
+    if row is None:
+        raise ValueError(f"Konzept {concept_id} nicht gefunden.")
+    session.commit()
+    return int(row[0])
 
 
 # ============================================================================
@@ -355,6 +394,11 @@ def delete_iteration(session: Session, iteration_id: int) -> bool:
     iteration = get_iteration(session, iteration_id)
     if iteration is None:
         return False
+    # GEÄNDERT: Ticket 67 — Log-Einträge sind Kind-Objekte der Iteration (FK); ohne
+    # explizites Löschen würde der Postgres-FK die Iterations-Löschung blockieren
+    session.query(IterationLog).filter(
+        IterationLog.iteration_id == iteration_id
+    ).delete(synchronize_session=False)
     session.delete(iteration)
     session.commit()
     return True
@@ -434,6 +478,10 @@ def force_delete_iteration(session: Session, iteration_id: int) -> bool:
     session.query(BacktestRun).filter(
         BacktestRun.iteration_id.in_(all_ids)
     ).delete(synchronize_session=False)
+    # GEÄNDERT: Ticket 67 — Log-Einträge des gesamten Teilbaums mitlöschen (FK)
+    session.query(IterationLog).filter(
+        IterationLog.iteration_id.in_(all_ids)
+    ).delete(synchronize_session=False)
 
     # Selbstreferenzen aufheben, damit DELETE ohne Reihenfolge-Problem funktioniert
     session.query(StrategyIteration).filter(
@@ -446,3 +494,53 @@ def force_delete_iteration(session: Session, iteration_id: int) -> bool:
 
     session.commit()
     return True
+
+
+# ============================================================================
+# Iteration-Log CRUD (Ticket 67) — append-only, kein Update/Delete
+# ============================================================================
+
+def create_iteration_log(
+    session: Session,
+    iteration_id: int,
+    log_text: str,
+    run_id: Optional[int] = None,
+) -> Optional[IterationLog]:
+    """Neuen Log-Eintrag an einer Iteration anlegen (append-only).
+
+    Args:
+        session: SQLAlchemy-Session.
+        iteration_id: Primärschlüssel der Iteration, an der der Eintrag hängt.
+        log_text: Freitext des Eintrags. Trim/Leer-Prüfung liegt beim Aufrufer.
+        run_id: Optionale lose Referenz auf einen BacktestRun (kein FK).
+
+    Returns:
+        Der neu angelegte IterationLog, oder None wenn die Iteration nicht existiert.
+    """
+    if get_iteration(session, iteration_id) is None:
+        return None
+    entry = IterationLog(iteration_id=iteration_id, run_id=run_id, text=log_text)
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return entry
+
+
+def list_iteration_logs(session: Session, iteration_id: int) -> Optional[List[IterationLog]]:
+    """Alle Log-Einträge einer Iteration chronologisch aufsteigend laden.
+
+    Args:
+        session: SQLAlchemy-Session.
+        iteration_id: Primärschlüssel der Iteration.
+
+    Returns:
+        Liste der Einträge (älteste zuerst), oder None wenn die Iteration nicht existiert.
+    """
+    if get_iteration(session, iteration_id) is None:
+        return None
+    return (
+        session.query(IterationLog)
+        .filter(IterationLog.iteration_id == iteration_id)
+        .order_by(IterationLog.created_at.asc(), IterationLog.id.asc())
+        .all()
+    )

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Log: {{ iteration.version_name or iteration.version }} - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title mb-0">Log — {{ iteration.version_name or iteration.version }}</h2>
+        <div class="page-pretitle">Konfiguration / Strategie-Konzepte / {{ concept.name }}</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/strategy-concepts/{{ concept.id }}/iterations/{{ iteration.id }}/edit" class="btn btn-outline-secondary">Zurück zur Iteration</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{# GEÄNDERT: Ticket 67 — read-only Ansicht, keine Eingabemaske. Geschrieben wird über API/Toolbox. #}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Log-Einträge ({{ log_entries|length }})</h3>
+  </div>
+  <div class="card-body">
+    {% if log_entries %}
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th style="width: 180px;">Zeitstempel</th>
+            <th>Text</th>
+            <th style="width: 120px;">Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in log_entries %}
+          <tr>
+            <td class="text-nowrap text-muted">{{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td style="white-space: pre-wrap;">{{ entry.text }}</td>
+            <td>
+              {% if entry.run_id %}
+                {% if entry.run_exists %}
+                <a href="/backtest/runs/{{ entry.run_id }}">{{ entry.run_id }}</a>
+                {% else %}
+                {{ entry.run_id }}
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Noch keine Log-Einträge.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

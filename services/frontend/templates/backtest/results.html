@@ -236,6 +236,17 @@ function fmtNum(val, dec) {
   if (val === null || val === undefined) return '<span class="text-muted">-</span>';
   return parseFloat(val).toFixed(dec || 2);
 }
+// GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+// Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
+// Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
+function fmtTrades(total, open) {
+  if (total === null || total === undefined) return '<span class="text-muted">-</span>';
+  if (!open) return String(total);
+  var closed = total - open;
+  return String(total) + ' <span class="text-muted" title="' + open
+    + ' davon am Ende des Handelsfensters offen — Trefferquote und Profitfaktor rechnen über die '
+    + closed + ' geschlossenen">(' + open + ' offen)</span>';
+}
 function fmtColor(val, dec) {
   if (val === null || val === undefined) return '<span class="text-muted">-</span>';
   var n = parseFloat(val);
@@ -558,7 +569,7 @@ document.addEventListener("DOMContentLoaded", function() {
           return '<span class="val-neg">' + parseFloat(d).toFixed(2) + '</span>';
         }
       },
-      { data: "total_trades", render: function(d) { return d !== null ? d : '-'; } },
+      { data: "total_trades", render: function(d, type, row) { return fmtTrades(d, row.open_trades); } },
       { data: "win_rate_pct", render: function(d) { return fmtNum(d); } },
       { data: "profit_factor", render: function(d) { return fmtColor(d); } },
       { data: "total_return_pct", render: function(d) { return fmtColor(d); } },
@@ -569,14 +580,12 @@ document.addEventListener("DOMContentLoaded", function() {
         data: null,
         orderable: false,
         render: function(data) {
-          var level = data.metrics_level || 'partial';
-          var chartCls = (level === 'chart' || level === 'full') ? 'fw-bold' : '';
           var id = data.id;
           return '<div class="text-end text-nowrap">'
             + '<a href="/chart-playground?resultid=' + id + '" class="btn btn-sm btn-outline-success me-1" title="Im Playground öffnen (flüchtig)">PG</a>'
             + '<button type="button" class="btn btn-sm btn-icon btn-outline-secondary result-actions-toggle" title="Aktionen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></svg></button>'
             + '<div class="dropdown-menu result-actions-menu text-start">'
-              + '<a href="/backtest/results/' + id + '/chart" class="dropdown-item ' + chartCls + '">Chart</a>'
+              + '<a href="/backtest/results/' + id + '/chart" class="dropdown-item">Chart</a>'
               + '<button type="button" class="dropdown-item btn-save-backtest-config" data-id="' + id + '">Backtest-Config speichern</button>'
               + '<button type="button" class="dropdown-item btn-save-indicator-config" data-id="' + id + '">Indikator-Config speichern</button>'
               + '<div class="dropdown-divider"></div>'

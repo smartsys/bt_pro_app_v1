@@ -6,9 +6,13 @@ Stellt zwei Fixture-Ebenen bereit:
   - session (function-scope): Isolierte DB-Session per Truncate aller Tabellen
     vor jedem Test (schneller als Schema-Drop, sicher bei Hypertables).
 
-Safety-Check: Beim Start wird sichergestellt, dass die URL auf die Test-DB
-(Port 5562) zeigt und NICHT auf die Arbeits-DB (Port 5560 / Host db_bt_pro_v1).
-Verstoß bricht den gesamten pytest-Lauf mit einem harten Fehler ab.
+Safety-Check: Beim Start wird sichergestellt, dass die URL auf den Host der
+Test-DB (db_bt_pro_v1_test) zeigt und NICHT auf die Arbeits-DB (db_bt_pro_v1
+bzw. deren Host-Port 5560). Verstoß bricht den gesamten pytest-Lauf mit einem
+harten Fehler ab.
+
+Die Suite läuft ausschließlich im Container (Ticket 88):
+    docker compose -f docker-compose-local.yml run --rm --build test
 
 Ebenfalls enthalten: SQLite-Fixtures für reine Unit-Tests (test_engine,
 test_session) die kein PostgreSQL benötigen.
@@ -23,7 +27,7 @@ from typing import Generator
 import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 # Projekt-Root für Imports und .env-Laden
@@ -33,15 +37,16 @@ sys.path.insert(0, str(_ROOT))
 # .env laden damit VBT_TEST_DATABASE_URL verfügbar ist
 load_dotenv(_ROOT / '.env')
 
-# GEÄNDERT: Ticket 14 — Test-Dateien ausschließen, die vectorbtpro direkt importieren.
-# vectorbtpro ist nur im Windows-venv verfügbar, nicht in der WSL-Python-Installation.
-# Diese Tests können nur mit dem korrekten Interpreter ausgeführt werden.
-collect_ignore = [
-    'test_spec_runner_version.py',
-    'test_spec_runner_reads_iteration.py',
-]
-
 from user_data.utils.database.models import Base  # noqa: E402
+
+# Hostname der Test-DB im Docker-Netz. Einziges zulässiges Ziel für
+# VBT_TEST_DATABASE_URL (Ticket 88) — siehe _assert_test_db().
+TEST_DB_HOST = 'db_bt_pro_v1_test'
+
+# Hostname und Host-Port der Arbeits-DB. Rein für die Fehlermeldung, damit ein
+# Fehlgriff sofort benannt werden kann.
+LIVE_DB_HOST = 'db_bt_pro_v1'
+LIVE_DB_HOST_PORT = 5560
 
 
 # ============================================================================
@@ -54,36 +59,45 @@ def _get_test_db_url() -> str:
     if not url:
         pytest.exit(
             'VBT_TEST_DATABASE_URL ist nicht gesetzt. '
-            'Bitte .env prüfen (Ticket 14). '
-            'Erwartet: postgresql+psycopg2://...@localhost:5562/vbt',
+            'Die Suite läuft im Container-Dienst "test" '
+            '(docker compose -f docker-compose-local.yml run --rm --build test), '
+            f'der die Variable setzt. Erwartet: postgresql+psycopg2://...@{TEST_DB_HOST}:5432/vbt',
             returncode=1,
         )
     return url
 
 
-def _assert_not_live_db(url: str) -> None:
-    """Bricht ab wenn die URL auf die Arbeits-DB zeigt.
+def _assert_test_db(url: str) -> None:
+    """Bricht ab, wenn die URL nicht auf die Test-DB zeigt.
 
-    Schützt die Arbeits-DB (Port 5560, Host db_bt_pro_v1) vor versehentlichem
-    Überschreiben durch Tests.
+    Geprüft wird der Hostname, nicht der Port: Der Host-Port 5560 der Arbeits-DB
+    existiert im Container-Netz gar nicht, dort heißen die beiden Datenbanken
+    db_bt_pro_v1 (Arbeit) und db_bt_pro_v1_test (Test). Beide tragen denselben
+    Datenbanknamen, der Host ist also das einzige unterscheidende Merkmal.
+
+    Die Prüfung ist bewusst eine Positivliste mit genau einem zulässigen Ziel:
+    Jede andere Adresse — die Arbeits-DB unter beiden Schreibweisen ebenso wie die
+    Host-Form der Test-DB aus dem alten venv-Weg — bricht den Lauf ab.
     """
-    # Port 5560 ist der Arbeits-DB-Port
-    if ':5560/' in url or ':5560' == url.rsplit('/', 1)[0][-5:]:
-        pytest.exit(
-            f'SICHERHEITS-ABBRUCH: VBT_TEST_DATABASE_URL zeigt auf die Arbeits-DB (Port 5560)!\n'
-            f'URL: {url}\n'
-            f'Tests dürfen NIEMALS gegen die Arbeits-DB laufen. '
-            f'Test-DB-Port ist 5562.',
-            returncode=1,
-        )
-    # Host db_bt_pro_v1 ist der interne Docker-Hostname der Arbeits-DB
-    if '@db_bt_pro_v1:' in url or '@db_bt_pro_v1/' in url:
-        pytest.exit(
-            f'SICHERHEITS-ABBRUCH: VBT_TEST_DATABASE_URL zeigt auf den Arbeits-DB-Host (db_bt_pro_v1)!\n'
-            f'URL: {url}\n'
-            f'Tests dürfen NIEMALS gegen die Arbeits-DB laufen.',
-            returncode=1,
-        )
+    host = make_url(url).host or ''
+    if host == TEST_DB_HOST:
+        return
+
+    if host == LIVE_DB_HOST:
+        grund = f'auf den Arbeits-DB-Host ({LIVE_DB_HOST})'
+    elif f':{LIVE_DB_HOST_PORT}' in url:
+        grund = f'auf die Arbeits-DB (Host-Port {LIVE_DB_HOST_PORT})'
+    else:
+        grund = f'auf den unbekannten Host "{host}"'
+
+    pytest.exit(
+        f'SICHERHEITS-ABBRUCH: VBT_TEST_DATABASE_URL zeigt {grund}!\n'
+        f'URL: {url}\n'
+        f'Tests dürfen NIEMALS gegen die Arbeits-DB laufen. Einziges zulässiges Ziel ist '
+        f'der Host {TEST_DB_HOST}. Die Suite wird im Container gefahren:\n'
+        f'  docker compose -f docker-compose-local.yml run --rm --build test',
+        returncode=1,
+    )
 
 
 def _apply_migrations(url: str) -> None:
@@ -131,14 +145,14 @@ def _truncate_all_tables(engine: Engine) -> None:
 
 @pytest.fixture(scope='session')
 def db_engine() -> Generator[Engine, None, None]:
-    """PostgreSQL-Engine gegen die dedizierte Test-DB (Port 5562).
+    """PostgreSQL-Engine gegen die dedizierte Test-DB (Host db_bt_pro_v1_test).
 
     Einmalig pro pytest-Session:
-    - Safety-Check: URL darf nicht auf Arbeits-DB zeigen.
+    - Safety-Check: URL muss auf die Test-DB zeigen, nie auf die Arbeits-DB.
     - Alembic-Migrationen werden angewendet (idempotent via 'upgrade head').
     """
     url = _get_test_db_url()
-    _assert_not_live_db(url)
+    _assert_test_db(url)
     _apply_migrations(url)
     engine = create_engine(url, echo=False)
     yield engine

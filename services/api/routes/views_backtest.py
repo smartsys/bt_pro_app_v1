@@ -102,6 +102,16 @@ def run_detail_page(request: Request, run_id: int) -> HTMLResponse:
             'end_date': run.end_date,
             'n_combinations': run.n_combinations,
             'status': run.status,
+            # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs im Page-Header sichtbar machen.
+            'usability': run.usability,
+            'usability_note': run.usability_note,
+            'warmup_bars': run.warmup_bars,
+            'warmup_required_bars': run.warmup_required_bars,
+            'warmup_note': run.warmup_note,
+            # GEÄNDERT: Ticket 68 — explizite Metrik-Auswahl ist die Quelle der Wahrheit
+            # im backtest_config_json; ohne explizite Angabe (Default 'auto') bleibt der
+            # Key leer und es wird kein Badge angezeigt.
+            'metrics_selection': (run.backtest_config_json or {}).get('metrics'),
         }
     finally:
         session.close()
@@ -194,6 +204,15 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
             'max_drawdown_pct': result.max_drawdown_pct,
             'total_trades': result.total_trades,
             'win_rate_pct': result.win_rate_pct,
+            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            'open_trades': result.open_trades,
+            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung, gerechneter Zeitraum und
+            # Balkenzahl direkt im Result-Detail sichtbar machen.
+            'long_trades': result.long_trades,
+            'short_trades': result.short_trades,
+            'bar_count': result.bar_count,
+            'start_index': result.start_index,
+            'end_index': result.end_index,
             'is_favorite': bool(result.is_favorite),
         }
         # GEÄNDERT: K2 — keine Supertrend-Spezialwerte mehr; alle Indikatoren werden

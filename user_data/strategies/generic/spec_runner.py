@@ -11,8 +11,8 @@ Length 1 haben — der Code-Pfad ist in beiden Fällen identisch.
 Für sehr große Multiparameter-Läufe (> chunk_size Kombis) wird automatisch
 chunk-weises Batching aktiviert. Jeder Block ist ein kartesisches Sub-Produkt;
 nach dem Lauf werden die Metriken aller Blöcke konkateniert. Das Ergebnis-Dict
-enthält dann 'metrics_table' + 'columns' statt 'portfolios'. Der recompute-Pfad
-und single-combo-Pfad bleiben unverändert ('_disable_chunked': True).
+enthält dann 'metrics_table' + 'columns' + 'ann_factor' statt 'portfolios'. Der
+recompute-Pfad und single-combo-Pfad bleiben unverändert ('_disable_chunked': True).
 
 Versionierung (SemVer — MANUELL erhöhen):
     Major (X.0.0): Breaking Change der Spec-Interpretation. Gleiche Spec liefert
@@ -54,13 +54,79 @@ from typing import Any, Callable, Optional
 # (vorher wurde 'tf' im Runner still verworfen). Breaking: Specs, die ein nicht-Basis-'tf'
 # tragen, liefern nach dem Upgrade andere (jetzt korrekte) Ergebnisse. Specs ohne 'tf'
 # bzw. mit tf==Basis bleiben bit-identisch.
-VERSION = "2.0.0"
+# GEÄNDERT: Ticket 58 — Major-Bump 3.0.0: Kennzahlen laufen ausschließlich über das
+# Handelsfenster start..end der BacktestConfig; der Vorlauf (ohlc_start..ohlc_end) wärmt
+# nur noch die Indikatoren auf. Breaking: Buy-and-Hold-Vergleichsmaßstab, Sharpe,
+# annualisierte Größen und alle benchmark-relativen Kennzahlen ändern sich für jede Spec
+# mit Vorlauf. Zusätzlich rechnen Trefferquote und Profitfaktor im Multi-Kombinations-Pfad
+# jetzt über geschlossene Trades (vorher inklusive einer am Fensterende offenen Position).
+#
+# HERKUNFT EINES RESULTS (Ticket 58, Anforderung 4): Die Konvention, nach der die
+# Kennzahlen eines Results gerechnet wurden, steht in backtest_results.spec_runner_version:
+#   < 3.0.0  — Kennzahlen über das volle Datenfenster ohlc_start..ohlc_end (inkl. Vorlauf);
+#              Trefferquote/Profitfaktor im Multi-Kombinations-Pfad inkl. offener Position;
+#              backtest_results.open_trades ist NULL (Spalte existierte noch nicht).
+#   >= 3.0.0 — Kennzahlen ausschließlich über start..end; Trefferquote/Profitfaktor über
+#              geschlossene Trades; open_trades ist gesetzt.
+# Alte und neue Zahlen sind nicht vergleichbar. Der Bestand wird bewusst nicht nachgerechnet.
+#
+# MIT 3.0.0 WECHSELT NICHT NUR DER ZEITRAUM, SONDERN AUCH DIE GRUNDGESAMTHEIT.
+# Trefferquote und Profitfaktor rechnen ab 3.0.0 über die geschlossenen Trades
+# (total_trades - open_trades) statt über alle. Gemessen an 200 Kombinationen
+# (BTCUSDT 4h, 2022-01-01..2024-01-01): Alle 200 trugen eine am Fensterende offene
+# Position; die Trefferquote verschob sich um bis zu 4,76 Prozentpunkte (Median
+# -0,42), der Profitfaktor um bis zu -0,75. Der Betrag skaliert mit 1/Trades — bei
+# 15 Trades 4,8 Punkte, bei 185 Trades unter 0,6.
+#
+# Folge für die Bestwert-Auswahl: Das Win-Rate-Band ist eines der vier
+# Standard-Kriterien (siehe run-bestwerte). Verschiebt sich die Trefferquote, kann in
+# einem Lauf ein anderes Result das Band gewinnen als vor 3.0.0. Wer alte und neue
+# Favoriten nebeneinanderlegt, findet den Grund hier: unterschiedliche
+# Grundgesamtheit, nicht unterschiedliche Rechnung auf denselben Trades.
+#
+# Ist für eine Kombination KEIN Trade geschlossen (alle Positionen laufen über das
+# Fensterende hinaus), sind Trefferquote und Profitfaktor nicht bestimmbar und stehen
+# als NULL in der Datenbank — ausdrücklich nicht als 0, das wäre ein Totalausfall.
+#
+# GEÄNDERT: Ticket 59 — Minor-Bump 3.1.0: 'slippage' ist ein neuer optionaler
+# Portfolio-Parameter im backtest_config_json['portfolio']-Block und geht als Anteil
+# vom Orderpreis an from_signals. Fehlt der Key oder ist er None/0.0, rechnet der
+# Runner bit-identisch zu 3.0.0 — es ist also opt-in, kein Verhaltenswechsel für
+# bestehende Specs. Ebenfalls in 3.1.0: 'stop_exit_price' wird roh an VBT
+# durchgereicht statt über einen case-sensitiven Custom-Resolver; gültige Werte in
+# abweichender Schreibweise ('close') laufen jetzt durch, statt mit AttributeError
+# abzubrechen. Für Werte, die vorher schon funktionierten, ändert sich nichts.
+#
+# GEÄNDERT: Ticket 54 — Major-Bump 4.0.0: Die Deflated Sharpe Ratio entsteht nicht mehr
+# hier. Der gechunkte Pfad sammelt keine DSR-Bausteine mehr und schreibt keine DSR in die
+# Metriken-Tabelle; die zweite, aus VBT abgeschriebene Formelkopie ist ersatzlos entfallen.
+# Stattdessen liefert der Runner den Annualisierungsfaktor des Laufs mit ('ann_factor',
+# aus VBTs ReturnsAccessor), und die Kennzahl entsteht als Nachlauf über den ganzen Lauf
+# (repository._calculate_deflated_sharpe) mit korrigierter Formel.
+#
+# HERKUNFT EINES RESULTS, Fortsetzung:
+#   < 4.0.0  — deflated_sharpe_ratio nach VBTs Formel: mit dem Fehler 'sharpe_ratio +' im
+#              Zähler (strukturell auf 0,5 gedeckelt und unabhängig vom bewerteten
+#              Kandidaten) und mit der Excess- statt der rohen Wölbung im Nenner. Im
+#              gechunkten Lauf zusätzlich aus einer zweiten Formelkopie.
+#   >= 4.0.0 — deflated_sharpe_ratio aus der eigenen, korrigierten Rechnung über das
+#              gesamte Raster (N = backtest_runs.n_combinations), gechunkt wie ungechunkt
+#              derselbe Weg.
+# Breaking, weil dieselbe Spec nach dem Upgrade eine andere (jetzt korrekte) DSR liefert.
+# Alle übrigen Kennzahlen bleiben bit-identisch zu 3.1.0.
+#
+# GEÄNDERT: Ticket 71 — Minor-Bump 4.1.0: Zwei neue optionale Parameter, rein für die
+# Ausgabe der Ergebnisse — 'chunk_sink' (Senke, die jeden fertig gerechneten Chunk sofort
+# entgegennimmt) und 'completed_chunks' (Zahl der bereits gespeicherten führenden Chunks,
+# die übersprungen werden). Gerechnet wird unverändert: dieselbe Spec liefert dieselben
+# Kennzahlen, ob mit oder ohne Senke, ob in einem Stück oder fortgesetzt. Ohne die beiden
+# Parameter verhält sich der Runner exakt wie 4.0.0.
+VERSION = "4.1.0"
 
 # Zentraler Importpfad zum generischen Spec-Runner-Einstiegspunkt. Wird von API-Routen
 # als import_path in die BacktestConfig geschrieben — Single Source statt verstreuter Literale.
 SPEC_RUNNER_IMPORT_PATH = "user_data.strategies.generic.spec_runner.run_spec_strategy"
 
-import pandas as pd
 import vectorbtpro as vbt
 
 from user_data.strategies.generic.indicator_factory import (
@@ -68,11 +134,17 @@ from user_data.strategies.generic.indicator_factory import (
     split_indicators_json_chunks,
     STOP_PARAM_KEYS,
     _TSL_PAIR_KEYS,
+    _collect_varying_axes,
     expand_stop_values,
     is_stop_sweep,
 )
 from user_data.strategies.generic.rules_engine import (
     evaluate_rules_native,
+)
+# GEÄNDERT: Ticket 58 — Handelsfenster (start..end) als einzige Bildungsvorschrift.
+from user_data.utils.metrics.trading_window import (
+    build_trading_window,
+    slice_to_trading_window,
 )
 
 
@@ -82,6 +154,8 @@ def run_spec_strategy(
     backtest_config_json: dict,
     rules_json: Optional[dict] = None,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    chunk_sink: Optional[Callable[[int, list, Any, float], None]] = None,
+    completed_chunks: int = 0,
 ) -> dict:
     """Führt die Spec als Multi-Combo-Backtest aus.
 
@@ -95,11 +169,23 @@ def run_spec_strategy(
         progress_callback: Optionaler Callback (current_chunk, total_chunks), den der
             gechunkte Pfad einmal je Chunk aufruft. Hält den Spec-Runner DB-frei -
             der Worker injiziert das DB-Update. None = kein Fortschritts-Reporting.
+        chunk_sink: Optionale Senke (Ticket 71), die jeden fertig gerechneten Chunk
+            sofort entgegennimmt: (chunk_index, metrics_table, columns, ann_factor).
+            Der Worker hängt daran das Speichern in die Datenbank; der Spec-Runner
+            bleibt DB-frei. Mit Senke sammelt der Runner nichts mehr im Speicher und
+            liefert statt 'metrics_table' die Zahl der abgegebenen Kombinationen unter
+            'chunks_saved'. Ohne Senke (save-freie Direktaufrufe) bleibt es beim
+            bisherigen Sammeln.
+        completed_chunks: Anzahl der von vorn her bereits gespeicherten Chunks eines
+            fortgesetzten Laufs (Ticket 71). Diese Chunks werden übersprungen. Die
+            Chunk-Aufteilung ist deterministisch, der übersprungene Chunk k ist also
+            derselbe wie im abgebrochenen Lauf. Nur im gechunkten Pfad wirksam.
 
     Returns:
         dict mit Keys 'portfolios', 'indicators_results', 'signals',
         'analysis_results_dict' - kompatibel zu save_strategy_results().
-        Bei gechunkten Läufen stattdessen 'metrics_table' + 'columns'.
+        Bei gechunkten Läufen stattdessen 'metrics_table' + 'columns' bzw.
+        'chunks_saved' (mit Senke).
 
     Raises:
         ValueError: Wenn rules_json fehlt.
@@ -119,6 +205,13 @@ def run_spec_strategy(
     # ganz fehlt, bricht der Run hier mit klarer Meldung ab — statt später still
     # in rules_engine._resolve_ref mit einer generischen Meldung zu crashen.
     _validate_rule_references(rules_json, indicators_json)
+
+    # GEÄNDERT: Ticket 58 (Anforderung 3, Audit-Befund 11) — Run-Start-Validierung der
+    # Rastergröße. Ein enabled, gesweepter, nirgends referenzierter Indikator würde in
+    # describe_combos/count_total_combos mitgezählt, ohne dass sich die Portfolio-Spalten
+    # unterscheiden — Folge: kollidierende params_hash-Werte, still überschriebene
+    # Ergebnisse, Ergebniszahl unter n_combinations.
+    _validate_swept_indicators_referenced(rules_json, indicators_json)
 
     # GEÄNDERT: Ticket 44 — Combo-Batching: große Grids werden chunk-weise verarbeitet
     # um OOM-Crashes bei 36k+ Kombis zu vermeiden. Der recompute-Pfad setzt
@@ -144,6 +237,8 @@ def run_spec_strategy(
             backtest_config_json=backtest_config_json,
             rules_json=rules_json,
             progress_callback=progress_callback,
+            chunk_sink=chunk_sink,
+            completed_chunks=completed_chunks,
         )
 
     # Indikatoren bauen (respektiert Chain-Dependencies). base_tf = Basis-Timeframe aus
@@ -165,8 +260,21 @@ def run_spec_strategy(
     stop_kwargs = build_stop_kwargs(stops_cfg)
     stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
 
-    stop_exit_price = _resolve_stop_exit_price(pf_cfg.get('stop_exit_price'))
+    # GEÄNDERT: Ticket 59 — beide Stop-Enum-Felder werden roh an from_signals
+    # durchgereicht. VBT löst sie selbst case-insensitiv auf (map_enum_fields); der
+    # frühere Custom-Resolver _resolve_stop_exit_price war case-sensitiv und hätte
+    # gültige Schreibweisen wie 'close' abgewiesen. Die klare Meldung bei einem
+    # ungültigen Wert liefert die Prüfung an der Eingabegrenze
+    # (user_data/utils/portfolio_enums.py).
+    stop_exit_price = pf_cfg.get('stop_exit_price')
     stop_order_type = pf_cfg.get('stop_order_type')
+
+    # GEÄNDERT: Ticket 59 — slippage als Anteil vom Orderpreis. Fehlender Key oder None
+    # (Alt-Runs, Alt-Leaderboard-Snapshots) bedeutet 0.0 = VBT-Default, also
+    # unverändertes Rechnen wie vor dem Ticket.
+    slippage = pf_cfg.get('slippage')
+    if slippage is None:
+        slippage = 0.0
 
     close_series = ohlc_data.get('Close')
     open_series = ohlc_data.get('Open')
@@ -177,8 +285,9 @@ def run_spec_strategy(
     # über evaluate_rules_native (signal_func_nb). Der Masken-Pfad (else-Zweig) wurde
     # entfernt. use_native-Flag und _rule_group_uses_state_refs-Check nicht mehr nötig.
     print(" - Nativer Pfad: signal_func_nb")
-    start_date = pd.Timestamp(backtest_config_json['start'], tz='UTC')
-    end_date   = pd.Timestamp(backtest_config_json['end'], tz='UTC')
+    # GEÄNDERT: Ticket 58 — Fenstergrenzen kommen aus build_trading_window, damit
+    # Entry-Maske und Kennzahlen-Zuschnitt garantiert dieselben Grenzen benutzen.
+    start_date, end_date = build_trading_window(backtest_config_json)
 
     pf_common_kwargs = dict(
         close=close_series,
@@ -186,6 +295,7 @@ def run_spec_strategy(
         high=high_series,
         low=low_series,
         fees=pf_cfg['fees'],
+        slippage=slippage,
         tp_stop=stop_kwargs['tp_stop'],
         sl_stop=stop_kwargs['sl_stop'],
         tsl_th=stop_kwargs['tsl_th'],
@@ -243,56 +353,92 @@ def _run_chunked(
     backtest_config_json: dict,
     rules_json: dict,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    chunk_sink: Optional[Callable[[int, list, Any, float], None]] = None,
+    completed_chunks: int = 0,
 ) -> dict:
-    """Führt einen Multi-Combo-Backtest chunk-weise aus und sammelt Metrik-Tabellen.
+    """Führt einen Multi-Combo-Backtest chunk-weise aus und gibt die Metriken ab.
 
     Jeder Chunk ist ein kartesisches Sub-Produkt. Pro Chunk werden Indikatoren
-    gebaut, Signale berechnet, das Portfolio erstellt und sofort auf die exakt
-    16 Felder von _extract_partial_metrics reduziert. n_block==1 (VBT liefert
+    gebaut, Signale berechnet, das Portfolio erstellt und sofort auf die
+    Felder von _extract_metrics reduziert. n_block==1 (VBT liefert
     Skalare) wird durch np.atleast_1d() in _vals() korrekt behandelt.
     Der Chunk-Speicher wird zwischen den Blöcken freigegeben.
 
-    deflated_sharpe_ratio ist quer-schnittlich: var_sharpe und N hängen von ALLEN
-    Kombis ab. Im gechunkten Lauf sieht jeder Chunk nur seine eigenen Spalten,
-    weshalb _extract_partial_metrics ein falsches DSR liefern würde. Lösung:
-    Pro Chunk werden die DSR-Bausteine (nicht-annualisierte Sharpe, Skew, Kurtosis, T)
-    gesammelt. Nach der Konkatenation wird DSR global und korrekt neu berechnet und
-    in flat_metrics überschrieben. Die exakte VBT-Formel wird 1:1 kopiert.
+    GEÄNDERT: Ticket 71 — mit `chunk_sink` geht jeder fertige Chunk sofort an die
+    Senke (der Worker schreibt ihn in die Datenbank) und wird hier nicht mehr
+    aufgehoben. Ein hart beendeter Lauf verliert damit höchstens den Chunk, an dem er
+    gerade rechnete, statt seiner gesamten Arbeit. `completed_chunks` überspringt die
+    beim Fortsetzen bereits gespeicherten führenden Chunks; die Chunk-Aufteilung ist
+    deterministisch, Chunk k ist also derselbe wie im abgebrochenen Lauf.
+
+    Die deflated_sharpe_ratio wird hier NICHT gerechnet (Ticket 54). Sie ist
+    rasterweit — var_sharpe und die Rastergröße N hängen von ALLEN Kombinationen ab —
+    und entsteht deshalb erst als Nachlauf über den ganzen Lauf, nachdem die Results
+    geschrieben sind (repository._calculate_deflated_sharpe). Damit ist der gechunkte
+    Fall automatisch richtig, ohne dass hier eine zweite Formel stünde — und aus
+    demselben Grund ändert das chunkweise Speichern nichts an ihrem Wert: sie läuft
+    unverändert erst nach dem letzten Chunk über den kompletten Lauf. Was dieser
+    Pfad dafür beisteuern muss, ist der Annualisierungsfaktor: im gechunkten Lauf
+    kommt kein Portfolio beim Speichern an, aus dem er sich holen ließe.
 
     Args:
         chunks: Liste von sub-indicators_json-Dicts (je ein gültiger Sub-Grid).
         ohlc_data: OHLCV-Datenobjekt.
         backtest_config_json: Backtest-Konfiguration (ohne chunk_size — wird intern gesetzt).
         rules_json: Entry-/Exit-Regeln.
+        progress_callback: Optionaler Fortschritts-Callback (current_chunk, total_chunks).
+        chunk_sink: Optionale Senke (chunk_index, metrics_table, columns, ann_factor).
+        completed_chunks: Zahl der zu überspringenden, bereits gespeicherten Chunks.
 
     Returns:
-        dict mit 'metrics_table' (list[dict]), 'columns' (pd.Index / MultiIndex),
-        'indicators_results', 'signals', 'analysis_results_dict'.
+        Ohne Senke: dict mit 'metrics_table' (list[dict]), 'columns' (pd.Index /
+        MultiIndex), 'ann_factor' (float), 'indicators_results', 'signals',
+        'analysis_results_dict'.
+        Mit Senke: dict mit 'chunks_saved' (Zahl der an die Senke abgegebenen
+        Kombinationen), 'ann_factor', 'indicators_results', 'signals',
+        'analysis_results_dict' — die Kennzahlen selbst hat die Senke.
     """
     import gc
-    import numpy as np
-    from scipy import stats as scipy_stats
-    from user_data.utils.database.repository import _extract_partial_metrics
+    from user_data.utils.database.repository import _extract_metrics
+
+    # GEÄNDERT: Ticket 71 — Überspringen ohne Senke wäre stiller Datenverlust: die
+    # übersprungenen Chunks fehlten im Rückgabewert, und der Aufrufer würde ein
+    # unvollständiges Raster für ein vollständiges halten.
+    if completed_chunks > 0 and chunk_sink is None:
+        raise ValueError(
+            f"completed_chunks={completed_chunks} ohne chunk_sink: Ein fortgesetzter "
+            f"Lauf setzt voraus, dass die bereits gerechneten Chunks gespeichert sind "
+            f"und die neuen ebenfalls gespeichert werden."
+        )
 
     all_metrics: list[list[dict]] = []
     all_columns: list = []
     last_indicators_results = None
+    # GEÄNDERT: Ticket 71 — Zahl der an die Senke abgegebenen Kombinationen. Bleibt bei
+    # 0, wenn ein fortgesetzter Lauf gar keinen Chunk mehr rechnen musste.
+    n_sunk = 0
 
-    # DSR-Bausteine pro Kombi — werden nach Konkatenation global verrechnet
-    all_sharpes: list[np.ndarray] = []    # nicht-annualisierte Sharpe je Kombi
-    all_skews: list[np.ndarray] = []      # Skewness der Returns je Kombi
-    all_kurtoses: list[np.ndarray] = []   # Kurtosis der Returns je Kombi
-    dsr_T: int = 0                        # Anzahl Zeitreihen-Zeilen (gleich für alle)
-
-    # VBT-Default-Parameter für Sharpe / DSR (aus ReturnsAccessor.defaults)
-    _DSR_RISK_FREE: float = 0.0
-    _DSR_DDOF: int = 1
-    _DSR_BIAS: bool = True
+    # GEÄNDERT: Ticket 54 — Annualisierungsfaktor aus VBT (ReturnsAccessor.ann_factor).
+    # Er hängt nur an Jahres- und Balkenfrequenz und ist deshalb über alle Blöcke
+    # identisch; genommen wird der des ersten Blocks. Nicht nachgebaut, nicht aus einer
+    # eigenen Timeframe-Tabelle abgeleitet — es muss der Wert sein, den VBT selbst für
+    # den annualisierten Sharpe benutzt.
+    ann_factor: Optional[float] = None
 
     # _disable_chunked setzt, damit rekursive Aufrufe nicht erneut chunken
     sub_config = {**backtest_config_json, '_disable_chunked': True}
 
     for block_idx, sub_indicators_json in enumerate(chunks):
+        # GEÄNDERT: Ticket 71 — bereits gespeicherte Chunks eines fortgesetzten Laufs
+        # überspringen. Ihre Results stehen in der Datenbank; sie noch einmal zu rechnen
+        # wäre genau die Arbeit, die das Ticket sparen soll.
+        if block_idx < completed_chunks:
+            print(
+                f" - Chunk {block_idx + 1}/{len(chunks)}: übersprungen "
+                f"(bereits gespeichert)"
+            )
+            continue
+
         print(f" - Chunk {block_idx + 1}/{len(chunks)}: Indikatoren bauen ...")
 
         # GEÄNDERT: Chunk-Fortschritt an die DB melden (ein UPDATE pro Chunk), damit
@@ -311,58 +457,75 @@ def _run_chunked(
             rules_json=rules_json,
         )
 
-        block_pf = block_result['portfolios']
+        # GEÄNDERT: Ticket 58 — Zuschnitt auf das Handelsfenster gleich hier, damit die
+        # Kennzahlen auf dem Fenster rechnen und nicht auf den erzwungen flachen
+        # Vorlauf-Balken. _extract_metrics schneidet zusätzlich selbst — der zweite
+        # Schnitt ist auf einem bereits gefensterten Portfolio wirkungslos und hält die
+        # Garantie in der Extraktionsfunktion.
+        block_pf = slice_to_trading_window(
+            block_result['portfolios'], backtest_config_json
+        )
         block_columns = block_pf.wrapper.columns
         n_block = len(block_columns)
 
         print(f"   -> {n_block} Kombis in Chunk {block_idx + 1}, Metriken extrahieren ...")
-        # GEÄNDERT: Ticket 44 Bugfix — _vals() in _extract_partial_metrics verwendet nun
+        # GEÄNDERT: Ticket 44 Bugfix — _vals() in _extract_metrics verwendet nun
         # np.atleast_1d(), sodass n_block==1 (VBT liefert Skalare statt Arrays) korrekt
         # behandelt wird. Kein gesonderter Workaround für n_block==1 mehr nötig.
-        block_metrics = _extract_partial_metrics(block_pf, block_columns)
-
-        # GEÄNDERT: Ticket 44 DSR-Fix — DSR-Bausteine je Kombi sammeln (quer-schnittliche
-        # Rekonstruktion nach Konkatenation aller Chunks).
-        # Nicht-annualisierte Sharpe: ann_factor=1 (identisch zu VBT sharpe_ratio_1d_nb,
-        # annualized=False → ann_factor=1, risk_free=0.0).
-        # block_pf.returns ist ein DataFrame; np.asarray → T x n_block numpy-Array.
-        returns_2d = np.asarray(block_pf.returns)  # T x n_block
-
-        # Nicht-annualisierte Sharpe exakt nach VBT sharpe_ratio_1d_nb:
-        # mean(returns) / nanstd(returns, ddof) mit risk_free=0.0 abgezogen.
-        excess_returns = returns_2d - _DSR_RISK_FREE  # 0.0 → no-op
-        col_means = np.nanmean(excess_returns, axis=0)
-        col_stds = np.nanstd(excess_returns, axis=0, ddof=_DSR_DDOF)
-        block_sharpe_arr = np.where(
-            col_stds > 0,
-            col_means / col_stds,
-            np.where(col_means == 0, np.nan, np.inf),
+        # GEÄNDERT: Ticket 58 — Handelsfenster durchreichen. Der Zuschnitt greift je
+        # Chunk, weil jeder Chunk sein eigenes Portfolio hat.
+        # GEÄNDERT: Ticket 68 — 'metrics_resolved' kommt aus create_backtest_run (einzige
+        # Auflösungsstelle, kennt die Gesamt-Rastergröße). Jeder Chunk bekommt dieselbe
+        # bereits aufgelöste Gruppenmenge — sonst würde 'auto' hier gegen die kleinere
+        # Chunk-Größe statt der Gesamtzahl entscheiden.
+        block_metrics = _extract_metrics(
+            block_pf, block_columns, backtest_config_json,
+            groups=backtest_config_json.get('metrics_resolved'),
         )
 
-        # Skew und Kurtosis für DSR (VBT setzt NaN→0 vor scipy-Aufruf)
-        returns_2d_for_moments = returns_2d.copy()
-        nanmask = np.isnan(returns_2d_for_moments)
-        if nanmask.any():
-            returns_2d_for_moments[nanmask] = 0.0
-        block_skew = np.atleast_1d(scipy_stats.skew(returns_2d_for_moments, axis=0, bias=_DSR_BIAS))
-        block_kurt = np.atleast_1d(scipy_stats.kurtosis(returns_2d_for_moments, axis=0, bias=_DSR_BIAS))
+        # GEÄNDERT: Ticket 54 — Annualisierungsfaktor einmal am ersten Block abgreifen.
+        if ann_factor is None:
+            ann_factor = float(block_pf.returns_acc.ann_factor)
 
-        # T (Anzahl Zeitreihen-Schritte) — gleich für alle Chunks
-        if dsr_T == 0:
-            dsr_T = block_pf.wrapper.shape_2d[0]
-
-        all_sharpes.append(np.atleast_1d(block_sharpe_arr))
-        all_skews.append(block_skew)
-        all_kurtoses.append(block_kurt)
-
-        all_metrics.append(block_metrics)
-        all_columns.append(block_columns)
+        # GEÄNDERT: Ticket 71 — mit Senke wandert der Chunk sofort weiter (der Worker
+        # schreibt ihn in die Datenbank) und wird hier nicht mehr aufgehoben. Ein Fehler
+        # der Senke darf NICHT verschluckt werden: er bedeutet, dass die Arbeit dieses
+        # Chunks nicht gesichert ist — der Lauf bricht dann sichtbar ab.
+        if chunk_sink is not None:
+            chunk_sink(block_idx, block_metrics, block_columns, ann_factor)
+            n_sunk += n_block
+        else:
+            all_metrics.append(block_metrics)
+            all_columns.append(block_columns)
         last_indicators_results = block_result.get('indicators_results')
 
         # Chunk-Speicher freigeben
-        del block_pf, block_result, returns_2d, returns_2d_for_moments
+        del block_pf, block_result, block_metrics, block_columns
         gc.collect()
         print(f"   -> Chunk {block_idx + 1} abgeschlossen")
+
+    # GEÄNDERT: Ticket 46 — signals-Dict enthält jetzt vier Masken statt entries/exits
+    # GEÄNDERT: Ticket 54 — 'ann_factor' mitliefern: im gechunkten Pfad kommt beim
+    # Speichern kein Portfolio an, aus dem er sich holen ließe. Ohne ihn kann der
+    # DSR-Nachlauf den Sharpe je Balken nicht aus dem annualisierten rekonstruieren.
+    common = {
+        'ann_factor': ann_factor,
+        'indicators_results': last_indicators_results,
+        'signals': {
+            'long_entries': None,
+            'long_exits': None,
+            'short_entries': None,
+            'short_exits': None,
+        },
+        'analysis_results_dict': None,
+    }
+
+    if chunk_sink is not None:
+        print(
+            f" - Chunked Lauf abgeschlossen: {n_sunk} Kombis an die Senke abgegeben,"
+            f" {completed_chunks} Chunk(s) übersprungen (ann_factor={ann_factor})"
+        )
+        return {'chunks_saved': n_sunk, **common}
 
     # Metriken aller Chunks zu einer flachen Liste zusammenführen
     flat_metrics = [row for block in all_metrics for row in block]
@@ -372,68 +535,15 @@ def _run_chunked(
     for col in all_columns[1:]:
         combined_columns = combined_columns.append(col)
 
-    # GEÄNDERT: Ticket 44 DSR-Fix — deflated_sharpe_ratio global korrekt neu berechnen.
-    # Exakte VBT-Formel aus ReturnsAccessor.deflated_sharpe_ratio (1:1 kopiert):
-    #   var_sharpe = np.nanvar(sharpe_ratio, ddof=ddof)  # über ALLE Kombis
-    #   SR0 = sharpe + sqrt(var_sharpe) * (
-    #       (1 - euler_gamma) * norm.ppf(1 - 1/N)
-    #       + euler_gamma * norm.ppf(1 - 1/(N*e))
-    #   )
-    #   out = norm.cdf(((sharpe - SR0) * sqrt(T-1)) / sqrt(1 - skew*sharpe + ((kurt-1)/4)*sharpe**2))
-    all_sharpes_concat = np.concatenate(all_sharpes)
-    all_skews_concat = np.concatenate(all_skews)
-    all_kurtoses_concat = np.concatenate(all_kurtoses)
-    N_total = len(all_sharpes_concat)
-    var_sharpe_global = np.nanvar(all_sharpes_concat, ddof=_DSR_DDOF)
-
-    SR0_global = all_sharpes_concat + np.sqrt(var_sharpe_global) * (
-        (1 - np.euler_gamma) * scipy_stats.norm.ppf(1 - 1 / N_total)
-        + np.euler_gamma * scipy_stats.norm.ppf(1 - 1 / (N_total * np.e))
-    )
-    dsr_denominator = np.sqrt(
-        1
-        - all_skews_concat * all_sharpes_concat
-        + ((all_kurtoses_concat - 1) / 4) * all_sharpes_concat ** 2
-    )
-    # Schutz vor Division durch null / negativem Radikand
-    dsr_denominator = np.where(dsr_denominator > 0, dsr_denominator, np.nan)
-    dsr_global = scipy_stats.norm.cdf(
-        ((all_sharpes_concat - SR0_global) * np.sqrt(dsr_T - 1)) / dsr_denominator
-    )
-
-    # Globale DSR-Werte zurückschreiben
-    def _safe_float_local(v: float) -> Optional[float]:
-        """Konvertiert float zu None bei NaN/Inf (identisch zu repository._safe_float)."""
-        if v is None:
-            return None
-        try:
-            f = float(v)
-            if np.isnan(f) or np.isinf(f):
-                return None
-            return f
-        except (TypeError, ValueError):
-            return None
-
-    for i, dsr_val in enumerate(dsr_global):
-        flat_metrics[i]['deflated_sharpe_ratio'] = _safe_float_local(dsr_val)
-
     print(
         f" - Chunked Lauf abgeschlossen: {len(flat_metrics)} Kombis gesamt"
-        f" (DSR global neu berechnet: N={N_total}, var_sharpe={var_sharpe_global:.6f})"
+        f" (ann_factor={ann_factor})"
     )
 
-    # GEÄNDERT: Ticket 46 — signals-Dict enthält jetzt vier Masken statt entries/exits
     return {
-        'metrics_table': flat_metrics,       # list[dict] mit 16-Spalten-Records
+        'metrics_table': flat_metrics,       # list[dict] mit den Feldern aus _extract_metrics
         'columns': combined_columns,          # pd.Index / MultiIndex
-        'indicators_results': last_indicators_results,
-        'signals': {
-            'long_entries': None,
-            'long_exits': None,
-            'short_entries': None,
-            'short_exits': None,
-        },
-        'analysis_results_dict': None,
+        **common,
     }
 
 
@@ -517,11 +627,69 @@ def _validate_rule_references(rules_json: dict, indicators_json: dict) -> None:
     )
 
 
-def _resolve_stop_exit_price(value: Optional[str]):
-    """Mapt einen String wie 'Close' auf vbt.pf_enums.StopExitPrice.Close."""
-    if value is None:
-        return None
-    return getattr(vbt.pf_enums.StopExitPrice, value)
+def _validate_swept_indicators_referenced(rules_json: dict, indicators_json: dict) -> None:
+    """Prüft beim Run-Start, ob jeder gesweepte Indikator tatsächlich benutzt wird.
+
+    Ein aktivierter (`enabled`, Default True) Indikator mit mindestens einer
+    variierenden Sweep-Achse (Range/Liste statt Skalar) muss über eine
+    Erreichbarkeits-Kette aus aktiven Chain-Referenzen in einer aktiven
+    Regel-Bedingung enden (direkt oder über beliebig viele Zwischen-Indikatoren).
+    Eine flache "wird irgendwo als Chain-Input referenziert"-Prüfung reicht
+    NICHT: Eine Kette, die selbst in keiner Regel endet, oder deren haltendes
+    Zwischenglied deaktiviert ist, trägt nichts zu den Signalen bei — die
+    Sweep-Achse zählt in describe_combos/count_total_combos (indicator_factory.py)
+    trotzdem mit, die Portfolio-Spalten unterscheiden sich für die
+    verschiedenen Sweep-Werte aber nicht. Folge: kollidierende params_hash-
+    Werte, der Upsert überschreibt Ergebnisse still, und die tatsächliche
+    Ergebniszahl liegt unter n_combinations, ohne dass ein Fehler sichtbar wird.
+
+    Args:
+        rules_json: Entry-/Exit-Regeln mit Indikator-Referenzen.
+        indicators_json: Indikator-Spec mit optionalen Sweep-Achsen (Range-Dict
+            oder Liste statt Skalar).
+
+    Raises:
+        ValueError: Wenn ein gesweepter Indikator nirgends erreichbar ist.
+    """
+    # Startmenge: direkte Referenzen aus den aktiven Blöcken von Entry und Exit.
+    referenced: set[str] = set()
+    for grp_key in ('entry', 'exit'):
+        grp = rules_json.get(grp_key)
+        if grp and isinstance(grp, dict):
+            active_blocks = [b for b in (grp.get('blocks') or []) if b.get('enabled', True)]
+            referenced |= _collect_indicator_refs({'blocks': active_blocks})
+
+    # Transitive Erreichbarkeits-Schließung über Chain-Inputs (BFS mit "schon gesehen"-Set,
+    # analog zur Kanten-Behandlung in indicator_factory._topological_order — zyklensicher, da
+    # jede ID höchstens einmal in die Arbeitsmenge kommt). Ein bereits erreichter Indikator
+    # gibt seine EIGENEN Chain-Inputs nur weiter, wenn er selbst aktiviert ist — ein
+    # deaktivierter Indikator wird nie gerechnet und hält keine Referenz am Leben. Es werden
+    # gezielt nur die Chain-Kanten des jeweiligen Eintrags aufgelöst (_collect_indicator_refs
+    # auf DIESEN Eintrag), nicht mehr blind über das gesamte indicators_json — sonst würde
+    # jede Kette wieder als "irgendwie benutzt" durchgehen, egal wo sie endet.
+    to_visit = list(referenced)
+    while to_visit:
+        ind_id = to_visit.pop()
+        entry = indicators_json.get(ind_id)
+        if not isinstance(entry, dict) or entry.get('enabled', True) is False:
+            continue
+        for dep_id in _collect_indicator_refs(entry):
+            if dep_id not in referenced:
+                referenced.add(dep_id)
+                to_visit.append(dep_id)
+
+    swept_ids = sorted({ind_id for ind_id, _key, _vals in _collect_varying_axes(indicators_json)})
+    unused = [ind_id for ind_id in swept_ids if ind_id not in referenced]
+    if not unused:
+        return
+
+    raise ValueError(
+        "Run abgebrochen: gesweepte Indikatoren ohne Verwendung — " + ", ".join(unused)
+        + " (weder in einer Regel referenziert noch als Chain-Input eines anderen "
+        "Indikators verwendet; die Sweep-Achse zählt sonst in der Kombinationszahl mit, "
+        "ohne dass sich die Portfolio-Spalten unterscheiden, wodurch Ergebnisse mit "
+        "kollidierendem params_hash still überschrieben werden)."
+    )
 
 
 # GEÄNDERT: Schritt 2 — '_stops' in from_signals-kwargs übersetzen (Skalar vs. Sweep).

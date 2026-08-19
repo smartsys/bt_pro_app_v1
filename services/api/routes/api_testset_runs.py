@@ -5,7 +5,7 @@ POST /api/testset-runs  — Neuen TestSet-Lauf starten (N Backtest-Runs enqueuen
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -23,6 +23,13 @@ from user_data.utils.database.repository_testsets import (
     create_testset_run,
     get_testset,
 )
+# GEÄNDERT: Ticket 68 — Metrik-Auswahl beim Run-Start
+from user_data.utils.metrics.metric_sets import validate_metrics_selection
+# GEÄNDERT: Ticket 56/72 — Befund Phase 1 (Kontext + Soll) beim Start anlegen; einzige
+# Implementierung, auch vom Leaderboard-Rerun genutzt (Ticket 72)
+from services.api.utils.finding_aggregation import open_finding_for_testset_run
+# GEÄNDERT: Ticket 102 — Genau-eines-Regel für die Raster-Quelle (Config-ID oder inline)
+from services.api.utils.indicator_source import require_exactly_one_indicator_source
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +46,15 @@ class TestSetRunIn(BaseModel):
     """
     testset_id: int
     iteration_id: int
-    indicator_config_id: int
+    # GEÄNDERT: Ticket 102 — das Raster kommt wahlweise aus einer gespeicherten
+    # IndicatorConfig (indicator_config_id) oder inline (indicators, Inhalt von
+    # config_json inklusive '_stops'). Genau eines von beiden ist Pflicht; die Prüfung
+    # macht die Route, damit der Grund im Klartext in der Antwort steht.
+    indicator_config_id: Optional[int] = None
+    indicators: Optional[dict] = None
+    # GEÄNDERT: Ticket 68 — optionale Metrik-Auswahl, gilt für alle N erzeugten Runs.
+    # "kern" | "voll" | "auto" (Default) | Liste zusätzlich gewünschter Gruppen-Keys.
+    metrics: Optional[Union[str, list[str]]] = None
 
 
 # --- Endpunkt ---
@@ -49,12 +64,27 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     """Legt einen TestSet-Lauf an und enqueued N Backtest-Runs.
 
     Löst strategy_family/strategy_name/import_path aus der Iteration auf
-    (analog Einzel-Lauf), lädt IndicatorConfig und enqueued einen RQ-Job
-    pro BacktestConfig im TestSet.
+    (analog Einzel-Lauf), nimmt das Indikator-Raster aus der gespeicherten
+    IndicatorConfig oder inline entgegen und enqueued einen RQ-Job pro
+    BacktestConfig im TestSet.
 
-    Body: { testset_id, iteration_id, indicator_config_id }
+    Body: { testset_id, iteration_id, indicator_config_id | indicators, metrics? }
     Response: { data: { testset_run_id, run_ids }, error: null }
     """
+    # GEÄNDERT: Ticket 68 — Metrik-Auswahl syntaktisch prüfen, BEVOR irgendein Datensatz
+    # (TestSetRun oder BacktestRun) angelegt wird. Die 'auto'-Auflösung selbst (braucht
+    # n_combinations je BacktestConfig) passiert erst in create_backtest_run.
+    try:
+        metrics_selection = validate_metrics_selection(payload.metrics)
+    except ValueError as exc:
+        return JSONResponse({'error': str(exc)}, status_code=400)
+
+    # GEÄNDERT: Ticket 102 — Raster-Quelle prüfen, ebenfalls vor jedem Datensatz.
+    try:
+        require_exactly_one_indicator_source(payload.indicator_config_id, payload.indicators)
+    except ValueError as exc:
+        return JSONResponse({'error': str(exc)}, status_code=400)
+
     session = get_session()
     try:
         # TestSet existiert?
@@ -102,18 +132,23 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             from user_data.strategies.generic.spec_runner import SPEC_RUNNER_IMPORT_PATH
             strat_import_path = SPEC_RUNNER_IMPORT_PATH
 
-        # IndicatorConfig laden
-        ind_config = (
-            session.query(IndicatorConfig)
-            .filter(IndicatorConfig.id == payload.indicator_config_id)
-            .first()
-        )
-        if ind_config is None:
-            return JSONResponse(
-                {'error': f'Indicator-Config #{payload.indicator_config_id} nicht gefunden'},
-                status_code=400,
+        # Indikator-Raster auflösen — gespeicherte IndicatorConfig oder inline
+        # GEÄNDERT: Ticket 102 — bei inline entfällt der Lookup vollständig; das Dict
+        # geht unverändert weiter und es entsteht keine IndicatorConfig-Zeile.
+        if payload.indicator_config_id is not None:
+            ind_config = (
+                session.query(IndicatorConfig)
+                .filter(IndicatorConfig.id == payload.indicator_config_id)
+                .first()
             )
-        indicators_json: dict = dict(ind_config.config_json or {})
+            if ind_config is None:
+                return JSONResponse(
+                    {'error': f'Indicator-Config #{payload.indicator_config_id} nicht gefunden'},
+                    status_code=400,
+                )
+            indicators_json: dict = dict(ind_config.config_json or {})
+        else:
+            indicators_json = dict(payload.indicators or {})
 
         # Alle BacktestConfigs laden
         bt_configs = (
@@ -130,6 +165,11 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             )
 
         iteration_id_int: int = iteration.id
+        # GEÄNDERT: Ticket 56 — Soll-Schnappschuss aus dem Konzept ziehen, solange die
+        # Session offen ist. Das Kopieren selbst passiert im Repository (deepcopy), damit
+        # eine spätere Änderung von goal_json bestehende Befunde nicht mehr berührt.
+        concept_id_int: int = concept.id
+        goal_snapshot: Optional[dict] = concept.goal_json
 
     finally:
         session.close()
@@ -160,6 +200,28 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
     from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
 
+    # GEÄNDERT: Ticket 56/72 — Befund Phase 1: Kontext + Soll stehen fest, bevor
+    # gerechnet wird. Das Soll stammt ausschließlich aus concept.goal_json
+    # (Schnappschuss), es gibt bewusst keine manuelle Soll-Eingabe im Payload — genau
+    # die wäre der Drift-Kanal. Anlage über die einzige Phase-1-Implementierung
+    # (auch vom Leaderboard-Rerun genutzt, Ticket 72).
+    session = get_session()
+    try:
+        open_finding_for_testset_run(
+            session=session,
+            testset_run_id=testset_run_id,
+            iteration_id=iteration_id_int,
+            concept_id=concept_id_int,
+            testset_id=payload.testset_id,
+            indicator_config_id=payload.indicator_config_id,
+            indicators_json=indicators_json,
+            spec_runner_version=_spec_runner_version,
+            goal_snapshot=goal_snapshot,
+            planned_n_runs=n_total,
+        )
+    finally:
+        session.close()
+
     q = Queue(BACKTEST_QUEUE_NAME, connection=get_redis_connection())
     run_ids: list[int] = []
 
@@ -183,11 +245,19 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
                 'size_type': bt.size_type,
                 'init_cash': bt.init_cash,
                 'fees': bt.fees,
+                # GEÄNDERT: Ticket 59 — slippage und die zwei Stop-Ausführungsfelder
+                # aus der BacktestConfig durchreichen (analog echter Einzel-Run).
+                'slippage': bt.slippage,
+                'stop_exit_price': bt.stop_exit_price,
+                'stop_order_type': bt.stop_order_type,
                 # GEÄNDERT: Schritt 3c/3d — Stop-Spalten UND Stop-Formate aus der
                 # BacktestConfig entfernt. Stops samt Formaten kommen ausschließlich
                 # aus indicators_json['_stops'] (IndicatorConfig).
             },
         }
+        # GEÄNDERT: Ticket 68 — Metrik-Auswahl gilt für alle N Runs des TestSet-Laufs.
+        if metrics_selection is not None:
+            backtest_config_json['metrics'] = metrics_selection
 
         # GEÄNDERT: Schritt 3b — '_stops' stammt jetzt aus der IndicatorConfig
         # (indicators_json). Kein Clobbern mehr aus dem portfolio-Block. Die eigene

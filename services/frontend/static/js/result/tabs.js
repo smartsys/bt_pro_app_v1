@@ -10,7 +10,6 @@
  *
  * opts für loadStatsTab:
  *   contentEl      — HTMLElement für den Stats-Inhalt (Pflicht)
- *   fullMetricsBarEl — HTMLElement für die Vollanalyse-Bar (optional)
  *   extendedMetricsEl — HTMLElement für Erweiterte Metriken (optional)
  *   extendedMetricsContentEl — HTMLElement für Inhalt der erweiterten Metriken (optional)
  *   benchmarkValueEl — HTMLElement für Benchmark-Wert in der Metrik-Leiste (optional)
@@ -105,12 +104,16 @@
 
   /**
    * Rendert die erweiterten Metriken in einen Container.
+   *
+   * GEÄNDERT: Ticket 64 — kein Berechnungsstufen-Parameter mehr. Jedes Result trägt
+   * seit der Zusammenführung der Kennzahl-Funktionen denselben Satz Kennzahlen; es
+   * gibt keine Felder mehr, die erst eine Vollanalyse nachliefern müsste.
+   *
    * @param {Object} s  — Stats-Objekt
-   * @param {string} level  — 'basic' | 'full'
    * @param {HTMLElement} card  — .extended-metrics-Wrapper
    * @param {HTMLElement} container  — .extended-metrics-content
    */
-  function buildExtendedMetrics(s, level, card, container) {
+  function buildExtendedMetrics(s, card, container) {
     if (!card || !container) return;
 
     var tipIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted" style="vertical-align:-0.1em;"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg>';
@@ -130,6 +133,8 @@
       ['Annualisierte Volatilität [%]', 'Annualized Volatility [%]', 'Jährliche Schwankungsbreite — hohe Volatilität = hohes Risiko'],
       ['Downside Risk [%]', 'Downside Risk [%]', 'Nur negative Volatilität — bestraft nur Verluste, nicht Gewinne'],
       ['Deflated Sharpe Ratio', 'Deflated Sharpe Ratio', 'Korrigierter Sharpe für Multiple-Testing — berücksichtigt Overfitting bei vielen Kombinationen'],
+      ['Schiefe', 'Skew', 'Schiefe der Renditeverteilung — negativ = seltene große Verluste, positiv = seltene große Gewinne'],
+      ['Wölbung', 'Kurtosis', 'Rohe Wölbung der Renditeverteilung — Normalverteilung liegt bei rund 3, höhere Werte bedeuten dickere Ränder'],
     ];
     var col2 = [
       ['SQN (System Quality)', 'SQN', 'Van Tharp System Quality Number — <1.7 schlecht, 1.7-2.5 durchschnittlich, 2.5-4 gut, >4 exzellent'],
@@ -156,33 +161,9 @@
       '<div class="col-md-4"><h6 class="mb-2">Trade-Qualität</h6>' + buildTbl(col2) + '</div>' +
       '<div class="col-md-4"><h6 class="mb-2">Benchmark &amp; Extremrisiko</h6>' + buildTbl(col3) + '</div>';
 
-    if (level !== 'full') {
-      html += '<div class="col-12 mt-2"><div class="text-muted small">Trade-Qualität, Benchmark- und Extremrisiko-Metriken werden erst nach der Vollanalyse befüllt.</div></div>';
-    }
-
     container.innerHTML = html;
     card.style.display = '';
     initTooltips(container);
-  }
-
-  /**
-   * Aktualisiert den Vollanalyse-Button-Zustand.
-   * @param {string} level
-   * @param {HTMLElement} bar
-   * @param {HTMLElement} btn
-   */
-  function updateMetricsLevelUI(level, bar, btn) {
-    if (!bar || !btn) return;
-    bar.style.cssText = '';
-    if (level === 'full') {
-      btn.className = 'btn btn-success';
-      btn.innerHTML = 'Vollanalyse abgeschlossen';
-      btn.disabled = true;
-    } else {
-      btn.className = 'btn btn-primary';
-      btn.innerHTML = 'Vollanalyse starten';
-      btn.disabled = false;
-    }
   }
 
   /**
@@ -194,7 +175,6 @@
   function loadStatsTab(resultId, opts) {
     opts = opts || {};
     var contentEl = opts.contentEl;
-    var fullMetricsBarEl = opts.fullMetricsBarEl || null;
     var extendedMetricsEl = opts.extendedMetricsEl || null;
     var extendedMetricsContentEl = opts.extendedMetricsContentEl || null;
     var benchmarkValueEl = opts.benchmarkValueEl || null;
@@ -211,12 +191,6 @@
           return;
         }
 
-        // Metrics-Level UI aktualisieren
-        if (data.metrics_level && fullMetricsBarEl) {
-          var btn = fullMetricsBarEl.querySelector('[data-full-metrics-btn]');
-          updateMetricsLevelUI(data.metrics_level, fullMetricsBarEl, btn);
-        }
-
         var s = data.stats;
 
         // Linke und rechte Spalte der Stats-Tabelle
@@ -227,6 +201,11 @@
           ['Benchmark Return [%]', 'Benchmark Return [%]', fmtVal],
           ['Total Orders', 'Total Orders', fmtVal],
           ['Total Trades', 'Total Trades', fmtVal],
+          // GEÄNDERT: Ticket 60 — Nenner und Aufteilung der Trade-Zahl direkt daneben:
+          // Open Trades (Nenner der Trefferquote), Long/Short-Aufteilung.
+          ['Open Trades', 'Open Trades', fmtVal],
+          ['Long Trades', 'Long Trades', fmtVal],
+          ['Short Trades', 'Short Trades', fmtVal],
           ['Win Rate [%]', 'Win Rate [%]', fmtVal],
           ['Best Trade [%]', 'Best Trade [%]', fmtVal],
           ['Profit Factor', 'Profit Factor', fmtVal],
@@ -252,6 +231,8 @@
           ['Avg Winning Trade Duration', 'Avg Winning Trade Duration', fmtDuration],
           ['Start Index', 'Start Index', fmtDate],
           ['End Index', 'End Index', fmtDate],
+          // GEÄNDERT: Ticket 60 — Balkenzahl des tatsächlich gerechneten Handelsfensters.
+          ['Bar Count', 'Bar Count', fmtVal],
         ];
 
         function buildTable(cols) {
@@ -267,7 +248,7 @@
           buildTable(rightCol) + '</div></div>';
 
         // Erweiterte Metriken befüllen
-        buildExtendedMetrics(s, data.metrics_level, extendedMetricsEl, extendedMetricsContentEl);
+        buildExtendedMetrics(s, extendedMetricsEl, extendedMetricsContentEl);
 
         // Benchmark-Wert aktualisieren
         if (benchmarkValueEl) {
@@ -398,61 +379,11 @@
   }
 
   // -----------------------------------------------------------------------
-  // Vollanalyse-Steuerung (result_chart.html-kompatibel)
-  // -----------------------------------------------------------------------
-
-  /**
-   * Startet Vollanalyse und pollt bis fertig.
-   * @param {number} resultId
-   * @param {Object} opts
-   *   fullMetricsBarEl, extendedMetricsEl, extendedMetricsContentEl, contentEl, benchmarkValueEl
-   */
-  function startFullMetrics(resultId, opts) {
-    opts = opts || {};
-    var bar = opts.fullMetricsBarEl;
-    var btn = bar ? bar.querySelector('[data-full-metrics-btn]') : null;
-    if (!btn) return;
-
-    btn.disabled = true;
-    btn.className = 'btn btn-primary';
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vollanalyse wird berechnet...';
-
-    fetch('/api/backtest/results/' + resultId + '/full-metrics', { method: 'POST' })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.status === 'already_complete') {
-          updateMetricsLevelUI('full', bar, btn);
-          // Stats neu laden
-          loadStatsTab(resultId, opts);
-          return;
-        }
-        // Polling starten
-        var polling = setInterval(function() {
-          fetch('/api/backtest/results/' + resultId + '/metrics-level')
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-              if (d.metrics_level === 'full') {
-                clearInterval(polling);
-                updateMetricsLevelUI('full', bar, btn);
-                loadStatsTab(resultId, opts);
-              }
-            });
-        }, 3000);
-      })
-      .catch(function() {
-        btn.disabled = false;
-        btn.className = 'btn btn-danger';
-        btn.innerHTML = 'Fehler — nochmal versuchen';
-      });
-  }
-
-  // -----------------------------------------------------------------------
   // Exports
   // -----------------------------------------------------------------------
   global.ResultTabs = {
     loadStatsTab: loadStatsTab,
     loadTradesTab: loadTradesTab,
-    startFullMetrics: startFullMetrics,
   };
 
 })(window);

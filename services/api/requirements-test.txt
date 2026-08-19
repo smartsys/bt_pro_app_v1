@@ -1,0 +1,16 @@
+# Test-Abhängigkeiten (Ticket 88)
+# ---------------------------------
+# Werden ausschließlich im Dockerfile-Stage "test" installiert, nicht im Laufzeit-Image.
+# Bewusst knapp gehalten: nur was die Suite tatsächlich importiert.
+#   pytest — Test-Framework (Version wie im Windows-venv, damit sich das Verhalten nicht ändert)
+#   httpx  — von fastapi.testclient.TestClient vorausgesetzt
+# Alles Weitere (numpy, pandas, sqlalchemy, alembic, psycopg2, requests, python-dotenv,
+# vectorbtpro) steckt bereits im Laufzeit-Image bzw. im VBT-Basis-Image.
+#   pgvector — nur für die Tests in services/api/tests, die vault_chunks über das
+#              ORM-Modell befüllen. Ohne das Paket fällt _VectorCompat in models.py
+#              auf JSON zurück und PostgreSQL lehnt den INSERT in die vector-Spalte ab.
+#              Der Produktivcode schreibt und liest diese Tabelle ausschließlich per
+#              rohem SQL und braucht das Paket deshalb nicht.
+pytest==9.0.2
+httpx==0.28.1
+pgvector==0.3.6

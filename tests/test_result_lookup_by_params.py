@@ -319,3 +319,51 @@ def test_across_runs_step_mode_uses_per_run_steps(db_engine, session):
     assert total == 6                 # Run A: 50,75,100 (3) + Run B: 65,75,85 (3)
     assert a_100.id in ids            # 100 ist bei Schritt 25 ein ±1-Nachbar
     assert b_100.id not in ids        # 100 ist bei Schritt 10 KEIN ±1-Nachbar
+
+
+# ============================================================================
+# Ticket 60 — Long/Short-Aufteilung in den Lookup-Ergebnissen
+# ============================================================================
+
+def test_lookup_includes_long_short_trade_split(db_engine, session):
+    """lookup_result_rows_by_params liefert long_trades/short_trades je Result mit."""
+    run = _make_run(session)
+    result = _add_result(session, run, {'length': 10.0}, 50.0)
+    result.total_trades = 10
+    result.long_trades = 7
+    result.short_trades = 3
+    session.commit()
+
+    items, total = lookup_result_rows_by_params(
+        db_engine, run.id, {'length': 10.0}, tolerance=0.0, limit=100)
+    assert total == 1
+    assert items[0]['long_trades'] == 7
+    assert items[0]['short_trades'] == 3
+
+
+def test_lookup_long_short_none_for_pre_ticket60_results(db_engine, session):
+    """Alt-Results ohne long_trades/short_trades (NULL) liefern die Felder als None, kein Fehler."""
+    run = _make_run(session)
+    _add_result(session, run, {'length': 10.0}, 50.0)
+
+    items, total = lookup_result_rows_by_params(
+        db_engine, run.id, {'length': 10.0}, tolerance=0.0, limit=100)
+    assert total == 1
+    assert items[0]['long_trades'] is None
+    assert items[0]['short_trades'] is None
+
+
+def test_across_runs_lookup_includes_long_short_trade_split(db_engine, session):
+    """lookup_results_across_runs liefert long_trades/short_trades ebenfalls mit."""
+    run = _make_run(session)
+    result = _add_result(session, run, {'length': 10.0}, 50.0)
+    result.total_trades = 20
+    result.long_trades = 12
+    result.short_trades = 8
+    session.commit()
+
+    items, total = lookup_results_across_runs(
+        db_engine, [run.id], {'length': 10.0}, tolerance=0.0, limit=100)
+    assert total == 1
+    assert items[0]['long_trades'] == 12
+    assert items[0]['short_trades'] == 8

@@ -153,7 +153,6 @@ def test_backtest_result_spec_runner_version_column_exists(db_session):
         params_hash='abc123',
         # GEÄNDERT: Ticket 15 — _json-Suffix
         actual_params_json={'test': 1},
-        metrics_level='partial',
         spec_runner_version='1.0.0',
     )
     db_session.add(result)
@@ -187,7 +186,6 @@ def test_backtest_result_spec_runner_version_nullable(db_session):
         params_hash='def456',
         # GEÄNDERT: Ticket 15 — _json-Suffix
         actual_params_json={'test': 2},
-        metrics_level='partial',
     )
     db_session.add(result)
     db_session.commit()

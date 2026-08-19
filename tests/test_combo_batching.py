@@ -548,7 +548,7 @@ class TestRealBacktestChunkedVsUnchunked:
     Anforderungen:
     - Mindestens 20 Kombis (hier: 5 length x 4 multiplier = 20)
     - >= 2 Chunks beim kleinen chunk_size
-    - Alle Metriken aus _extract_partial_metrics werden verglichen
+    - Alle Metriken aus _extract_metrics werden verglichen
     - Kein Mock für Backtest-Logik
     - Kein Hardcoding von Metrik-Werten
     """
@@ -565,7 +565,7 @@ class TestRealBacktestChunkedVsUnchunked:
             list[dict] — Metriken-Records je Kombi, sortiert nach Eingangsreihenfolge.
         """
         from user_data.strategies.generic.spec_runner import run_spec_strategy
-        from user_data.utils.database.repository import _extract_partial_metrics
+        from user_data.utils.database.repository import _extract_metrics
 
         # length=[6,8,10,12,14] (5 Werte), multiplier=[2,3,4,5] (4 Werte) -> 20 Kombis
         length_vals = [6, 8, 10, 12, 14]
@@ -588,13 +588,12 @@ class TestRealBacktestChunkedVsUnchunked:
             metrics_list = result['metrics_table']
         else:
             pf = result['portfolios']
-            metrics_list = _extract_partial_metrics(pf, pf.wrapper.columns)
+            # GEÄNDERT: Ticket 58 — Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
+            metrics_list = _extract_metrics(
+                pf, pf.wrapper.columns, backtest_config
+            )
 
-        # Metriken ohne 'metrics_level' normalisieren
-        return [
-            {k: v for k, v in m.items() if k != 'metrics_level'}
-            for m in metrics_list
-        ]
+        return list(metrics_list)
 
     def test_chunked_matches_unchunked_all_metrics(self) -> None:
         """Gechunkter Lauf produziert bit-genaue Metriken (positionsbasiert).
@@ -618,9 +617,11 @@ class TestRealBacktestChunkedVsUnchunked:
         assert len(unchunked) == 20, f"Erwarte 20 Kombis, erhalten {len(unchunked)}"
 
         # GEÄNDERT: Ticket 47 Phase 2 — Positionsbasierter Vergleich (kein Key-Mapping).
-        # Alle 16 Metriken müssen bit-genau übereinstimmen (abs-Diff < 1e-9).
-        # DSR kann bei unterschiedlicher Chunk-Aufteilung leicht abweichen (globale
-        # Varianz hängt von allen Kombis ab — gleich wenn alle 20 Kombis identisch).
+        # Alle Metriken müssen bit-genau übereinstimmen (abs-Diff < 1e-9).
+        # GEÄNDERT: Ticket 54 — die deflated_sharpe_ratio ist hier nicht mehr dabei: sie
+        # ist rasterweit und entsteht erst als Nachlauf über den ganzen Lauf, nachdem die
+        # Results geschrieben sind. Damit gibt es keine chunk-abhängige Kennzahl mehr,
+        # die eine Toleranz bräuchte.
         import math
         mismatches = []
         for i, (ref, chunked_m) in enumerate(zip(unchunked, chunked)):
@@ -632,6 +633,15 @@ class TestRealBacktestChunkedVsUnchunked:
                     mismatches.append(
                         f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chunked_val}"
                     )
+                    continue
+                # GEÄNDERT: Ticket 60 — start_index/end_index (datetime) und
+                # total_duration (str) sind nicht numerisch; math.isnan/abs
+                # scheitern daran. Für sie zählt Gleichheit, nicht Toleranz.
+                if not isinstance(ref_val, (int, float)):
+                    if ref_val != chunked_val:
+                        mismatches.append(
+                            f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chunked_val}"
+                        )
                     continue
                 if math.isnan(ref_val) and math.isnan(chunked_val):
                     continue
@@ -791,18 +801,20 @@ class TestRealBacktestChunkedVsUnchunked:
             )
 
     def test_chunked_matches_unchunked_size1_chunks(self) -> None:
-        """Multi-Combo-Chunking liefert bit-genaue Metriken — inkl. DSR.
+        """Multi-Combo-Chunking liefert bit-genaue Metriken.
 
         GEÄNDERT: Ticket 47 Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
         chunk_size=9999 (>= 3 Kombis) → ein Multi-Combo-Portfolio; chunk_size=2 → zwei
-        Multi-Combo-Sub-Grid-Chunks. DSR wird global korrekt nach Konkatenation berechnet.
+        Multi-Combo-Sub-Grid-Chunks.
+        GEÄNDERT: Ticket 54 — die deflated_sharpe_ratio steht nicht mehr in diesen
+        Metriken; sie entsteht als Nachlauf über den ganzen Lauf.
 
         Grid: length=[6, 8, 10] (outer=3), multiplier=[2] (inner=1) → 3 Kombis.
         Positionsbasierter Vergleich (kein Key-Mapping ohne MultiIndex).
         """
         import math
         from user_data.strategies.generic.spec_runner import run_spec_strategy
-        from user_data.utils.database.repository import _extract_partial_metrics
+        from user_data.utils.database.repository import _extract_metrics
 
         ohlc_data = _make_synthetic_ohlc_data(n=500, seed=42)
         # length=[6,8,10] (outer=3), multiplier=[2] (inner=1) → 3 Kombis gesamt
@@ -829,11 +841,11 @@ class TestRealBacktestChunkedVsUnchunked:
                 metrics_list = result['metrics_table']
             else:
                 pf = result['portfolios']
-                metrics_list = _extract_partial_metrics(pf, pf.wrapper.columns)
-            return [
-                {k: v for k, v in m.items() if k != 'metrics_level'}
-                for m in metrics_list
-            ]
+                # GEÄNDERT: Ticket 58 — Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
+                metrics_list = _extract_metrics(
+                    pf, pf.wrapper.columns, config
+                )
+            return list(metrics_list)
 
         # Beide Läufe → 3 Kombis (Multi-Combo direkt bzw. gechunkt)
         unchunked = _run(chunk_size=9999)
@@ -854,6 +866,15 @@ class TestRealBacktestChunkedVsUnchunked:
                     mismatches.append(
                         f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chk_val}"
                     )
+                    continue
+                # GEÄNDERT: Ticket 60 — start_index/end_index (datetime) und
+                # total_duration (str) sind nicht numerisch; math.isnan/abs
+                # scheitern daran. Für sie zählt Gleichheit, nicht Toleranz.
+                if not isinstance(ref_val, (int, float)):
+                    if ref_val != chk_val:
+                        mismatches.append(
+                            f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chk_val}"
+                        )
                     continue
                 if math.isnan(ref_val) and math.isnan(chk_val):
                     continue

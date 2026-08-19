@@ -9,6 +9,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.engine.url import make_url
 
 from alembic import context
 
@@ -51,9 +52,15 @@ def _require_env(name: str) -> str:
 
 
 # GEÄNDERT: Ticket 14 — VBT_TEST_DATABASE_URL hat Vorrang (Migrationen gegen Test-DB)
-_test_url = os.getenv('VBT_TEST_DATABASE_URL', _env_vars.get('VBT_TEST_DATABASE_URL', ''))
+# GEÄNDERT: Ticket 61 — die Variable wird ausschließlich aus der echten Umgebung
+# gelesen, NICHT mehr aus der .env-Datei. Grund: die .env trägt die Test-URL dauerhaft,
+# dadurch landete jedes von Hand aufgerufene "alembic upgrade head" still auf der
+# Test-DB. Die pytest-Isolation bleibt unberührt, weil tests/conftest.py die Variable
+# vor dem Alembic-Subprozess ausdrücklich in die Umgebung schreibt.
+_test_url = os.getenv('VBT_TEST_DATABASE_URL', '')
 if _test_url:
     _db_url = _test_url
+    _url_source = 'VBT_TEST_DATABASE_URL (Umgebungsvariable)'
 else:
     _server = _require_env('POSTGRES_SERVER')
     _port = _require_env('POSTGRES_PORT')
@@ -61,7 +68,29 @@ else:
     _user = _require_env('POSTGRES_USER')
     _password = _require_env('POSTGRES_PASSWORD')
     _db_url = f"postgresql+psycopg2://{_user}:{_password}@{_server}:{_port}/{_db}"
+    _url_source = 'POSTGRES_* (Umgebung bzw. .env)'
 config.set_main_option('sqlalchemy.url', _db_url)
+
+
+def _announce_target(url: str, source: str) -> None:
+    """Gibt das tatsächliche Migrationsziel aus, bevor eine Migration läuft.
+
+    Zeigt Host, Port und Datenbankname sowie die Herkunft der Auflösung — ohne
+    Passwort. Wer migriert, soll lesen können, wohin migriert wird.
+
+    Args:
+        url: Die aufgelöste SQLAlchemy-URL.
+        source: Herkunft der Auflösung (Variablenname).
+    """
+    parsed = make_url(url)
+    print(
+        f"[alembic] Migrationsziel: Host={parsed.host} Port={parsed.port} "
+        f"Datenbank={parsed.database} Benutzer={parsed.username} (Quelle: {source})",
+        flush=True,
+    )
+
+
+_announce_target(_db_url, _url_source)
 
 # Models für autogenerate-Support einbinden
 from user_data.utils.database.models import Base  # noqa: E402

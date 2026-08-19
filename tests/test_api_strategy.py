@@ -465,3 +465,155 @@ def test_api_get_iteration_not_found(api_client):
     """GET /api/strategy/iterations/999999 -> 404."""
     response = api_client.get('/api/strategy/iterations/999999')
     assert response.status_code == 404
+
+
+# ============================================================================
+# API-Tests: goal_json / goal_prompt (Ticket 66 — Zielvorgabe am Konzept)
+# ============================================================================
+
+@pytest.mark.integration
+def test_api_create_concept_with_goal_fields_roundtrip_verbatim(api_client):
+    """POST mit goal_json + goal_prompt -> GET Detail liefert beide Felder verbatim zurück.
+
+    goal_prompt ist mehrzeilig mit Umlauten (kein Trim, keine Normalisierung).
+    goal_json-Werte müssen strukturell identisch bleiben (keine Key-Sortierung,
+    keine Umformatierung durch die App — Postgres jsonb kann Objekt-Keys intern
+    anders anordnen, das ist kein App-Verhalten und wird hier bewusst nicht
+    geprüft; die Werte selbst müssen exakt erhalten bleiben).
+    """
+    goal_json = {"sharpe_min": 1.5, "risk_per_trade": 0.03, "note": "frei formuliert"}
+    goal_prompt = "  Finde eine Strategie mit Sharpe >= 1,5,\nRisiko 3 % je Trade, für Ätherium.  "
+    payload = {
+        "slug": "test-api-goal-roundtrip",
+        "name": "Goal Roundtrip Test",
+        "status": "idee",
+        "goal_json": goal_json,
+        "goal_prompt": goal_prompt,
+    }
+    create_resp = api_client.post('/api/strategy/concepts', json=payload)
+    assert create_resp.status_code == 200
+    created = create_resp.json()['data']
+    concept_id = created['id']
+    assert created['goal_json'] == goal_json
+    assert created['goal_prompt'] == goal_prompt
+    assert created['has_goal'] is True
+
+    try:
+        get_resp = api_client.get(f'/api/strategy/concepts/{concept_id}')
+        assert get_resp.status_code == 200
+        detail = get_resp.json()['data']
+        assert detail['goal_json'] == goal_json
+        assert detail['goal_prompt'] == goal_prompt
+        assert detail['has_goal'] is True
+
+        list_resp = api_client.get('/api/strategy/concepts')
+        assert list_resp.status_code == 200
+        items = {item['id']: item for item in list_resp.json()['data']['items']}
+        assert items[concept_id]['has_goal'] is True
+        assert items[concept_id]['goal_json'] == goal_json
+    finally:
+        from user_data.utils.database.db import get_session as _get_sess
+        sess = _get_sess()
+        try:
+            c = sess.query(StrategyConcept).filter(StrategyConcept.id == concept_id).first()
+            if c:
+                sess.delete(c)
+                sess.commit()
+        finally:
+            sess.close()
+
+
+@pytest.mark.integration
+def test_api_update_concept_goal_fields_preserves_other_fields(api_client):
+    """PUT mit nur geänderten Zielfeldern ändert name/slug/description/status nicht."""
+    payload = {
+        "slug": "test-api-goal-update",
+        "name": "Vor Goal-Update",
+        "description": "Ursprüngliche Beschreibung",
+        "status": "active",
+    }
+    create_resp = api_client.post('/api/strategy/concepts', json=payload)
+    assert create_resp.status_code == 200
+    concept_id = create_resp.json()['data']['id']
+
+    try:
+        new_goal_json = {"win_rate_min": 0.55}
+        update_resp = api_client.put(
+            f'/api/strategy/concepts/{concept_id}',
+            json={"goal_json": new_goal_json, "goal_prompt": "Nur das Ziel ändern"},
+        )
+        assert update_resp.status_code == 200
+        updated = update_resp.json()['data']
+        assert updated['goal_json'] == new_goal_json
+        assert updated['goal_prompt'] == "Nur das Ziel ändern"
+        # Unveränderte Felder bleiben erhalten
+        assert updated['name'] == "Vor Goal-Update"
+        assert updated['slug'] == "test-api-goal-update"
+        assert updated['description'] == "Ursprüngliche Beschreibung"
+        assert updated['status'] == "active"
+    finally:
+        from user_data.utils.database.db import get_session as _get_sess
+        sess = _get_sess()
+        try:
+            c = sess.query(StrategyConcept).filter(StrategyConcept.id == concept_id).first()
+            if c:
+                sess.delete(c)
+                sess.commit()
+        finally:
+            sess.close()
+
+
+@pytest.mark.integration
+def test_api_create_concept_rejects_goal_json_as_string(api_client):
+    """POST mit goal_json als String (statt JSON-Objekt) -> Fehlerstatus, kein stilles Verwerfen."""
+    payload = {
+        "slug": "test-api-goal-invalid-type",
+        "name": "Invalid Goal Type Test",
+        "goal_json": "kein objekt",
+    }
+    response = api_client.post('/api/strategy/concepts', json=payload)
+    assert response.status_code == 422
+    detail = response.json()
+    assert 'detail' in detail
+
+    # Kein Konzept darf entstanden sein
+    from user_data.utils.database.db import get_session as _get_sess
+    sess = _get_sess()
+    try:
+        found = sess.query(StrategyConcept).filter(
+            StrategyConcept.slug == 'test-api-goal-invalid-type'
+        ).first()
+        assert found is None
+    finally:
+        sess.close()
+
+
+@pytest.mark.integration
+def test_api_create_concept_without_goal_fields_stays_unset(api_client):
+    """Konzept ohne Zielfelder verhält sich unverändert (Rückwärtskompatibilität)."""
+    payload = {"slug": "test-api-goal-absent", "name": "Ohne Ziel", "status": "draft"}
+    create_resp = api_client.post('/api/strategy/concepts', json=payload)
+    assert create_resp.status_code == 200
+    created = create_resp.json()['data']
+    concept_id = created['id']
+    assert created['goal_json'] is None
+    assert created['goal_prompt'] is None
+    assert created['has_goal'] is False
+
+    try:
+        get_resp = api_client.get(f'/api/strategy/concepts/{concept_id}')
+        assert get_resp.status_code == 200
+        detail = get_resp.json()['data']
+        assert detail['goal_json'] is None
+        assert detail['goal_prompt'] is None
+        assert detail['has_goal'] is False
+    finally:
+        from user_data.utils.database.db import get_session as _get_sess
+        sess = _get_sess()
+        try:
+            c = sess.query(StrategyConcept).filter(StrategyConcept.id == concept_id).first()
+            if c:
+                sess.delete(c)
+                sess.commit()
+        finally:
+            sess.close()

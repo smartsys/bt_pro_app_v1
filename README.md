@@ -10,7 +10,21 @@ Das eigentliche Ziel ist die **KI-gestützte Strategie-Entwicklung**: Statt jede
 
 Die App ist **keine** Trading-Plattform: Sie führt keinen echten Handel aus, hat keinen Broker-Anschluss und kein Live-Order-Management. Sie ist ein Ort, um Strategien zu messen, zu vergleichen und systematisch zu verbessern. Fertig optimierte Strategien gehen an ein separates System zur Live-Ausführung.
 
----
+
+## Beispiel-Prompt
+
+Hallo, ich möchte, dass du für mich recherchierst und eine Trendfolge-Strategie für den Handel mit ETH/USDT findest. 
+Es muss eine Squeeze-Strategie sein, die Bollinger-Bänder als Basisindikator verwendet — und natürlich kannst du jeden 
+weiteren Indikator dazunehmen, den du für sinnvoll hältst.
+
+Die Ergebnisse sollen von Jahresbeginn bis heute eine Sharpe-Ratio von mindestens 1,5 und ein Risiko von 3 % des Kontos pro Trade.
+Ich möchte auf dem 30-Minuten-Timeframe handeln. Es ist okay für dich, das 4-Stunden-Timeframe als Anchor-Timeframe (übergeordnetes Timeframe) zu nutzen.
+
+Jedes Mal, wenn du eine Strategie entwickelst, validiere das Ergebnis mit einem statistischen Signifikanztest, bevor du die vollständige 
+Strategie schreibst. Fahre nur fort, wenn die Metriken der Strategie eine echte statistische Signifikanz aufweisen.
+
+Du kannst gerne Optimierungen nutzen, um die Ergebnisse zu verbessern. Stelle sicher, dass die Ergebnisse nicht overfitted (überangepasst) sind.
+Mache so lange weiter, bis du Strategien findest, die die geforderten Kriterien vollständig erfüllen. Unterbrich mich in der Zwischenzeit nicht mit Rückfragen.
 
 ## Funktionsumfang
 
@@ -101,12 +115,18 @@ Nach kurzer Startzeit ist die App erreichbar (der App-Container migriert die Dat
 
 | Dienst | URL | Beschreibung |
 |---|---|---|
-| Installations-Übersicht | http://localhost:5570/install | Einstiegspunkt nach der Installation: Installations-Check und Kursdaten laden (siehe nächster Schritt) |
+| Installations-Übersicht | http://localhost:5570/install | Einstiegspunkt nach der Installation: Installations-Check und Kursdaten laden (siehe Schritt 5) |
 | App / Frontend | http://localhost:5570 | Die eigentliche Anwendung: Playground, Konfigurationen, Test-Sets, Leaderboard, Backtest-Auswertung |
 | pgAdmin | http://localhost:5563 | Web-Oberfläche zur Verwaltung der PostgreSQL-Datenbank |
 | PostgreSQL | localhost:5560 | Direkter Datenbank-Zugang (z.B. für externe Tools) |
 
-### 4. Einrichtung abschließen
+### 4. SKILL - KI anbinden
+
+Bedient wird die App von der KI über den mitgelieferten Skill-Ordner **`.claude/skills/ds-strategie-session/`** — darin der Entwicklungs-Loop (`SKILL.md`) und `toolbox.py`, das jedes App-Objekt (Iterationen, Configs, Runs, Results, Test-Sets, Leaderboard) über die API anlegt, startet und ausliest.
+
+Claude Code findet den Ordner im Projekt-Root von allein; bei anderen KI-Werkzeugen legst du ihn dort ab, wo sie ihre Skills erwarten. Mehr ist nicht nötig: `toolbox.py` braucht nur ein `python3` ohne Zusatzpakete und spricht standardmäßig `http://localhost:5570` an (abweichender Port über `VBT_APP_BASE_URL`).
+
+### 5. Einrichtung abschließen
 
 Öffne die **Installations-Übersicht** unter [http://localhost:5570/install](http://localhost:5570/install):
 
@@ -120,16 +140,24 @@ Nach kurzer Startzeit ist die App erreichbar (der App-Container migriert die Dat
 
 OHLCV-Daten (Open, High, Low, Close, Volume) werden über den VectorBT-Pro-Downloader von **Binance** geladen (historische Public-Daten, kein API-Key nötig) und als HDF5-Dateien unter `data/ohlc_data/` gespeichert — beim Backtest direkt aus dem Dateisystem gelesen, kein DB-Roundtrip für Kursdaten.
 
+**Dateibesitz im Bind-Mount:** Die HDF5-Dateien werden vom Worker angelegt und anschließend von App und Worker gemeinsam beschrieben (Download, Update, Symbol löschen). Damit das aufgeht, laufen alle Container, die `data/ohlc_data`, `user_data` oder `services` beschreiben, als `uid:gid 1000:1000` — das ist in `docker-compose-local.yml` gesetzt (`app`, `worker`, `worker-init`, `vbt`). Liefe auch nur einer davon als root, entstünden `root:root`-Dateien mit Modus 644, die die anderen Container nicht mehr beschreiben können (Fehlerbild: „file … exists but it can not be written"). Passt dein Host-Benutzer nicht auf 1000:1000 (`id -u` / `id -g`), trage deine Werte dort ein.
+
+Sind bereits `root`-eigene Dateien im Mount gelandet (z.B. aus einer älteren Installation), einmalig geradeziehen:
+
+```bash
+docker exec -u 0 frontend_bt_pro_v1 chown -R 1000:1000 /app/data/ohlc_data /app/user_data /app/services
+```
+
 ---
 
 ## KI-Bedienung & eigenes Strategie-Vorgehen
 
 Die KI-gestützte Arbeit (siehe oben) wird über eine **Bedienschicht** angesteuert, die im Repo mitgeliefert wird:
 
-- **Skill `ds-strategie-session`** (`.claude/skills/`) — Session-Routine für Claude Code: listet Strategie-Konzepte, briefed den aktuellen Stand und führt durch den Entwickeln-/Bewerten-Loop.
+- **Skill `ds-strategie-session`** (`.claude/skills/`) — für Claude Code: der agentische Entwicklungs-Loop (Auftrag, Recherche, Bauen, Preflight, kleines Raster, Bewerten, Iterieren, Härten, Abschluss) plus die Objekt-Toolbox, die auch einzeln nutzbar ist.
 - **`toolbox.py`** — Helfer, der jedes App-Objekt (Iteration, Configs, Results, Test-Sets, Leaderboard …) über die API liest, anlegt, startet, ändert oder löscht. Basis-URL über `VBT_APP_BASE_URL` (Default `http://localhost:5570`).
 
-Bewusst **nicht** mitgeliefert wird die **Methodik** — also *wie* man Strategien entwickelt und bewertet (Workflow-Beschreibungen, Iterations-Logs, Status-Doku). Das ist das eigene Vorgehen jedes Nutzers und gehört nicht ins Paket. Empfehlung: leg dir dafür eine eigene Wissensbasis unter `documentation/knowledge/strategy-development/` an (Workflows, Konventionen) und optional einen Obsidian-Vault (Pfad über `OBSIDIAN_VAULT_HOST_PATH`) für Konzept-/Status-/Iterations-Notizen. Der Skill greift solche Inhalte automatisch auf, wenn sie vorhanden sind — funktioniert aber auch ohne.
+Der Skill beschreibt den **generischen** Entwicklungs-Loop. Bewusst **nicht** mitgeliefert wird die **eigene Methodik** — also die strategie-spezifische Ausarbeitung (Workflow-Beschreibungen, Iterations-Logs, Status-Doku). Das ist das eigene Vorgehen jedes Nutzers und gehört nicht ins Paket. Empfehlung: leg dir dafür eine eigene Wissensbasis unter `documentation/knowledge/strategy-development/` an (Workflows, Konventionen) und optional einen Obsidian-Vault (Pfad über `OBSIDIAN_VAULT_HOST_PATH`) für Konzept-/Status-/Iterations-Notizen. Der Skill greift solche Inhalte automatisch auf, wenn sie vorhanden sind — funktioniert aber auch ohne.
 
 ---
 

@@ -66,13 +66,13 @@ Für reproduzierbare Vergleiche zwischen Strategien.
 
 - **Test-Sets:** Definierte Zeiträume und Symbole, gegen die Strategien verglichen werden sollen. Ein Test-Set ist die Grundlage für faire Vergleiche.
 - **Testset-Runs:** Führt eine Strategie-Iteration gegen ein Test-Set aus — vergleichbarer Benchmarking-Lauf.
-- **Leaderboard:** Aggregierte Rangliste aller Strategien/Iterationen, die gegen ein Test-Set gelaufen sind. Sortierbar nach Gesamtrendite, Sharpe Ratio, Drawdown u.a.
+- **Leaderboard:** Aggregierte Rangliste aller Strategien/Iterationen, die gegen ein Test-Set gelaufen sind. Sortierbar nach Gesamtrendite, Sharpe Ratio, Drawdown u.a. Je Eintrag steht ein Rerun-Knopf zur Verfügung, der den Lauf ausschließlich aus dem eingefrorenen Snapshot reproduziert (Bestätigungsdialog, Ergebnis inkl. `bit_exact_match` sichtbar).
 
 ### 5. Strategie-Konzepte und Iterationen
 
 Verwaltung der Strategie-Hierarchie in der App.
 
-- **Strategie-Konzepte:** Top-Level-Einheiten (z.B. „Teststrategie"). Jedes Konzept hat einen Obsidian-Pointer zum zugehörigen Vault-Eintrag.
+- **Strategie-Konzepte:** Top-Level-Einheiten (z.B. „Teststrategie"). Jedes Konzept hat einen Obsidian-Pointer zum zugehörigen Vault-Eintrag. Eine eigene Detailseite je Konzept (aus der Übersicht per Name erreichbar) zeigt das Ziel (`goal_prompt`/`goal_json`) neben der chronologischen Befund-Historie — Verweise auf Sieger-Setup (`?setupid=`) und finalen Analyse-Lauf in der Befund-Deutung werden dort automatisch als Links gerendert. Kein Verdict, keine Kennzahlen-Sortierung — die Seite zeigt, sie urteilt nicht.
 - **Iterationen:** Versionierte Snapshots einer Strategie-Spec. Jede Iteration hat einen Status (`draft`, `active`, `archived`, `live`) und einen unveränderlichen Spec-Hash. Iterationen werden im Chart-Playground ausdrücklich gespeichert ("Spec speichern"); ein vollständiger Backtest läuft anschließend gegen die gewählte, gespeicherte Iteration.
 
 ### 6. Konfiguration

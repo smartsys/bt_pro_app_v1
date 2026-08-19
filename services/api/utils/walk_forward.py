@@ -5,7 +5,7 @@ eigenständig testbar bleibt.
 """
 
 import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
 
@@ -44,3 +44,56 @@ def shift_backtest_window(backtest_config: dict, months: int) -> dict:
     shifted['ohlc_end'] = new_end.strftime(DATE_FORMAT)
 
     return shifted
+
+
+def warmup_span(backtest_config: dict) -> timedelta:
+    """Liest den Indikator-Vorlauf einer BacktestConfig (Abstand ohlc_start → start).
+
+    Args:
+        backtest_config: Config mit `start` und optional `ohlc_start`.
+
+    Returns:
+        Der Vorlauf als Zeitspanne. Ohne `ohlc_start` ist er null.
+    """
+    start = datetime.strptime(backtest_config['start'], DATE_FORMAT)
+    ohlc_start = datetime.strptime(
+        backtest_config.get('ohlc_start') or backtest_config['start'], DATE_FORMAT,
+    )
+    return start - ohlc_start
+
+
+def set_backtest_window(backtest_config: dict, start: str, end: str) -> dict:
+    """Setzt ein explizites Handelsfenster; der Indikator-Vorlauf bleibt erhalten.
+
+    Gegenstück zu :func:`shift_backtest_window` für die Fold-Kette (Ticket 82):
+    dort sind die Fenstergrenzen aus dem Plan vorgegeben und dürfen nicht aus einer
+    Monatslänge hergeleitet werden — sonst driftet der gerechnete Lauf vom
+    vorregistrierten Fenster ab.
+
+    Args:
+        backtest_config: Bestehende Config mit start, end und optional ohlc_start.
+        start: Neuer Handelsbeginn im Format YYYY-MM-DD.
+        end: Neues Handelsende im Format YYYY-MM-DD.
+
+    Returns:
+        Neues Config-Dict mit gesetztem start/end/ohlc_start/ohlc_end. Die
+        übergebene Config bleibt unverändert.
+
+    Raises:
+        ValueError: Wenn `end` nicht nach `start` liegt.
+    """
+    windowed = copy.deepcopy(backtest_config)
+
+    vorlauf = warmup_span(windowed)
+
+    new_start = datetime.strptime(start, DATE_FORMAT)
+    new_end = datetime.strptime(end, DATE_FORMAT)
+    if new_end <= new_start:
+        raise ValueError(f'Fensterende {end} liegt nicht nach dem Fensterbeginn {start}.')
+
+    windowed['start'] = new_start.strftime(DATE_FORMAT)
+    windowed['end'] = new_end.strftime(DATE_FORMAT)
+    windowed['ohlc_start'] = (new_start - vorlauf).strftime(DATE_FORMAT)
+    windowed['ohlc_end'] = new_end.strftime(DATE_FORMAT)
+
+    return windowed

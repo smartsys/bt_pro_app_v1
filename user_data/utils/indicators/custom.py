@@ -373,3 +373,131 @@ dwsConst = vbt.IF(
     param_names=['value'],
     output_names=['result'],
 ).with_apply_func(const_inc, takes_1d=True)
+
+
+def random_entry_inc(source, seed=1, prob=0.05):
+    """Zufalls-Signal ohne jeden Marktbezug — Baustein für Negativkontrollen.
+
+    Der Input `source` dient wie bei dwsConst ausschließlich als Längen-/Index-Vorlage;
+    seine Werte gehen nicht in die Berechnung ein. Das Signal entsteht allein aus dem
+    Zufallsgenerator: pro Balken wird eine Gleichverteilungs-Ziehung gegen `prob`
+    geprüft. Damit trägt das Ergebnis per Konstruktion keine Information über den Markt.
+
+    Zweck: Eine Strategie, deren Einstieg reines Rauschen ist, liefert die Vergleichs-
+    Verteilung für Signifikanzmaße wie die Deflated Sharpe Ratio. Weicht eine echte
+    Strategie in einem solchen Maß nicht von dieser Negativkontrolle ab, ist in dem
+    Aufbau kein Edge nachweisbar.
+
+    Warum eigener Indikator: In VBTs Zufalls-Signalgeneratoren ist `seed` ein
+    Argument des Lauf-Aufrufs und damit keine Parameter-Achse. Hier sind `seed` und
+    `prob` echte Factory-Parameter und damit über die IndicatorConfig sweepbar —
+    jeder Seed ist ein eigener, unabhängiger Versuch im Multiparameter-Raster.
+
+    Args:
+        source: Beliebige Zeitreihe (typischerweise Close), nur für Länge/Index.
+        seed: Startwert des Zufallsgenerators (Default 1). Gleicher Seed liefert
+            bit-genau dasselbe Signal, unabhängig von den Werten in `source`.
+        prob: Wahrscheinlichkeit pro Balken, dass das Signal feuert (Default 0.05).
+
+    Returns:
+        numpy-Array der Länge len(source) mit 1.0 an Signal-Balken, 0.0 sonst
+        (gleiche Kodierung wie dwsCrossover).
+    """
+    n = len(source)
+    rng = np.random.default_rng(int(seed))
+    return (rng.random(n) < float(prob)).astype(float)
+
+
+# dwsRandomEntry — Zufalls-Einstiegssignal ohne Marktbezug (Negativkontrolle).
+# `seed` und `prob` sind echte Parameter und deshalb im Multiparameter-Lauf sweepbar;
+# der Seed-Default wird zusätzlich an with_apply_func gehängt, damit `run()` auch ohne
+# explizite Parameter läuft (gespeicherte Setups). Regel-Nutzung wie bei dwsCrossover:
+# `indicator:<id>:result > 0.5`.
+dwsRandomEntry = vbt.IF(
+    class_name='dwsRandomEntry',
+    input_names=['source'],
+    param_names=['seed', 'prob'],
+    output_names=['result'],
+).with_apply_func(random_entry_inc, takes_1d=True, seed=1, prob=0.05)
+
+
+def lookahead_oracle_inc(source, seed=1, prob=0.05, skill=0.0, lookahead=6, threshold=0.0):
+    """NUR MESSWERKZEUG — schaut absichtlich in die Zukunft und darf NIEMALS in einer
+    Handelsstrategie verwendet werden.
+
+    Der Indikator ist das Gegenstück zu dwsRandomEntry: dort ein informationsfreier
+    Einstieg (Negativkontrolle), hier ein per Konstruktion im Vorteil stehender Einstieg
+    (Positivkontrolle). Beides dient ausschließlich der Kalibrierung von Signifikanzmaßen
+    wie der Deflated Sharpe Ratio — die Negativkontrolle zeigt, was die Kennzahl an
+    Rauschen vergibt, die Positivkontrolle, ob sie einen echten Vorteil überhaupt erkennt.
+    Ein Backtest mit diesem Baustein ist kein Backtest, sondern eine Messung an einer
+    bekannten Wahrheit.
+
+    Aufbau: Pro Balken wird gewürfelt, ob das Signal aus der Zukunft oder aus dem Zufall
+    kommt. Der Anteil der Zukunfts-Balken ist `skill`.
+
+    - Zukunfts-Balken: Signal genau dann, wenn `source[t + lookahead] > source[t] * (1 + threshold)`.
+    - Zufalls-Balken: Signal genau dann, wenn die Ziehung unter `prob` liegt — identisch
+      zu random_entry_inc.
+
+    Bei `skill=0` ist das Ergebnis deshalb bit-genau dasselbe wie bei dwsRandomEntry mit
+    demselben Seed, bei `skill=1` ein perfektes Orakel. Der Zufallsanteil ist kein Beiwerk:
+    ohne ihn hätte die seed-Achse keine Streuung, die Sharpe-Varianz wäre null und die
+    Deflated Sharpe Ratio damit undefiniert.
+
+    Die letzten `lookahead` Balken haben kein Zukunftsfenster mehr. Sie liefern auf einem
+    Zukunfts-Balken kein Signal (0.0) — kein NaN, kein Umlauf auf den Reihenanfang.
+
+    Args:
+        source: Zeitreihe, aus der das Zukunftsfenster gelesen wird (typischerweise Close).
+            Anders als bei dwsRandomEntry gehen die Werte hier sehr wohl in die Berechnung ein.
+        seed: Startwert des Zufallsgenerators (Default 1). Steuert sowohl die Zufalls-Signale
+            als auch die Auswahl der Zukunfts-Balken.
+        prob: Signalrate des Zufallsanteils (Default 0.05).
+        skill: Anteil der Balken, deren Signal aus der Zukunft stammt, 0..1 (Default 0.0).
+        lookahead: Weite des Zukunftsfensters in Balken (Default 6).
+        threshold: Geforderte relative Kursänderung über das Fenster, z.B. 0.2 für 20 Prozent
+            (Default 0.0). Über den Schwellwert lässt sich die Signalrate des Zukunftsanteils
+            auf die des Zufallsanteils einstellen, damit die Handelsfrequenz vergleichbar bleibt.
+
+    Returns:
+        numpy-Array der Länge len(source) mit 1.0 an Signal-Balken, 0.0 sonst
+        (gleiche Kodierung wie dwsRandomEntry und dwsCrossover).
+    """
+    n = len(source)
+    rng = np.random.default_rng(int(seed))
+    # Erste Ziehung exakt wie in random_entry_inc — damit skill=0 bit-genau reproduziert.
+    random_signal = rng.random(n) < float(prob)
+    # Zweite Ziehung entscheidet je Balken, ob das Zukunftssignal genommen wird.
+    use_oracle = rng.random(n) < float(skill)
+
+    values = np.asarray(source, dtype=float)
+    steps = int(lookahead)
+    oracle_signal = np.zeros(n, dtype=bool)
+    if 0 < steps < n:
+        # Vergleich gegen NaN ergibt False — Lücken in der Reihe erzeugen kein Signal.
+        oracle_signal[:n - steps] = values[steps:] > values[:n - steps] * (1.0 + float(threshold))
+
+    return np.where(use_oracle, oracle_signal, random_signal).astype(float)
+
+
+# dwsLookaheadOracle — WARNUNG: blickt absichtlich in die Zukunft. Ausschließlich Messwerkzeug
+# (Positivkontrolle für Signifikanzmaße), niemals Bestandteil einer Handelsstrategie. Gegenstück
+# zu dwsRandomEntry; `skill` blendet stufenlos zwischen beiden über (0 = reiner Zufall,
+# 1 = perfektes Orakel). Alle fünf Parameter sind echte Factory-Parameter und damit im
+# Multiparameter-Lauf sweepbar; die Defaults an with_apply_func halten `run()` ohne explizite
+# Parameter lauffähig. Regel-Nutzung wie bei dwsRandomEntry: `indicator:<id>:result > 0.5`.
+dwsLookaheadOracle = vbt.IF(
+    class_name='dwsLookaheadOracle',
+    input_names=['source'],
+    param_names=['seed', 'prob', 'skill', 'lookahead', 'threshold'],
+    output_names=['result'],
+).with_apply_func(
+    lookahead_oracle_inc,
+    takes_1d=True,
+    seed=1,
+    prob=0.05,
+    skill=0.0,
+    lookahead=6,
+    threshold=0.0,
+)

@@ -19,6 +19,9 @@ GET/PUT/DELETE /api/config/strategy/{id}
 
 Verfügbare Symbole (aus HDF5-Dateien):
 GET            /api/config/symbols?exchange=binance&timeframe=4h
+
+Symbol-Korrelation und effektive Symbolzahl:
+GET            /api/config/symbols/correlation?exchange=binance&timeframe=4h&symbols=BTCUSDT,ETHUSDT
 """
 
 import glob
@@ -32,13 +35,14 @@ import json
 import pandas as pd
 from fastapi import APIRouter, Body, File, Query, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from rq import Queue
 from sqlalchemy import func, text
 
 import logging
 
 from services.api.redis_conn import get_redis_connection, OHLC_DOWNLOAD_QUEUE_NAME
+from services.api.ohlc_file_lock import ohlc_file_lock, OhlcFileBusyError
 from user_data.config import Config
 from user_data.utils.database.db import get_session
 from user_data.utils.database.models import (
@@ -58,6 +62,15 @@ from services.api.utils.indicator_compare import build_indicator_config_comparis
 from services.api.utils.indicator_labels import build_indicator_config_labels
 # GEÄNDERT: Export/Import von Indicator-Configs als eigenständige JSON-Dateien
 from services.api.utils.strategy_io import export_indicator_config, import_indicator_config
+# GEÄNDERT: Symbol-Korrelation (Punkt 24) — reine Rechenlogik, hier nur angebunden
+from services.api.utils.symbol_correlation import (
+    DEFAULT_MIN_OVERLAP,
+    DEFAULT_WINDOW,
+    analyze_symbol_correlation,
+)
+from user_data.utils.ohlc.loader import load_ohlc_data
+# GEÄNDERT: Ticket 59 — Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
+from user_data.utils.portfolio_enums import validate_stop_exit_price, validate_stop_order_type
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +94,26 @@ class BacktestConfigIn(BaseModel):
     size_type: str = 'value'
     init_cash: float = 100
     fees: float = 0.001
+    # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter analog fees. slippage ist in der
+    # DB NOT NULL mit Default 0.0, daher hier ein echter Float-Default statt None;
+    # die beiden Stop-Felder sind nullable, None bedeutet ausdrücklich „VBT-Default".
+    slippage: float = 0.0
+    stop_exit_price: Optional[str] = None
+    stop_order_type: Optional[str] = None
+
+    # GEÄNDERT: Ticket 59 — Eingabegrenze 1 von 2. Ein ungültiger Enum-Wert wird hier
+    # mit klarer Meldung abgewiesen, statt später roh aus VBT als KeyError zu fallen.
+    @field_validator('stop_exit_price')
+    @classmethod
+    def _check_stop_exit_price(cls, value: Optional[str]) -> Optional[str]:
+        """Prüft stop_exit_price gegen die installierte VBT-Version."""
+        return validate_stop_exit_price(value)
+
+    @field_validator('stop_order_type')
+    @classmethod
+    def _check_stop_order_type(cls, value: Optional[str]) -> Optional[str]:
+        """Prüft stop_order_type gegen die installierte VBT-Version."""
+        return validate_stop_order_type(value)
 
 
 class BacktestConfigOut(BaseModel):
@@ -101,6 +134,10 @@ class BacktestConfigOut(BaseModel):
     size_type: str
     init_cash: float
     fees: float
+    # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter auch in der Ausgabe
+    slippage: float
+    stop_exit_price: Optional[str] = None
+    stop_order_type: Optional[str] = None
     is_favorite: int
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -223,6 +260,10 @@ def create_config(data: BacktestConfigIn):
             size_type=data.size_type,
             init_cash=data.init_cash,
             fees=data.fees,
+            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitschreiben
+            slippage=data.slippage,
+            stop_exit_price=data.stop_exit_price,
+            stop_order_type=data.stop_order_type,
         )
         session.add(config)
         session.commit()
@@ -256,6 +297,10 @@ def update_config(config_id: int, data: BacktestConfigIn):
         config.size_type = data.size_type
         config.init_cash = data.init_cash
         config.fees = data.fees
+        # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitschreiben
+        config.slippage = data.slippage
+        config.stop_exit_price = data.stop_exit_price
+        config.stop_order_type = data.stop_order_type
         config.updated_at = datetime.now()
 
         session.commit()
@@ -303,6 +348,10 @@ def copy_config(config_id: int):
             size_type=original.size_type,
             init_cash=original.init_cash,
             fees=original.fees,
+            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitkopieren
+            slippage=original.slippage,
+            stop_exit_price=original.stop_exit_price,
+            stop_order_type=original.stop_order_type,
         )
         session.add(copy)
         session.commit()
@@ -348,6 +397,13 @@ def create_backtest_config_from_result(result_id: int):
                     status_code=422,
                 )
 
+        # GEÄNDERT: Ticket 59 — slippage ist NOT NULL. Alt-Snapshots ohne den Key
+        # (oder mit ausdrücklichem null) bekommen den Spaltendefault 0.0, damit die
+        # Config anlegbar bleibt und wie bisher rechnet.
+        snapshot_slippage = bc.get('slippage')
+        if snapshot_slippage is None:
+            snapshot_slippage = 0.0
+
         config = BacktestConfig(
             name=f'Aus Result {result_id} — {bc.get("symbol", "")} {bc.get("timeframe", "")}',
             description=f'Gespeichert aus Backtest-Result {result_id}.',
@@ -362,6 +418,11 @@ def create_backtest_config_from_result(result_id: int):
             size_type=bc.get('size_type', 'value'),
             init_cash=bc.get('init_cash', 100),
             fees=bc.get('fees', 0.001),
+            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter aus dem Result-Snapshot ziehen.
+            # Fehlender Stop-Key bleibt None ("nicht gesetzt" = VBT-Default).
+            slippage=snapshot_slippage,
+            stop_exit_price=bc.get('stop_exit_price'),
+            stop_order_type=bc.get('stop_order_type'),
         )
         session.add(config)
         session.commit()
@@ -1155,6 +1216,70 @@ def list_available_symbols(
     }
 
 
+@router.get('/symbols/correlation')
+def symbol_correlation(
+    exchange: str = Query('binance', description='z.B. binance'),
+    timeframe: str = Query(..., description='Timeframe der Quelldatei, z.B. 4h'),
+    symbols: str = Query(..., description='Komma-getrennte Symbolliste, mindestens zwei'),
+    start: Optional[str] = Query(None, description='Frühester Tag, z.B. 2020-01-01'),
+    end: Optional[str] = Query(None, description='Spätester Tag, z.B. 2025-01-01'),
+    window: int = Query(DEFAULT_WINDOW, description='Rollendes Fenster in Tagen'),
+    min_overlap: int = Query(DEFAULT_MIN_OVERLAP, description='Mindest-Überlappung je Paar in Tagen'),
+):
+    """Misst die Korrelation zwischen Symbolen und leitet die effektive Symbolzahl ab.
+
+    Die OHLCV-Daten der Quelldatei werden per VBT auf Tagesbasis resampelt (Close =
+    letzter Kurs des Tages); gerechnet wird auf den Log-Renditen dieser Tagesschluss-
+    kurse. Je Paar zählt nur der gemeinsame Zeitraum, dessen Länge mit ausgegeben wird.
+    Zusätzlich zum Gesamtwert wird rollierend gerechnet (Minimum/Median/Maximum).
+
+    Args:
+        exchange: Börse der Quelldatei.
+        timeframe: Timeframe der Quelldatei (wird auf Tagesbasis resampelt).
+        symbols: Komma-getrennte Symbolliste, mindestens zwei Einträge.
+        start: Optionaler Anfang des Auswertungszeitraums.
+        end: Optionales Ende des Auswertungszeitraums.
+        window: Fensterlänge der rollierenden Korrelation in Tagen.
+        min_overlap: Mindestanzahl gemeinsamer Tage je Paar.
+
+    Returns:
+        Antwort im Projektformat mit Korrelationsmatrix, Paar-Statistiken, mittlerer
+        Paarkorrelation und beiden effektiven Symbolzahlen.
+    """
+    symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
+    if len(symbol_list) < 2:
+        return JSONResponse(
+            {'data': None, 'error': 'Für eine Korrelation braucht es mindestens zwei Symbole.'},
+            status_code=400,
+        )
+
+    try:
+        ohlc_data = load_ohlc_data({
+            'symbols': symbol_list,
+            'exchange': exchange,
+            'timeframe': timeframe,
+            'ohlc_start': start,
+            'ohlc_end': end,
+        })
+        # Resampling auf Tagesbasis über VBT (Close = letzter Kurs des Tages)
+        daily_close = ohlc_data.resample('1D').close
+    except Exception as exc:
+        logger.exception('Symbol-Korrelation: OHLCV laden fehlgeschlagen')
+        return JSONResponse(
+            {'data': None, 'error': f'OHLCV laden fehlgeschlagen: {exc}'},
+            status_code=400,
+        )
+
+    try:
+        result = analyze_symbol_correlation(daily_close, window=window, min_overlap=min_overlap)
+    except ValueError as exc:
+        return JSONResponse({'data': None, 'error': str(exc)}, status_code=400)
+
+    result['exchange'] = exchange
+    result['source_timeframe'] = timeframe
+    return {'data': result, 'error': None}
+
+
 # ============================================================================
 # Daten-Verwaltung: Liste, Download, Update, Delete
 # ============================================================================
@@ -1322,6 +1447,14 @@ class OhlcDeleteIn(BaseModel):
     symbol: str
 
 
+# GEÄNDERT: Ticket 97 — kurze Wartezeit für die lesenden Datei-Sperren in dieser
+# Route-Schicht. Der Worker-Default (6 Stunden, siehe ohlc_file_lock.py) ist für
+# einen synchronen HTTP-Request ungeeignet: Ein kurzer Blick auf die Symbolliste
+# soll bei einer gerade laufenden Schreib-Operation (wenige Sekunden je Symbol)
+# warten, aber nicht den Request stundenlang blockieren.
+_OHLC_ROUTE_LOCK_WAIT = 60
+
+
 def _enqueue_ohlc_job(job: OhlcDownloadJob) -> str:
     """Reiht einen OHLC-Job in die Redis-Queue ein und gibt die rq_job_id zurück.
 
@@ -1417,9 +1550,16 @@ def create_update_job(payload: OhlcUpdateIn):
         )
     session = get_session()
     try:
-        # GEÄNDERT: alle Symbole der Datei in Einzel-Update-Jobs zerlegen.
-        with pd.HDFStore(path, mode='r') as store:
-            symbols = sorted(k.lstrip('/') for k in store.keys())
+        # GEÄNDERT: alle Symbole der Datei in Einzel-Update-Jobs zerlegen. Ticket 97 —
+        # derselbe lesende Zugriff wie im Worker steht unter der Datei-Sperre: ohne sie
+        # kann ein data-update, das startet während ein anderer Job noch schreibt, in
+        # denselben errno 11 laufen wie zwei parallele Schreiber.
+        try:
+            with ohlc_file_lock(payload.exchange, payload.timeframe, wait=_OHLC_ROUTE_LOCK_WAIT):
+                with pd.HDFStore(path, mode='r') as store:
+                    symbols = sorted(k.lstrip('/') for k in store.keys())
+        except OhlcFileBusyError as exc:
+            return JSONResponse({'data': None, 'error': str(exc)}, status_code=503)
         if not symbols:
             return JSONResponse(
                 {'data': None, 'error': f'Keine Symbole in {filename}'},
@@ -1471,10 +1611,13 @@ def create_baseline_ohlc_jobs():
             path = os.path.join(Config.DATA_PATH, filename)
             already = False
             if os.path.exists(path):
+                # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre
+                # wie der Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
                 try:
-                    with pd.HDFStore(path, mode='r') as store:
-                        already = any(k.lstrip('/') == r['symbol'] for k in store.keys())
-                except (OSError, KeyError):
+                    with ohlc_file_lock(r['exchange'], r['timeframe'], wait=_OHLC_ROUTE_LOCK_WAIT):
+                        with pd.HDFStore(path, mode='r') as store:
+                            already = any(k.lstrip('/') == r['symbol'] for k in store.keys())
+                except (OSError, KeyError, OhlcFileBusyError):
                     already = False
             if already:
                 skipped.append(r['symbol'])
@@ -1539,10 +1682,13 @@ def create_download_all_configs_jobs(
             path = os.path.join(Config.DATA_PATH, filename)
             already = False
             if os.path.exists(path):
+                # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre
+                # wie der Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
                 try:
-                    with pd.HDFStore(path, mode='r') as store:
-                        already = any(k.lstrip('/') == r['symbol'] for k in store.keys())
-                except (OSError, KeyError):
+                    with ohlc_file_lock(r['exchange'], r['timeframe'], wait=_OHLC_ROUTE_LOCK_WAIT):
+                        with pd.HDFStore(path, mode='r') as store:
+                            already = any(k.lstrip('/') == r['symbol'] for k in store.keys())
+                except (OSError, KeyError, OhlcFileBusyError):
                     already = False
             if already:
                 updated.extend(_create_ohlc_jobs(
@@ -1584,8 +1730,14 @@ def create_update_symbol_job(payload: OhlcUpdateSymbolIn):
             status_code=404,
         )
     sym = payload.symbol.strip().upper()
-    with pd.HDFStore(path, mode='r') as store:
-        keys = set(k.lstrip('/') for k in store.keys())
+    # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre wie der
+    # Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
+    try:
+        with ohlc_file_lock(payload.exchange, payload.timeframe, wait=_OHLC_ROUTE_LOCK_WAIT):
+            with pd.HDFStore(path, mode='r') as store:
+                keys = set(k.lstrip('/') for k in store.keys())
+    except OhlcFileBusyError as exc:
+        return JSONResponse({'data': None, 'error': str(exc)}, status_code=503)
     if sym not in keys:
         return JSONResponse(
             {'data': None, 'error': f'Symbol {sym} nicht in {filename}'},

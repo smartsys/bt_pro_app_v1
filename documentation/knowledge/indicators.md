@@ -97,6 +97,10 @@ Muster: `vbt.IF(class_name=..., input_names=[...], param_names=[...], output_nam
 | `dwsCrossover` | `series_a, series_b` | (keine) | `result` | Bidirektionaler Crossover (Pine `ta.cross`), 1.0/0.0 |
 | `dwsSMI` | `high, low, close` | `k_length, smooth1, smooth2, signal` | `smi, signal` | Stochastic Momentum Index (Blau, Skala ±100, TradingView-treu) |
 | `dwsTrendlineTouch` | `high, low, close` | `up_th, down_th, atr_length, touch_tol_atr, break_tol_atr, dev_max_atr, min_touch, max_touch` | `short_line, long_line, short_signal, long_signal` | TAP: 3./4. Trendlinien-Berührung mit Abpraller (Pivot-basiert) |
+| `dwsRandomEntry` | `source` | `seed, prob` | `result` | Zufalls-Einstieg ohne Marktbezug — **Messwerkzeug** (Negativkontrolle) |
+| `dwsLookaheadOracle` | `source` | `seed, prob, skill, lookahead, threshold` | `result` | **WARNUNG: blickt in die Zukunft.** Reines Messwerkzeug (Positivkontrolle), **niemals in einer Handelsstrategie verwenden** |
+
+> **Messwerkzeuge, keine Handelsindikatoren.** `dwsRandomEntry` und `dwsLookaheadOracle` dienen ausschließlich der Kalibrierung von Signifikanzmaßen (z.B. Deflated Sharpe Ratio): der eine als informationsfreier Einstieg, der andere als per Konstruktion überlegener. `dwsLookaheadOracle` liest `source[t + lookahead]` und ist damit ein absichtlicher Zukunftsblick — der schwerste Fehler, den ein Backtest haben kann. Er gehört in keine Iteration, die eine Handelsentscheidung begründen soll. Bei `skill=0` verhält er sich bit-genau wie `dwsRandomEntry`, bei `skill=1` als perfektes Orakel.
 
 Neue Custom-Indikatoren hier als `IndicatorFactory` ergänzen — sie erscheinen automatisch im Katalog (Gruppe `custom`).
 
@@ -231,19 +235,23 @@ Die Entry-/Exit-Regeln verknüpfen Conditions, deren Operanden aus verschiedenen
 
 Pro Spalte (= Kombination) wird eine `BacktestResult`-Zeile mit Metriken + `actual_params_json` (die konkreten Param-Werte aus dem Column-MultiIndex) geschrieben.
 
-**Asymmetrie nach Kombinationszahl (`if n_combinations == 1`):**
-- **Single-Combo**: volle Detail-Daten — Equity-Kurve, Indikator-Serien, Trades, Orders, Positions — werden gespeichert.
-- **Multi-Combo**: **nur die Metriken** pro Result (via `_extract_partial_metrics`, vektorisiert über alle Spalten). **Keine** Equity/Indikator-Zeitreihen (das wären pro Artefakt `n_combinations × bars` Zeilen — bei 31.875 × 4571 unhaltbar).
+**Chunkweise Persistenz (Ticket 71).** Ein gechunkter Multiparameterlauf schreibt seine Results nicht mehr erst am Ende, sondern nach jedem Chunk: der Spec-Runner reicht jeden fertigen Chunk an die vom Worker injizierte Senke, die ihn über `save_result_chunk` in einer eigenen Transaktion speichert — zusammen mit `backtest_runs.completed_chunks`, dem Fortsetzungspunkt. Ein hart beendeter Lauf behält damit die abgeschlossenen Chunks und wird über `POST /api/backtest/runs/{id}/resume` ab dem ersten fehlenden Chunk fortgesetzt. Den Lauf abschließend (Status, `n_combinations`, `ann_factor`, DSR-Nachlauf) macht `finalize_backtest_run` — einmal, über den ganzen Lauf, gechunkt wie ungechunkt derselbe Weg.
 
-Konsequenz: Ein Multi-Combo-Result hat zunächst **keine** Equity/Indikator-Zeitreihen in der DB. `_extract_partial_metrics` (Liste) und `_extract_chart_metrics` (Recompute) liefern für denselben Combo **identische** `end_value` (verifiziert, bit-gleich).
+**Kennzahlen: keine Asymmetrie mehr (Ticket 64).** Sie entstehen für jeden Lauf in genau einer Funktion — `_extract_metrics(portfolios, columns, backtest_config)`, vektorisiert über alle Spalten. Ein Result trägt denselben Satz Kennzahlen, unabhängig davon, ob der Lauf eine oder tausend Kombinationen hatte; die frühere Verzweigung `if n_combinations == 1` und die Spalte `metrics_level` sind entfernt.
+
+**Asymmetrie bleibt nur bei den Zeitreihen:**
+- **Single-Combo**: zusätzlich die vollen Detail-Daten — Equity-Kurve, Indikator-Serien, Trades, Orders, Positions.
+- **Multi-Combo**: **keine** Equity/Indikator-Zeitreihen (das wären pro Artefakt `n_combinations × bars` Zeilen — bei 31.875 × 4571 unhaltbar).
+
+Konsequenz: Ein Multi-Combo-Result hat zunächst **keine** Equity/Indikator-Zeitreihen in der DB, wohl aber alle Kennzahlen. Dass Multi-Combo-Spalte und einzeln gerechnetes Portfolio denselben Wert liefern, sichert `tests/test_metrics_single_vs_multi_equality.py` über **jede** Kennzahl ab — seit Ticket 54 ohne Ausnahme, weil die rasterweite `deflated_sharpe_ratio` nicht mehr aus `_extract_metrics` kommt, sondern als Nachlauf über den ganzen Lauf entsteht.
 
 ### 6.8 Recompute — Chart eines Multi-Combo-Results — `recompute.py`
 
-Beim Öffnen eines Charts ruft `GET /api/backtest/results/{id}/chart-data` (`api_backtest.py`) zuerst einen `COUNT` auf `backtest_result_equity`. Ist er 0 (Multi-Combo-Result), wird **synchron im API-Prozess** `recompute_single_result(result_id)` ausgeführt: die Strategie wird mit den **exakten Einzel-Parametern** dieses Results neu gerechnet (Single-Combo) und alle Detail-Daten gespeichert. `compute_full_metrics` ist der nachgelagerte Job für die langsamen Metriken.
+Beim Öffnen eines Charts ruft `GET /api/backtest/results/{id}/chart-data` (`api_backtest.py`) zuerst einen `COUNT` auf `backtest_result_equity`. Ist er 0 (Multi-Combo-Result), wird **synchron im API-Prozess** `recompute_single_result(result_id)` ausgeführt: die Strategie wird mit den **exakten Einzel-Parametern** dieses Results neu gerechnet (Single-Combo) und alle Detail-Daten gespeichert. Die Kennzahlen kommen dabei aus derselben `_extract_metrics` wie im Lauf, mit N=1 — der Recompute rechnet nichts Eigenes (Ticket 64; den früheren Nachlauf `compute_full_metrics` gibt es nicht mehr). Die `deflated_sharpe_ratio` ist seit Ticket 54 nicht mehr Teil dieses Satzes und bleibt beim Recompute deshalb unangetastet — vorher überschrieb er sie mit NULL.
 
 Zwei kritische Mechaniken (beide waren Bugs, behoben in 1.7.7 / 1.7.8):
 
-1. **`rules_json` muss übergeben werden.** Der Spec-Runner verlangt seit Ticket 12 zwingend `rules_json`. `recompute_single_result` **und** `compute_full_metrics` laden es aus `run.iteration.spec_json['rules']` und übergeben es per `inspect.signature`-Guard (hartgecodete Strategien ohne den Parameter bleiben unberührt) — analog `worker_tasks.py`. Fehlte das → `ValueError: rules_json fehlt` → `/chart-data` lieferte HTTP 500 (OHLC sichtbar, aber keine Equity/Indikatoren).
+1. **`rules_json` muss übergeben werden.** Der Spec-Runner verlangt seit Ticket 12 zwingend `rules_json`. `recompute_single_result` lädt es aus `run.iteration.spec_json['rules']` und übergibt es per `inspect.signature`-Guard (hartgecodete Strategien ohne den Parameter bleiben unberührt) — analog `worker_tasks.py`. Fehlte das → `ValueError: rules_json fehlt` → `/chart-data` lieferte HTTP 500 (OHLC sichtbar, aber keine Equity/Indikatoren).
 
 2. **`_build_resolved_config` (repository.py) baut den Param-Präfix korrekt.** Es ersetzt die Multiparameter-Lauf-Ranges der Indikator-Config durch die festen Werte aus `actual_params`. Der Match-Präfix ist der **Namespace-bereinigte, kleingeschriebene Klassenname** (`custom:dwsFastSMA` → `dwsfastsma_`), denn die `actual_params`-Keys heißen `dwsfastsma_length`, nicht `custom:dwsfastsma_length`. Früher wurde die volle Typ-ID als Präfix genutzt → kein Param matchte → die Ranges blieben stehen → der Recompute rechnete den **vollständigen Multiparameter-Lauf** und nahm `column[0]`. Symptom: jeder Chart zeigte denselben ersten Combo (immer derselbe Equity-Endwert), das Laden dauerte Minuten, und die mit `column[0]`-Werten überschriebenen Metriken ließen das Result aus der gefilterten Result-Liste fallen.
 
@@ -252,7 +260,7 @@ Korrekt aufgelöst läuft der Recompute als echter Single-Combo (~4.5s; der **er
 ### 6.9 Verifizierte Fakten & Fallstricke (2026-06-01)
 
 - **Cross-Korrektheit**: `Multiparameter-Lauf[combo].end_value == Standalone-Single-Combo.end_value` bit-identisch → Cross-Produkt ordnet Spalten korrekt zu.
-- **Liste == Chart**: `_extract_partial_metrics[combo].end_value == _extract_chart_metrics(pf).end_value` identisch.
+- **Liste == Chart**: `_extract_metrics(portfolios)[combo] == _extract_metrics(einzeln gerechnetes Portfolio)[0]` — seit Ticket 64 nicht mehr nur für `end_value`, sondern für **jede** Kennzahl, und nicht mehr als Vergleich zweier Implementierungen, sondern weil es nur noch einen Weg gibt.
 - **Versions-Stempel**: `spec_runner_version` wird **bei Run-Erstellung im API-Prozess** (`api_backtest.py`) gesetzt, nicht im Worker. Nach einer `spec_runner.VERSION`-Erhöhung muss **auch der `app`-Container** neu gestartet werden (nicht nur `worker`), sonst tragen neue Runs die alte Version. Aktuell `VERSION = "1.0.2"`.
 - **Worker-Neustart**: Code-Änderungen an `rules_engine`/`spec_runner`/`indicator_factory` greifen erst nach `docker compose -f docker-compose-local.yml restart worker` (Recompute zusätzlich `app`).
 - **Bekannter Minor-Bug (offen)**: `recompute_single_result` löscht vorhandene Equity **nicht** vor dem Insert. Bei Doppel-Öffnen/Race entsteht doppelte Equity (z.B. 9142 statt 4571 Zeilen). Fix-Ansatz: `DELETE FROM backtest_result_equity WHERE result_id = :rid` vor dem Schreiben.

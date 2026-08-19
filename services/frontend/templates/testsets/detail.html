@@ -259,9 +259,34 @@
   if (btnDelete) {
     btnDelete.addEventListener('click', function() {
       if (!confirm('TestSet wirklich löschen?')) return;
-      fetch('/api/testsets/' + testsetId, { method: 'DELETE' })
-        .then(function() { window.location.href = '/testsets'; });
+      // GEÄNDERT: Ticket 61 — Antwort auswerten statt blind umzuleiten.
+      // GEÄNDERT: HTTP 409 ist keine Ablehnung mehr, sondern die Rückfrage. Hängen
+      // noch Testset-Läufe dran, nennt der Endpunkt die Anzahlen; bestätigt der User,
+      // wird mit force=true erneut gelöscht. Läufe, Runs und Results bleiben stehen.
+      deleteTestset(false);
     });
+
+    /**
+     * Ruft den Lösch-Endpunkt auf und behandelt die Rückfrage bei HTTP 409.
+     * @param {boolean} force - true überspringt die Rückfrage serverseitig.
+     */
+    function deleteTestset(force) {
+      var url = '/api/testsets/' + testsetId + (force ? '?force=true' : '');
+      fetch(url, { method: 'DELETE' })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, json: j }; }); })
+        .then(function(res) {
+          if (res.status === 409) {
+            if (confirm(res.json.detail)) deleteTestset(true);
+            return;
+          }
+          if (!res.ok) {
+            alert('Fehler: ' + (res.json.detail || JSON.stringify(res.json)));
+            return;
+          }
+          window.location.href = '/testsets';
+        })
+        .catch(function(err) { alert('Fehler beim Löschen: ' + err); });
+    }
   }
 })();
 </script>

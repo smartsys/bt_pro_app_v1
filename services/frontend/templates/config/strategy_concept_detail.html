@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}{{ concept.name }} - BT Pro{% endblock %}
+
+{% block page_header %}
+<div class="page-header d-print-none">
+  <div class="container-fluid">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <h2 class="page-title mb-0">{{ concept.name }}</h2>
+        <div class="page-pretitle">Konfiguration / Strategie-Konzepte</div>
+      </div>
+      <div class="col-auto ms-auto d-flex gap-2">
+        <a href="/config/strategy-concepts" class="btn btn-outline-secondary">Zur Übersicht</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{# GEÄNDERT: Ticket 85 — read-only Konzept-Detailseite. Bearbeitet wird in der Übersicht (Ticket 66). #}
+{# Zeigt eine Kennzahl oder einen Gedankenstrich statt "None", wenn sie fehlt.
+   Fließkommazahlen einheitlich auf 4 Nachkommastellen gerundet (nur Anzeige,
+   keine Datenänderung) — Ganzzahlen (z.B. Trades) bleiben unverändert. #}
+{% macro metric_cell(v) %}{% if v is none %}<span class="text-muted">–</span>{% elif v is float %}{{ '%.4f'|format(v) }}{% else %}{{ v }}{% endif %}{% endmacro %}
+
+<!-- Kopf: Name (im Page-Header), Slug, Status, Beschreibung -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="fw-bold">{{ concept.slug }}</span>
+      {% if concept.status == 'idee' %}
+      <span class="badge bg-orange-lt">Idee</span>
+      {% elif concept.status == 'active' %}
+      <span class="badge bg-green-lt">active</span>
+      {% elif concept.status == 'archived' %}
+      <span class="badge bg-secondary-lt">archived</span>
+      {% else %}
+      <span class="badge bg-yellow-lt">{{ concept.status }}</span>
+      {% endif %}
+    </div>
+    {% if concept.description %}
+    <p class="mb-0">{{ concept.description }}</p>
+    {% else %}
+    <p class="text-muted mb-0">Keine Beschreibung hinterlegt.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- GEÄNDERT: Ziel und Ziel-JSON als zwei nebeneinanderliegende Cards (links Wortlaut, rechts JSON) -->
+<div class="row row-cards mb-3">
+  <div class="col-lg-6 mb-3 mb-lg-0">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title">Ziel</h3>
+      </div>
+      <div class="card-body">
+        {% if concept.goal_prompt %}
+        <blockquote class="blockquote mb-0" style="white-space: pre-wrap;">{{ concept.goal_prompt }}</blockquote>
+        {% else %}
+        <p class="text-muted mb-0">Kein Ziel hinterlegt.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title">Ziel-JSON</h3>
+      </div>
+      <div class="card-body">
+        {% if concept.goal_json_str %}
+        <pre class="mb-0 border rounded p-3" style="white-space: pre-wrap;">{{ concept.goal_json_str }}</pre>
+        {% else %}
+        <p class="text-muted mb-0">Kein Ziel-JSON hinterlegt.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Befund-Historie: chronologisch, kein Verdict, keine Sortierung nach Kennzahlen -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Befund-Historie ({{ findings|length }})</h3>
+  </div>
+  <div class="card-body">
+    {% if not findings %}
+    <p class="text-muted mb-0">Keine Befunde.</p>
+    {% else %}
+      {% for fd in findings %}
+      <div class="card mb-2">
+        <div class="card-header p-2" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#finding-{{ fd.id }}">
+          <div class="d-flex flex-wrap align-items-center gap-2 w-100">
+            <span class="fw-bold">Befund {{ fd.id }}</span>
+            <span class="text-muted">{{ fd.created_at }}</span>
+            {% if fd.is_closed %}
+            <span class="badge bg-blue-lt">abgeschlossen</span>
+            {% else %}
+            <span class="badge bg-secondary-lt">läuft noch</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="collapse" id="finding-{{ fd.id }}">
+          <div class="card-body">
+
+            <!-- Kontext -->
+            <div class="row mb-3">
+              <div class="col-md-4">
+                <div class="text-muted small">Iteration</div>
+                {% if fd.iteration_exists %}
+                <a href="/config/strategy-concepts/{{ concept.id }}/iterations/{{ fd.iteration_id }}/log">{{ fd.iteration_label }}</a>
+                {% else %}
+                <span>Iteration {{ fd.iteration_id }} (gelöscht)</span>
+                {% endif %}
+              </div>
+              <div class="col-md-4">
+                <div class="text-muted small">Testset</div>
+                {% if fd.testset_name %}
+                <span>{{ fd.testset_name }}</span>
+                {% else %}
+                <span>Testset {{ fd.testset_id }} (gelöscht)</span>
+                {% endif %}
+              </div>
+              <div class="col-md-4">
+                <div class="text-muted small">Rastergröße geplant / gerechnet</div>
+                <span>
+                  {% if fd.planned_combos_total is not none %}
+                    {{ fd.planned_combos_total }} Kombinationen ({{ fd.planned_n_runs }} Lauf/Läufe)
+                  {% else %}
+                    <span class="text-muted" title="{{ fd.planned_grid_reason }}">nicht ermittelbar</span>
+                  {% endif %}
+                  /
+                  {% if fd.actual_combos_total is not none %}
+                    {{ fd.actual_combos_total }} ({{ fd.actual_n_runs }} Lauf/Läufe)
+                  {% else %}
+                    <span class="text-muted">noch nicht abgeschlossen</span>
+                  {% endif %}
+                </span>
+              </div>
+            </div>
+
+            <!-- Soll neben Ist-Kern -->
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <h6>Soll (Ziel-Schnappschuss)</h6>
+                {% if fd.goal_snapshot_json %}
+                <pre class="mb-0" style="white-space: pre-wrap;">{{ fd.goal_snapshot_json | tojson(indent=2) }}</pre>
+                {% else %}
+                <p class="text-muted mb-0">{{ fd.goal_missing_reason or 'kein Ziel-Schnappschuss vorhanden' }}</p>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <h6>Ist-Kern (Kandidaten je Bestwert-Kriterium)</h6>
+                {% if not fd.candidates_per_run %}
+                <p class="text-muted mb-0">noch nicht abgeschlossen</p>
+                {% else %}
+                  {% for run in fd.candidates_per_run %}
+                  <div class="mb-2">
+                    <div class="text-muted small">Lauf {{ run.run_id }} ({{ run.symbol }})</div>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-vcenter mb-0">
+                        <thead>
+                          <tr>
+                            <th>Kriterium</th>
+                            <th>Sharpe</th>
+                            <th>Return %</th>
+                            <th>PF</th>
+                            <th>Win-Rate %</th>
+                            <th>Trades</th>
+                            <th>Max-DD %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for key, c in run.criteria.items() %}
+                          <tr>
+                            <td title="{{ fd.best_criteria_labels.get(key, key) }}">{{ fd.best_criteria_labels.get(key, key) }}</td>
+                            {% if c.winner %}
+                            <td>{{ metric_cell(c.winner.metrics.sharpe_ratio) }}</td>
+                            <td>{{ metric_cell(c.winner.metrics.total_return_pct) }}</td>
+                            <td>{{ metric_cell(c.winner.metrics.profit_factor) }}</td>
+                            <td>{{ metric_cell(c.winner.metrics.win_rate_pct) }}</td>
+                            <td>{{ metric_cell(c.winner.metrics.total_trades) }}</td>
+                            <td>{{ metric_cell(c.winner.metrics.max_drawdown_pct) }}</td>
+                            {% else %}
+                            <td colspan="6" class="text-muted">{{ c.reason }}</td>
+                            {% endif %}
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Robustheit inkl. DSR (immer mit N und SR0) -->
+            <div class="mb-3">
+              <h6>Robustheit</h6>
+              {% if not fd.dsr_blocks %}
+              <p class="text-muted mb-0">noch nicht abgeschlossen</p>
+              {% else %}
+                {% if fd.dsr_hinweis %}
+                <p class="text-muted small">{{ fd.dsr_hinweis }}</p>
+                {% endif %}
+                {# GEÄNDERT: DSR (bester Wert + je Bestwert-Kriterium) steht in derselben
+                   Tabelle wie N und SR0 — nie ohne die beiden lesbar. Reihenfolge wie in
+                   den Daten, kein Ranking. plateau_json bleibt bewusst außen vor. #}
+                <div class="table-responsive">
+                  <table class="table table-sm table-vcenter mb-0">
+                    <thead>
+                      <tr>
+                        <th>Lauf</th>
+                        <th>N (Rastergröße)</th>
+                        <th>SR0 (Rauschlatte)</th>
+                        <th>Bester Sharpe</th>
+                        <th>Beste DSR</th>
+                        <th>DSR je Kriterium</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for block in fd.dsr_blocks %}
+                      <tr>
+                        <td>{{ block.run_id }} ({{ block.symbol }})</td>
+                        <td>{{ block.n }}</td>
+                        <td>
+                          {% if block.sr0 is not none %}
+                          {{ '%.4f'|format(block.sr0) }}
+                          {% else %}
+                          <span class="text-muted">{{ block.sr0_reason }}</span>
+                          {% endif %}
+                        </td>
+                        <td>{{ metric_cell(block.best_sharpe_ratio) }}</td>
+                        <td>
+                          {% if block.best %}
+                          {{ metric_cell(block.best.deflated_sharpe_ratio) }} (Result {{ block.best.result_id }})
+                          {% else %}
+                          <span class="text-muted">{{ block.best_reason }}</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if block.candidates %}
+                          <ul class="mb-0 ps-3">
+                            {% for cand in block.candidates %}
+                            <li>{{ fd.best_criteria_labels.get(cand.criterion, cand.criterion) }}: {{ metric_cell(cand.deflated_sharpe_ratio) }} (Result {{ cand.result_id }})</li>
+                            {% endfor %}
+                          </ul>
+                          {% else %}
+                          <span class="text-muted">keine Kandidaten</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Warnhinweise -->
+            <div class="mb-3">
+              <h6>Warnhinweise</h6>
+              {% if not fd.warnings_items and not fd.warnings_not_evaluated %}
+              <p class="text-muted mb-0">keine Warnhinweise</p>
+              {% else %}
+                {% if fd.warnings_items %}
+                <ul class="mb-2">
+                  {% for w in fd.warnings_items %}
+                  <li>{{ w.text }}</li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% if fd.warnings_not_evaluated %}
+                <ul class="text-muted mb-0">
+                  {% for w in fd.warnings_not_evaluated %}
+                  <li>nicht geprüft ({{ w.code }}): {{ w.reason }}</li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+              {% endif %}
+            </div>
+
+            <!-- Deutungstext, mit Auto-Linking von URLs/Pfaden -->
+            <div>
+              <h6>Deutung</h6>
+              {% if fd.interpretation_text %}
+              <p class="mb-0" style="white-space: pre-wrap;">{{ fd.interpretation_text | autolink }}</p>
+              {% else %}
+              <p class="text-muted mb-0">keine Deutung hinterlegt</p>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

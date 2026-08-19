@@ -181,10 +181,26 @@ def _active_ohlc_jobs(session) -> list:
 
 
 def _active_testset_runs(session) -> list:
-    """Offene TestSet-Läufe als vereinheitlichte Job-Zeilen."""
+    """Offene TestSet-Läufe als vereinheitlichte Job-Zeilen.
+
+    GEÄNDERT: Ticket 62 — ein TestSet-Lauf ohne jeden zugehörigen BacktestRun
+    steht hinter keinem Job mehr (weder in Redis noch als DB-Zeile) und wird
+    trotz status in ACTIVE_STATES nicht mehr als aktiv gewertet.
+    start_testset_run (api_testset_runs.py) legt alle BacktestRuns synchron
+    an, bevor es sie enqueued — ein wirklich aktiver Lauf hat also immer
+    mindestens einen. Betroffen davon sind konkret fünf Karteileichen aus Juli
+    2026 (IDs 7, 8, 9, 10, 20), denen die Backtest-Runs fehlen und die deshalb
+    für immer auf 'queued' hängen blieben.
+    """
+    has_backtest_run = (
+        session.query(BacktestRun.id)
+        .filter(BacktestRun.testset_run_id == TestSetRun.id)
+        .exists()
+    )
     rows = (
         session.query(TestSetRun)
         .filter(TestSetRun.status.in_(ACTIVE_STATES))
+        .filter(has_backtest_run)
         .order_by(TestSetRun.created_at.desc())
         .all()
     )

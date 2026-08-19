@@ -85,6 +85,9 @@
               <div class="col-auto"><strong>Zeitraum:</strong> <span id="bt-period"></span></div>
               <div class="col-auto"><strong>Size:</strong> <span id="bt-size"></span></div>
               <div class="col-auto"><strong>Fees:</strong> <span id="bt-fees"></span></div>
+              <div class="col-auto"><strong>Slippage:</strong> <span id="bt-slippage"></span></div>
+              <div class="col-auto"><strong>Stop Exit:</strong> <span id="bt-stop-exit-price"></span></div>
+              <div class="col-auto"><strong>Stop Order:</strong> <span id="bt-stop-order-type"></span></div>
             </div>
           </div>
         </div>
@@ -355,6 +358,10 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("bt-period").textContent = c.start + ' - ' + c.end;
     document.getElementById("bt-size").textContent = c.size + ' (' + c.size_type + ')';
     document.getElementById("bt-fees").textContent = c.fees;
+    // GEÄNDERT: Ticket 59 — Slippage/Stop-Felder analog Fees; NULL = „VBT-Default", nie leer/0
+    document.getElementById("bt-slippage").textContent = c.slippage;
+    document.getElementById("bt-stop-exit-price").textContent = c.stop_exit_price || 'VBT-Default';
+    document.getElementById("bt-stop-order-type").textContent = c.stop_order_type || 'VBT-Default';
     document.getElementById("bt-config-details").style.display = '';
   }
 

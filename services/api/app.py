@@ -50,6 +50,13 @@ from services.api.routes.api_chart_playground import router as api_chart_playgro
 from services.api.routes.api_testsets import router as testsets_router
 # GEÄNDERT: TestSet-Runs API-Router (Ticket 05)
 from services.api.routes.api_testset_runs import router as api_testset_runs_router
+# GEÄNDERT: Ticket 56 — Befund-Lese-Router (ein Befund + Historie je Iteration)
+from services.api.routes.api_testset_run_findings import router as api_testset_run_findings_router
+# GEÄNDERT: Ticket 79 — Signifikanztest je Kandidat (Permutationstest + Bootstrap)
+from services.api.routes.api_significance import router as api_significance_router
+# GEÄNDERT: Ticket 82 — Walk-Forward als Fold-Kette (eigenes immutables Artefakt)
+from services.api.routes.api_walk_forward_chains import router as api_walk_forward_chains_router
+from services.api.routes.api_walk_forward_chain_runs import router as api_walk_forward_chain_runs_router
 from services.api.routes.views_backtest import router as views_router
 from services.api.routes.views_config import router as views_config_router
 from services.api.routes.views_chart_playground import router as views_chart_playground_router
@@ -70,6 +77,8 @@ from services.api.routes.api_monitor import router as api_monitor_router
 from services.api.routes.views_monitor import router as views_monitor_router
 # Seed-Export/-Import über die GUI
 from services.api.routes.views_seed import router as views_seed_router
+# GEÄNDERT: Ticket 100 — Analyse-Screenshot über den Renderer-Dienst
+from services.api.routes.api_analyse_screenshot import router as api_analyse_screenshot_router
 
 app = FastAPI(title="BT Pro App", version="1.0.0", debug=True)
 
@@ -81,6 +90,9 @@ app.mount('/static', StaticFiles(directory=str(FRONTEND_DIR / 'static')), name='
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / 'templates'))
 templates.env.globals['APP_VERSION'] = os.getenv('APP_VERSION', '0.0.0')
 templates.env.globals['STATIC_TS'] = str(int(__import__('time').time()))
+# GEÄNDERT: Ticket 85 — Auto-Linking von URLs/Pfaden in Befund-Deutungstexten
+from services.api.utils.autolink import autolink_html
+templates.env.filters['autolink'] = autolink_html
 app.state.templates = templates
 
 # Router einbinden
@@ -91,6 +103,13 @@ app.include_router(api_chart_playground_router)
 app.include_router(testsets_router)
 # GEÄNDERT: TestSet-Runs Router einbinden (Ticket 05)
 app.include_router(api_testset_runs_router)
+# GEÄNDERT: Ticket 56 — Befund-Lese-Router einbinden
+app.include_router(api_testset_run_findings_router)
+# GEÄNDERT: Ticket 79 — Signifikanztest-Router einbinden
+app.include_router(api_significance_router)
+# GEÄNDERT: Ticket 82 — Walk-Forward-Ketten-Router einbinden
+app.include_router(api_walk_forward_chains_router)
+app.include_router(api_walk_forward_chain_runs_router)
 app.include_router(views_router)
 app.include_router(views_config_router)
 app.include_router(views_chart_playground_router)
@@ -112,6 +131,8 @@ app.include_router(api_monitor_router)
 app.include_router(views_monitor_router)
 # Seed-Export/-Import einbinden
 app.include_router(views_seed_router)
+# GEÄNDERT: Ticket 100 — Analyse-Screenshot-Router einbinden
+app.include_router(api_analyse_screenshot_router)
 
 
 @app.get('/')

@@ -9,7 +9,7 @@ Aggregat-Berechnung (Ticket 06).
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,6 +25,27 @@ from user_data.utils.database.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# GEÄNDERT: Ticket 61 — eigener Fehlertyp für den Lösch-Konflikt am TestSet.
+# GEÄNDERT: Der Fehler ist keine endgültige Ablehnung mehr, sondern der Anlass für
+# eine Rückfrage: Er meldet, was am TestSet noch dranhängt, damit die Oberfläche
+# den Löschwunsch bestätigen lassen kann (Löschen dann mit force=True).
+class TestSetRunsBlockingError(Exception):
+    """Am TestSet hängen noch Testset-Läufe — Löschen erst nach Bestätigung.
+
+    Attributes:
+        blocking_testset_runs: Anzahl der Testset-Läufe, die am TestSet hängen.
+        blocking_backtest_runs: Anzahl der an diesen Läufen hängenden Backtest-Runs.
+    """
+
+    def __init__(self, blocking_testset_runs: int, blocking_backtest_runs: int) -> None:
+        self.blocking_testset_runs = blocking_testset_runs
+        self.blocking_backtest_runs = blocking_backtest_runs
+        super().__init__(
+            f'{blocking_testset_runs} Testset-Läufe mit insgesamt '
+            f'{blocking_backtest_runs} Backtest-Runs hängen noch am TestSet.'
+        )
 
 
 def _validate_backtest_config_ids(session: Session, backtest_config_ids: List[int]) -> None:
@@ -191,23 +212,94 @@ def update_testset(
     return testset
 
 
-def delete_testset(session: Session, testset_id: int) -> bool:
-    """Löscht ein TestSet.
+def delete_testset(session: Session, testset_id: int, force: bool = False) -> Optional[bool]:
+    """Löscht ausschließlich das TestSet selbst — alles Nachgelagerte bleibt stehen.
+
+    GEÄNDERT: Ticket 61 — fing eine Fremdschlüsselverletzung ab (roher HTTP-500),
+    weil testset_runs.testset_id damals per Fremdschlüssel auf testsets.id zeigte.
+    GEÄNDERT: Ticket 62 — der Fremdschlüssel wurde per Migration entfernt
+    (0019_drop_testset_runs_fk); testset_runs.testset_id ist seitdem auch in der
+    Datenbank eine lose Referenz. Die Prüfung blieb dabei als harte Ablehnung stehen.
+    GEÄNDERT: Aus der Ablehnung wird eine Rückfrage. Ein TestSet ist nur die
+    Zusammenstellung von Backtest-Configs — es zu löschen heißt nicht, die damit
+    erzeugten Daten zu löschen:
+
+    - Hängen Testset-Läufe am TestSet, wird ohne ``force`` nichts gelöscht und
+      TestSetRunsBlockingError mit den Anzahlen geworfen. Die Oberfläche nutzt das,
+      um den Löschwunsch bestätigen zu lassen.
+    - Mit ``force=True`` wird nur die TestSet-Zeile entfernt. Testset-Läufe,
+      Backtest-Runs und deren Results bleiben unverändert bestehen; ihre
+      ``testset_id`` zeigt danach auf ein nicht mehr vorhandenes TestSet.
 
     Args:
         session: Aktive SQLAlchemy-Session.
         testset_id: Primärschlüssel des TestSets.
+        force: True überspringt die Rückfrage und löscht das TestSet direkt.
 
     Returns:
-        True wenn gelöscht, False wenn nicht gefunden.
+        True wenn gelöscht, oder None wenn das TestSet nicht existiert.
+
+    Raises:
+        TestSetRunsBlockingError: Wenn ohne ``force`` noch Testset-Läufe dranhängen.
     """
     testset = session.query(TestSet).filter(TestSet.id == testset_id).first()
     if testset is None:
-        return False
+        return None
+
+    if not force:
+        testset_run_ids = [
+            row[0] for row in session.query(TestSetRun.id)
+            .filter(TestSetRun.testset_id == testset_id).all()
+        ]
+        if testset_run_ids:
+            backtest_run_count = (
+                session.query(BacktestRun.id)
+                .filter(BacktestRun.testset_run_id.in_(testset_run_ids))
+                .count()
+            )
+            raise TestSetRunsBlockingError(len(testset_run_ids), backtest_run_count)
+
     session.delete(testset)
     session.commit()
-    logger.info("TestSet ID %d gelöscht.", testset_id)
+    logger.info("TestSet ID %d gelöscht (Testset-Läufe und Runs bleiben bestehen).", testset_id)
     return True
+
+
+# GEÄNDERT: Ticket 61 — Waisen-Schutz beim Löschen von Backtest-Runs.
+def purge_empty_testset_runs(session: Session, testset_run_ids: Iterable[Optional[int]]) -> int:
+    """Entfernt die Testset-Läufe aus der Liste, auf die kein Backtest-Run mehr zeigt.
+
+    Wird von allen Lösch-Pfaden für Backtest-Runs aufgerufen, damit kein Testset-Lauf
+    ohne die Runs zurückbleibt, aus denen er bestand. Läuft in der Session des Aufrufers
+    (kein eigener Commit), damit Run-Löschung und Aufräumen dieselbe Transaktion teilen.
+
+    Args:
+        session: Aktive SQLAlchemy-Session — die Run-Löschungen müssen darin bereits
+            ausgeführt (nicht zwingend committet) sein.
+        testset_run_ids: IDs der Testset-Läufe, die von der Löschung betroffen waren.
+
+    Returns:
+        Anzahl der entfernten Testset-Läufe.
+    """
+    ids = {int(tid) for tid in testset_run_ids if tid is not None}
+    if not ids:
+        return 0
+
+    still_used = {
+        row[0] for row in session.query(BacktestRun.testset_run_id)
+        .filter(BacktestRun.testset_run_id.in_(ids)).distinct().all()
+    }
+    empty_ids = sorted(ids - still_used)
+    if not empty_ids:
+        return 0
+
+    deleted = (
+        session.query(TestSetRun)
+        .filter(TestSetRun.id.in_(empty_ids))
+        .delete(synchronize_session=False)
+    )
+    logger.info("Verwaiste Testset-Läufe entfernt: %s", empty_ids)
+    return deleted
 
 
 # ============================================================================
@@ -231,7 +323,7 @@ def create_testset_run(
 
     Args:
         session: Aktive SQLAlchemy-Session.
-        testset_id: FK auf testsets.id.
+        testset_id: Lose Referenz auf testsets.id (kein FK, siehe Ticket 62).
         strategy_family: Strategie-Familie (z.B. "teststrategie").
         strategy_name: Strategie-Name (z.B. "teststrategie_v1").
         n_runs_total: Gesamtanzahl der geplanten Runs.
@@ -467,6 +559,10 @@ def build_leaderboard_entry_for_testset_run(
     3. Aggregate aus den nicht-leeren Siegern berechnen.
     4. Snapshots bauen und LeaderboardEntry persistieren.
 
+    Ist das TestSet gelöscht, seine Läufe aber stehengeblieben (siehe delete_testset),
+    tritt der letzte bekannte testset_snapshot_json aus dem Leaderboard an seine Stelle.
+    Ohne einen solchen Snapshot entsteht kein Eintrag.
+
     Args:
         testset_run_id: Primärschlüssel des TestSetRun.
 
@@ -480,6 +576,33 @@ def build_leaderboard_entry_for_testset_run(
         return _build_leaderboard_entry_in_session(session, testset_run_id)
     finally:
         session.close()
+
+
+def _load_last_testset_snapshot(session: Session, testset_id: int) -> Optional[Dict[str, Any]]:
+    """Holt den jüngsten testset_snapshot_json aus dem Leaderboard zu einem TestSet.
+
+    Dient als Ersatzquelle, wenn die TestSet-Zeile gelöscht wurde, ihre Läufe aber
+    bestehen geblieben sind. Verwertbar ist der Snapshot nur mit Config-Liste — ohne
+    sie liesse sich weder die Positions-Reihenfolge noch der Sieger je Position
+    bestimmen.
+
+    Args:
+        session: Aktive SQLAlchemy-Session.
+        testset_id: ID des (gelöschten) TestSets.
+
+    Returns:
+        Der Snapshot als Dict, oder None wenn keiner mit Config-Liste existiert.
+    """
+    rows = (
+        session.query(LeaderboardEntry.testset_snapshot_json)
+        .filter(LeaderboardEntry.testset_id == testset_id)
+        .order_by(LeaderboardEntry.id.desc())
+        .all()
+    )
+    for (snapshot,) in rows:
+        if snapshot and snapshot.get('backtest_config_ids_json'):
+            return dict(snapshot)
+    return None
 
 
 def _build_leaderboard_entry_in_session(
@@ -505,26 +628,59 @@ def _build_leaderboard_entry_in_session(
 
     # --- TestSet laden ---
     testset = session.query(TestSet).filter(TestSet.id == testset_run.testset_id).first()
+
+    # GEÄNDERT: Ein gelöschtes TestSet lässt seine Läufe bewusst stehen (siehe
+    # delete_testset). Damit diese Läufe trotzdem im Leaderboard landen, tritt der
+    # letzte bekannte testset_snapshot_json an die Stelle der TestSet-Zeile — dasselbe
+    # Muster, mit dem die Leaderboard-Liste ihre Namen auflöst. Vorher endete der Lauf
+    # hier ohne Eintrag und der Snapshot-Rerun quittierte das mit HTTP 500.
+    fallback_snapshot: Optional[Dict[str, Any]] = None
     if testset is None:
-        logger.warning(
-            'build_leaderboard_entry: TestSet #%d nicht gefunden (TestSetRun #%d).',
+        fallback_snapshot = _load_last_testset_snapshot(session, testset_run.testset_id)
+        if fallback_snapshot is None:
+            logger.warning(
+                'build_leaderboard_entry: TestSet #%d gelöscht und kein früherer Snapshot '
+                'vorhanden (TestSetRun #%d) — kein Leaderboard-Eintrag.',
+                testset_run.testset_id, testset_run_id,
+            )
+            return None
+        logger.info(
+            'build_leaderboard_entry: TestSet #%d gelöscht — Snapshot des letzten '
+            'Leaderboard-Eintrags wird verwendet (TestSetRun #%d).',
+            testset_run.testset_id, testset_run_id,
+        )
+
+    if testset is not None:
+        testset_name: Optional[str] = testset.name
+        testset_description: Optional[str] = testset.description
+        # GEÄNDERT: Ticket 15 — _json-Suffix
+        config_ids: List[int] = list(testset.backtest_config_ids_json or [])
+        leaderboard_enabled = bool(testset.leaderboard_enabled)
+        snapshot_configs: Dict[int, Dict[str, Any]] = {}
+    else:
+        testset_name = fallback_snapshot.get('name')
+        testset_description = fallback_snapshot.get('description')
+        config_ids = [int(cid) for cid in (fallback_snapshot.get('backtest_config_ids_json') or [])]
+        # Der Snapshot existiert nur, weil das TestSet damals im Leaderboard geführt
+        # wurde — der Opt-in-Schalter stand also auf True und ist nicht mehr abfragbar.
+        leaderboard_enabled = True
+        snapshot_configs = {
+            int(cfg['id']): cfg
+            for cfg in (fallback_snapshot.get('configs') or [])
+            if cfg.get('id') is not None
+        }
+
+    # GEÄNDERT: Opt-in-Schalter — nur bei aktiviertem leaderboard_enabled wird ein
+    # LeaderboardEntry erstellt. Andernfalls bewusst überspringen (kein Fehler).
+    if not leaderboard_enabled:
+        logger.info(
+            'build_leaderboard_entry: TestSet #%d hat leaderboard_enabled=False '
+            '(TestSetRun #%d) — kein Leaderboard-Eintrag.',
             testset_run.testset_id, testset_run_id,
         )
         return None
 
-    # GEÄNDERT: Opt-in-Schalter — nur bei aktiviertem leaderboard_enabled wird ein
-    # LeaderboardEntry erstellt. Andernfalls bewusst überspringen (kein Fehler).
-    if not testset.leaderboard_enabled:
-        logger.info(
-            'build_leaderboard_entry: TestSet #%d hat leaderboard_enabled=False '
-            '(TestSetRun #%d) — kein Leaderboard-Eintrag.',
-            testset.id, testset_run_id,
-        )
-        return None
-
     # --- BacktestConfigs in Reihenfolge der backtest_config_ids_json laden ---
-    # GEÄNDERT: Ticket 15 — _json-Suffix
-    config_ids: List[int] = list(testset.backtest_config_ids_json or [])
     configs_by_id: Dict[int, BacktestConfig] = {}
     if config_ids:
         rows = session.query(BacktestConfig).filter(BacktestConfig.id.in_(config_ids)).all()
@@ -623,32 +779,47 @@ def _build_leaderboard_entry_in_session(
 
     # testset_snapshot_json: TestSet-Zeile + referenzierte BacktestConfig-Inhalte
     # GEÄNDERT: Ticket 15 — _json-Suffix im Snapshot-Key
+    # GEÄNDERT: Fehlt eine BacktestConfig in der Datenbank, wird ihr Eintrag aus dem
+    # vorherigen Snapshot übernommen (nur im Fallback-Fall belegt) — sonst verlöre der
+    # Rerun mit jedem Durchlauf mehr Config-Inhalte.
+    def _config_snapshot(config_id: int) -> Optional[Dict[str, Any]]:
+        """Baut den Snapshot-Eintrag einer BacktestConfig aus DB oder Vorgänger-Snapshot."""
+        c = configs_by_id.get(config_id)
+        if c is None:
+            return snapshot_configs.get(config_id)
+        return {
+            'id': c.id,
+            'name': c.name,
+            'symbol': c.symbol,
+            'exchange': c.exchange,
+            'timeframe': c.timeframe,
+            'start': c.start,
+            'end': c.end,
+            'ohlc_start': c.ohlc_start,
+            'ohlc_end': c.ohlc_end,
+            'size': c.size,
+            'size_type': c.size_type,
+            'init_cash': c.init_cash,
+            'fees': c.fees,
+            # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter mit einfrieren.
+            # Dieser Snapshot ist die Quelle des Leaderboard-Reruns: fehlt ein Feld
+            # hier, liefert der Rerun dauerhaft None, egal was der Recompute-Code tut.
+            'slippage': c.slippage,
+            'stop_exit_price': c.stop_exit_price,
+            'stop_order_type': c.stop_order_type,
+            # GEÄNDERT: Schritt 3d — Stop-Formate gehören nicht mehr in den
+            # Config-Snapshot; sie reisen in indicator_config_snapshot_json
+            # ['config_json']['_stops'] mit.
+        }
+
     testset_snapshot: Dict[str, Any] = {
-        'id': testset.id,
-        'name': testset.name,
-        'description': testset.description,
+        'id': testset_run.testset_id,
+        'name': testset_name,
+        'description': testset_description,
         'backtest_config_ids_json': config_ids,
         'configs': [
-            {
-                'id': c.id,
-                'name': c.name,
-                'symbol': c.symbol,
-                'exchange': c.exchange,
-                'timeframe': c.timeframe,
-                'start': c.start,
-                'end': c.end,
-                'ohlc_start': c.ohlc_start,
-                'ohlc_end': c.ohlc_end,
-                'size': c.size,
-                'size_type': c.size_type,
-                'init_cash': c.init_cash,
-                'fees': c.fees,
-                # GEÄNDERT: Schritt 3d — Stop-Formate gehören nicht mehr in den
-                # Config-Snapshot; sie reisen in indicator_config_snapshot_json
-                # ['config_json']['_stops'] mit.
-            }
-            for cid in config_ids
-            if (c := configs_by_id.get(cid)) is not None
+            snap for cid in config_ids
+            if (snap := _config_snapshot(cid)) is not None
         ],
     }
 
@@ -686,6 +857,11 @@ def _build_leaderboard_entry_in_session(
     }
     if iteration_spec_json is not None:
         strategy_snapshot['spec_json'] = iteration_spec_json
+    # GEÄNDERT: Ticket 101 — iteration_id mit einfrieren, damit der Rerun-Befund sie
+    # direkt aus dem Schnappschuss lesen kann statt über die IndicatorConfig zu gehen.
+    # Bewusst als Schnappschuss-Key, keine neue Spalte (siehe Ticket-Anforderung 1).
+    if source_iteration_id is not None:
+        strategy_snapshot['iteration_id'] = source_iteration_id
 
     # --- Idempotenz-Check vor Insert (verhindert IntegrityError in Test-Session) ---
     existing = (
@@ -702,7 +878,7 @@ def _build_leaderboard_entry_in_session(
 
     # --- LeaderboardEntry persistieren ---
     entry = LeaderboardEntry(
-        testset_id=testset.id,
+        testset_id=testset_run.testset_id,
         testset_run_id=testset_run_id,
         strategy_family=testset_run.strategy_family,
         strategy_name=testset_run.strategy_name,

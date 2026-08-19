@@ -25,13 +25,14 @@ from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from user_data.utils.database.models import IndicatorConfig
+from user_data.utils.database.models import IndicatorConfig, IterationLog
 from user_data.utils.database.repository_strategies import (
     create_concept,
     create_iteration,
     get_concept,
     get_concept_by_slug,
     get_iteration,
+    list_iteration_logs,
     next_iteration_version,
     update_concept,
 )
@@ -132,6 +133,9 @@ def export_concept(session: Session, concept_id: int) -> Path:
             'category': concept.category,
             'description': concept.description,
             'status': concept.status,
+            # GEÄNDERT: Ticket 70 — Entwicklungsziel verbatim mitnehmen (Ticket 66)
+            'goal_json': concept.goal_json,
+            'goal_prompt': concept.goal_prompt,
         },
     })
     return _write_json(backup_base() / concept.slug / 'concept.json', payload)
@@ -159,6 +163,9 @@ def import_concept(session: Session, payload: Dict[str, Any]) -> Tuple[Any, str]
         'category': data.get('category'),
         'description': data.get('description'),
         'status': data.get('status') or 'active',
+        # GEÄNDERT: Ticket 70 — verbatim übernehmen; bei Alt-Exporten fehlt der Schlüssel -> NULL
+        'goal_json': data.get('goal_json'),
+        'goal_prompt': data.get('goal_prompt'),
     }
     existing = get_concept_by_slug(session, fields['slug'])
     if existing is not None:
@@ -176,7 +183,8 @@ def export_iteration(session: Session, iteration_id: int) -> Path:
 
     ``version`` dient nur der Ablage; beim Import wird eine frische Nummer
     vergeben. ``concept_slug`` ist Kontext (Anzeige) — das Import-Ziel bestimmt
-    der Nutzer über das Konzept, in das er importiert.
+    der Nutzer über das Konzept, in das er importiert. Enthält zusätzlich
+    ``iteration_logs`` (Ticket 70) — das Denkprotokoll der Iteration.
 
     Args:
         session: SQLAlchemy-Session.
@@ -194,6 +202,8 @@ def export_iteration(session: Session, iteration_id: int) -> Path:
     concept = get_concept(session, iteration.concept_id)
     if concept is None:
         raise ValueError(f"Konzept {iteration.concept_id} zur Iteration nicht gefunden.")
+    # GEÄNDERT: Ticket 70 — Denkprotokoll (Ticket 67) gehört mit ins Backup
+    logs = list_iteration_logs(session, iteration.id) or []
     payload = _envelope('strategy_iteration', {
         'concept_slug': concept.slug,
         'source_version': iteration.version,
@@ -206,6 +216,14 @@ def export_iteration(session: Session, iteration_id: int) -> Path:
             'description': iteration.description,
             'status': iteration.status,
         },
+        'iteration_logs': [
+            {
+                'text': log.text,
+                'created_at': log.created_at.isoformat(),
+                'run_id': log.run_id,
+            }
+            for log in logs
+        ],
     })
     target = backup_base() / concept.slug / str(iteration.version) / 'iteration.json'
     return _write_json(target, payload)
@@ -216,12 +234,16 @@ def import_iteration(session: Session, concept_id: int, payload: Dict[str, Any])
 
     ``version`` wird frisch aus dem Konzept-Zähler vergeben,
     ``parent_iteration_id`` auf NULL gesetzt (der Vorgänger ist nicht Teil des
-    Einzel-Exports). Keine ID-Übernahme.
+    Einzel-Exports). Keine ID-Übernahme. Enthält der Payload ``iteration_logs``
+    (Ticket 70), werden diese Einträge mit angelegt — ``created_at`` und
+    ``run_id`` verbatim aus dem Export, ``run_id`` als lose Zahl ohne
+    Existenzprüfung (Ticket-67-Design). Fehlt der Schlüssel (Alt-Export vor
+    Ticket 70), entstehen keine Log-Einträge.
 
     Args:
         session: SQLAlchemy-Session.
         concept_id: Ziel-Konzept, in das importiert wird.
-        payload: Geparstes JSON (mit ``iteration``-Block).
+        payload: Geparstes JSON (mit ``iteration``-Block, optional ``iteration_logs``).
 
     Returns:
         Die neu angelegte Iteration.
@@ -234,7 +256,7 @@ def import_iteration(session: Session, concept_id: int, payload: Dict[str, Any])
     data = payload.get('iteration') if isinstance(payload, dict) else None
     if not isinstance(data, dict):
         raise ValueError("Ungültige Iterations-Datei: 'iteration'-Block fehlt.")
-    return create_iteration(
+    iteration = create_iteration(
         session,
         concept_id=concept_id,
         version=next_iteration_version(session, concept_id),
@@ -247,6 +269,18 @@ def import_iteration(session: Session, concept_id: int, payload: Dict[str, Any])
         status=data.get('status') or 'active',
         description=data.get('description'),
     )
+    logs_data = payload.get('iteration_logs') if isinstance(payload, dict) else None
+    for entry in logs_data or []:
+        created_at = entry.get('created_at')
+        session.add(IterationLog(
+            iteration_id=iteration.id,
+            run_id=entry.get('run_id'),
+            text=entry.get('text') or '',
+            created_at=datetime.fromisoformat(created_at) if created_at else datetime.now(),
+        ))
+    if logs_data:
+        session.commit()
+    return iteration
 
 
 # ============================================================================

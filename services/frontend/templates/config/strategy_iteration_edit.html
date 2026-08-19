@@ -37,6 +37,13 @@
           {% endif %}
         {% endif %}
         {% if iteration %}
+          {# GEÄNDERT: Ticket 67 — Button zur read-only Log-Ansicht (Iterations-Denkprotokoll) #}
+          <a href="/config/strategy-concepts/{{ concept.id }}/iterations/{{ iteration.id }}/log" class="btn btn-outline-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"/><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 12l6 0"/><path d="M9 16l6 0"/></svg>
+            Log
+          </a>
+        {% endif %}
+        {% if iteration %}
           <button type="button" class="btn btn-danger" id="btn-iteration-delete">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
             Löschen
@@ -140,7 +147,7 @@
           <input type="checkbox" class="form-check-input" id="chk-delete-vault">
           <span class="form-check-label">Auch den Obsidian-Ordner samt allen Dateien löschen</span>
         </label>
-        <div class="text-muted small mt-2">Pfad: <code>30_Trading/strategies/{{ concept.slug }}/iterations/{{ iteration.version }}/</code></div>
+        <div class="text-muted small mt-2">Pfad: <code>{{ obsidian_strategies_base }}/{{ concept.slug }}/{{ obsidian_world_dir }}/iterations/{{ iteration.version }}/</code></div>
         {% else %}
         <div class="text-muted small">Kein Obsidian-Ordner für diese Iteration vorhanden.</div>
         {% endif %}

@@ -7,9 +7,12 @@ GET /config/backtest/{id}         — Backtest-Config bearbeiten
 GET /config/indicator             — Indicator-Configs Übersicht
 GET /config/indicator/new         — Neue Indicator-Config anlegen
 GET /config/indicator/{id}        — Indicator-Config bearbeiten
-GET /config/strategy              — Strategie-Konzepte Übersicht (Ticket 11)
-GET /config/strategy/concepts/{id} — Iterations-Liste für ein Konzept (Ticket 11)
+GET /config/strategy-concepts     — Strategie-Konzepte Übersicht (Ticket 11)
 GET /backtest/start               — Backtest starten (Config + Indicator auswahelen)
+GET /config/strategy-concepts/{concept_id}/iterations/{iteration_id}/log — Iterations-Log,
+                                     read-only (Ticket 67)
+GET /config/strategy-concepts/{concept_id} — Konzept-Detailseite: Ziel neben
+                                     Befund-Historie, read-only (Ticket 85)
 """
 
 import os
@@ -19,9 +22,17 @@ from fastapi.responses import HTMLResponse
 
 import json
 
-from services.api.utils.obsidian_paths import concept_md_path, iteration_md_path
+from services.api.routes.api_testset_run_findings import list_findings_for_concept
+from services.api.utils.best_criteria_labels import BEST_CRITERIA_LABELS
+from services.api.utils.obsidian_paths import (
+    concept_md_path,
+    iteration_md_path,
+    strategies_base_rel,
+    world_dir_rel,
+)
 from user_data.utils.database.db import get_session
-from user_data.utils.database.models import BacktestConfig, IndicatorConfig, StrategyConfig, StrategyConcept, StrategyIteration, ChartPlaygroundSetup
+from user_data.utils.database.models import BacktestConfig, BacktestRun, IndicatorConfig, StrategyConfig, StrategyConcept, StrategyIteration, ChartPlaygroundSetup, TestSet
+from user_data.utils.database.repository_strategies import list_iteration_logs
 
 
 # GEÄNDERT: Stops-Defaults + kanonische innere Reihenfolge (analog Frontend defaultStops/STOPS_FIELDS)
@@ -169,6 +180,10 @@ def backtest_config_edit_page(request: Request, config_id: int) -> HTMLResponse:
             'size_type': config.size_type,
             'init_cash': config.init_cash,
             'fees': config.fees,
+            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter analog fees an den Formular-Kontext
+            'slippage': config.slippage,
+            'stop_exit_price': config.stop_exit_price,
+            'stop_order_type': config.stop_order_type,
             # GEÄNDERT: Schritt 3d — Stop-Formate aus BacktestConfig entfernt
             # (leben jetzt in indicators_json['_stops']).
             # GEÄNDERT: is_favorite wird nur über den Tabellen-Stern getoggelt,
@@ -338,6 +353,9 @@ def strategy_concepts_page(request: Request) -> HTMLResponse:
         context={
             'active_nav': 'strategy_concepts',
             'obsidian_vault_base': obsidian_vault_base,
+            # GEÄNDERT: Vault-relative Strategie-Basis aus obsidian_paths — kein Pfad-Hardcoding im JS
+            'obsidian_strategies_base': strategies_base_rel(),
+            'obsidian_world_dir': world_dir_rel(),
         },
     )
 
@@ -409,6 +427,180 @@ def strategy_iteration_edit_page(request: Request, concept_id: int, iteration_id
             'concept': concept_data,
             'iteration': iteration_data,
             'spec_json_str': spec_json_str,
+            # GEÄNDERT: Vault-relative Strategie-Basis für die Pfad-Anzeige im Lösch-Dialog
+            'obsidian_strategies_base': strategies_base_rel(),
+            'obsidian_world_dir': world_dir_rel(),
+        },
+    )
+
+
+# GEÄNDERT: Ticket 67 — read-only Ansicht des Iterations-Logs (append-only Denkprotokoll)
+@router.get('/strategy-concepts/{concept_id}/iterations/{iteration_id}/log', response_class=HTMLResponse)
+def strategy_iteration_log_page(request: Request, concept_id: int, iteration_id: int) -> HTMLResponse:
+    """Iterations-Log lesen — chronologische, read-only Liste der Log-Einträge.
+
+    Zeigt je Eintrag Zeitstempel, Text und — falls run_id gesetzt und der Run
+    noch existiert — einen Link auf den Run. Zeigt der Run-Bezug auf einen
+    inzwischen gelöschten Run, wird die ID als reiner Text ohne Link angezeigt.
+    """
+    session = get_session()
+    try:
+        concept = session.query(StrategyConcept).filter(StrategyConcept.id == concept_id).first()
+        iteration = session.query(StrategyIteration).filter(StrategyIteration.id == iteration_id).first()
+        if not concept or not iteration:
+            return HTMLResponse('<h1>Nicht gefunden</h1>', status_code=404)
+
+        entries = list_iteration_logs(session, iteration_id) or []
+        run_ids = {e.run_id for e in entries if e.run_id is not None}
+        existing_run_ids = set()
+        if run_ids:
+            existing_run_ids = {
+                row[0] for row in
+                session.query(BacktestRun.id).filter(BacktestRun.id.in_(run_ids)).all()
+            }
+        log_entries = [
+            {
+                'id': e.id,
+                'created_at': e.created_at,
+                'text': e.text,
+                'run_id': e.run_id,
+                'run_exists': e.run_id in existing_run_ids,
+            }
+            for e in entries
+        ]
+        concept_data = {'id': concept.id, 'slug': concept.slug, 'name': concept.name}
+        iteration_data = {
+            'id': iteration.id,
+            'version': iteration.version,
+            'version_name': iteration.version_name,
+        }
+    finally:
+        session.close()
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name='config/strategy_iteration_log.html',
+        context={
+            'active_nav': 'strategy_concepts',
+            'concept': concept_data,
+            'iteration': iteration_data,
+            'log_entries': log_entries,
+        },
+    )
+
+
+def _build_finding_display(finding: dict, iteration, testset_name) -> dict:
+    """Bereitet einen einzelnen Befund für die Konzept-Detailseite auf (Ticket 85).
+
+    Löst verschachtelte JSON-Blöcke einmalig auf sichere Defaults auf (leeres
+    Dict/Liste statt None bei offenen Befunden), damit das Template ohne
+    `.get`-Verrenkungen direkt loopen kann. Kein Verdict, keine Wertung — es
+    werden ausschließlich vorhandene Felder durchgereicht.
+
+    Args:
+        finding: Serialisierter Befund (aus `list_findings_for_concept`).
+        iteration: `StrategyIteration`-ORM-Instanz oder None (Iteration gelöscht).
+        testset_name: Name des Testsets oder None (Testset gelöscht/unbekannt).
+
+    Returns:
+        Anzeige-bereites Dict für das Template.
+    """
+    scope = finding.get('scope_json') or {}
+    candidates = finding.get('candidates_json') or {}
+    robustness = finding.get('robustness_json') or {}
+    warnings = finding.get('warnings_json') or {}
+    interpretation = finding.get('interpretation') or {}
+    return {
+        'id': finding['id'],
+        'created_at': finding['created_at'],
+        'closed_at': finding['closed_at'],
+        'is_closed': finding['closed_at'] is not None,
+        'iteration_exists': iteration is not None,
+        'iteration_id': finding['iteration_id'],
+        'iteration_label': (iteration.version_name or str(iteration.version)) if iteration else None,
+        'iteration_version': iteration.version if iteration else None,
+        'testset_id': finding['testset_id'],
+        'testset_name': testset_name,
+        'planned_n_runs': finding['planned_n_runs'],
+        'planned_combos_total': finding['planned_combos_total'],
+        'planned_grid_reason': finding['planned_grid_reason'],
+        'actual_n_runs': scope.get('n_runs'),
+        'actual_combos_total': scope.get('combos_total'),
+        'goal_snapshot_json': finding.get('goal_snapshot_json'),
+        'goal_missing_reason': finding.get('goal_missing_reason'),
+        'candidates_per_run': candidates.get('per_run', []),
+        'best_criteria_labels': BEST_CRITERIA_LABELS,
+        'dsr_blocks': robustness.get('dsr', []),
+        'dsr_hinweis': robustness.get('dsr_hinweis'),
+        'warnings_items': warnings.get('items', []),
+        'warnings_not_evaluated': warnings.get('not_evaluated', []),
+        'interpretation_text': interpretation.get('text'),
+        'interpreted_at': interpretation.get('interpreted_at'),
+    }
+
+
+# GEÄNDERT: Ticket 85 — Konzept-Detailseite: Ziel im Wortlaut neben der chronologischen
+# Befund-Historie. Kein Verdict, keine Güte-Sortierung (dieselbe Regel wie am Befund selbst).
+@router.get('/strategy-concepts/{concept_id}', response_class=HTMLResponse)
+def strategy_concept_detail_page(request: Request, concept_id: int) -> HTMLResponse:
+    """Konzept-Detailseite — liest nur.
+
+    Zeigt den Kopf des Konzepts, das Ziel (`goal_prompt` im Wortlaut + lesbar
+    formatiertes `goal_json`) sowie die vollständige Befund-Historie
+    (chronologisch, `GET /api/testset-run-findings/by-concept`). Bearbeitet wird
+    weiterhin ausschließlich in der Übersicht (Ticket 66).
+    """
+    session = get_session()
+    try:
+        concept = session.query(StrategyConcept).filter(StrategyConcept.id == concept_id).first()
+        if not concept:
+            return HTMLResponse('<h1>Konzept nicht gefunden</h1>', status_code=404)
+
+        findings = list_findings_for_concept(concept_id)['data']['items']
+
+        # GEÄNDERT: Iteration/Testset sind lose Referenzen — Lookup in Bulk, fehlende
+        # Datensätze bleiben None (Befund bleibt trotzdem vollständig lesbar).
+        iteration_ids = {f['iteration_id'] for f in findings}
+        iterations = {
+            row.id: row for row in
+            session.query(StrategyIteration).filter(StrategyIteration.id.in_(iteration_ids)).all()
+        } if iteration_ids else {}
+        testset_ids = {f['testset_id'] for f in findings}
+        testset_names = {
+            row.id: row.name for row in
+            session.query(TestSet).filter(TestSet.id.in_(testset_ids)).all()
+        } if testset_ids else {}
+
+        finding_views = [
+            _build_finding_display(f, iterations.get(f['iteration_id']), testset_names.get(f['testset_id']))
+            for f in findings
+        ]
+
+        concept_data = {
+            'id': concept.id,
+            'slug': concept.slug,
+            'name': concept.name,
+            'status': concept.status,
+            'description': concept.description,
+            'goal_prompt': concept.goal_prompt,
+            'goal_json': concept.goal_json,
+            'goal_json_str': (
+                json.dumps(concept.goal_json, indent=2, ensure_ascii=False)
+                if concept.goal_json else None
+            ),
+        }
+    finally:
+        session.close()
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request=request,
+        name='config/strategy_concept_detail.html',
+        context={
+            'active_nav': 'strategy_concepts',
+            'concept': concept_data,
+            'findings': finding_views,
         },
     )
 

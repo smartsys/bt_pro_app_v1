@@ -153,6 +153,11 @@ document.addEventListener("DOMContentLoaded", function() {
       '<div class="card-body py-2" style="word-break:break-all;font-size:1.1rem;">' + indConfig + '</div></div>';
   }
 
+  /* GEÄNDERT: Ticket 60 — Text für ein title-Attribut escapen (usability_note/warmup_note) */
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   /* ISO-Datum (JJJJ-MM-TT) in deutsches Format (TT.MM.JJJJ) umwandeln */
   function formatDateDe(iso) {
     var p = iso.split("-");
@@ -230,8 +235,13 @@ document.addEventListener("DOMContentLoaded", function() {
         data: null,
         render: function(data) {
           if (!data.testset_id) return '<span class="text-muted">-</span>';
-          var name = data.testset_name ? data.testset_name : ('Testset ' + data.testset_id);
-          return '<span class="badge bg-cyan-lt">' + name + '</span>';
+          // GEÄNDERT: Fehlender Name heißt gelöschtes TestSet — der Lauf bleibt beim
+          // Löschen bewusst stehen, also die Herkunft benennen statt sie zu verschlucken.
+          if (data.testset_name) {
+            return '<span class="badge bg-cyan-lt">' + data.testset_name + '</span>';
+          }
+          return '<span class="badge bg-secondary-lt" title="TestSet wurde gelöscht">Testset '
+            + data.testset_id + ' (gelöscht)</span>';
         }
       },
       {
@@ -284,6 +294,20 @@ document.addEventListener("DOMContentLoaded", function() {
           // GEÄNDERT: Chunk-Fortschritt bei laufenden, gechunkten Runs anzeigen
           if (data === 'running' && row.total_chunks) {
             badge += ' <small class="text-muted">Chunk ' + row.current_chunk + '/' + row.total_chunks + '</small>';
+          }
+          // GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs: ein Lauf ohne Signale oder mit
+          // unzureichender Historie ist gekennzeichnet, nicht ausgeblendet — die Results
+          // bleiben in jedem Fall vollständig sichtbar. Ausreichend verwertbare Läufe
+          // (usability === 'usable') tragen bewusst kein zusätzliches Badge.
+          if (row.usability && row.usability !== 'usable') {
+            badge += ' <span class="badge bg-danger-lt" title="' + escAttr(row.usability_note || '') + '">' + row.usability + '</span>';
+          }
+          // Vorlauf-Warnung: nur wenn der Vorlauf tatsächlich kürzer als die längste
+          // konfigurierte Indikator-Periode war (warmup_bars < warmup_required_bars).
+          if (row.warmup_bars !== null && row.warmup_bars !== undefined
+              && row.warmup_required_bars !== null && row.warmup_required_bars !== undefined
+              && row.warmup_required_bars > 0 && row.warmup_bars < row.warmup_required_bars) {
+            badge += ' <span class="badge bg-orange-lt" title="' + escAttr(row.warmup_note || '') + '">Vorlauf</span>';
           }
           return badge;
         }
@@ -349,9 +373,16 @@ document.addEventListener("DOMContentLoaded", function() {
       {
         data: "id",
         orderable: false,
-        render: function(data) {
+        render: function(data, type, row) {
+          /* Fortsetzen nur anbieten, wenn es etwas fortzusetzen gibt: abgebrochener
+             Lauf mit bereits gespeicherten Chunks (Ticket 71). */
+          var resumeBtn = '';
+          if (row.status === 'failed' && row.completed_chunks > 0) {
+            resumeBtn = '<button class="btn btn-sm btn-outline-success btn-resume-run me-1" data-id="' + data + '" title="Run fortsetzen (' + row.completed_chunks + ' Chunk(s) bereits gespeichert)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 4v16l13 -8z"/></svg></button>';
+          }
           return '<div class="text-end text-nowrap">' +
                  '<a href="/backtest/results?run_id=' + data + '" class="btn btn-sm btn-primary me-1" style="min-width:70px">Tests</a>' +
+                 resumeBtn +
                  '<a href="/backtest/runs/' + data + '/analyse" class="btn btn-sm btn-outline-info me-1" title="Analyse"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3v18h18"/><path d="M20 18v3"/><path d="M16 16v5"/><path d="M12 13v8"/><path d="M8 16v5"/><path d="M3 11c6 0 5 -5 9 -5s3 5 9 5"/></svg></a>' +
                  '<button class="btn btn-sm btn-outline-warning btn-restart-run me-1" data-id="' + data + '" title="Run neustarten"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg></button>' +
                  '<button class="btn btn-sm btn-outline-danger btn-delete-run" data-id="' + data + '" title="Run löschen"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg></button>' +
@@ -616,6 +647,24 @@ document.addEventListener("DOMContentLoaded", function() {
         if (json.status === 'ok') table.ajax.reload();
         else alert(json.detail || 'Fehler');
       });
+  });
+
+  /* Run fortsetzen (Ticket 71) — behält die Teilergebnisse, rechnet ab dem
+     ersten noch nicht gespeicherten Chunk weiter. */
+  document.getElementById("runs-table").addEventListener("click", function(e) {
+    var btn = e.target.closest(".btn-resume-run");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (!confirm("Run #" + id + " fortsetzen? Bereits gerechnete Chunks bleiben erhalten.")) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    fetch("/api/backtest/runs/" + id + "/resume", { method: "POST" })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.status === 'ok') table.ajax.reload();
+        else alert(json.detail || 'Fehler');
+      })
+      .catch(function(err) { alert('Fehler beim Fortsetzen: ' + err); });
   });
 
   /* Einzelnen Run löschen */

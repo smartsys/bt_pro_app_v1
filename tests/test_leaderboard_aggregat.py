@@ -328,3 +328,77 @@ def test_leaderboard_disabled_kein_eintrag(session, testset_run, test_set, three
         LeaderboardEntry.testset_run_id == testset_run.id
     ).count()
     assert count == 0
+
+
+# ============================================================================
+# Test: Gelöschtes TestSet — Snapshot des letzten Eintrags springt ein
+# ============================================================================
+
+def test_geloeschtes_testset_nutzt_letzten_snapshot(
+    session, testset_run, test_set, three_backtest_configs, indicator_config,
+):
+    """Nach dem Löschen des TestSets entsteht weiter ein Eintrag — aus dem Snapshot.
+
+    Das Löschen eines TestSets lässt seine Läufe bewusst stehen. Ein danach
+    abgeschlossener Lauf darf deshalb nicht aus dem Leaderboard fallen: Name und
+    Config-Liste kommen dann aus dem testset_snapshot_json des letzten Eintrags.
+    """
+    config_ids = [c.id for c in three_backtest_configs]
+    testset_id = test_set.id
+    testset_name = test_set.name
+
+    # Erster Lauf erzeugt den Eintrag, dessen Snapshot später als Quelle dient
+    br0 = _make_backtest_run(session, testset_run.id, config_ids[0])
+    _make_backtest_result(session, br0.id, total_return_pct=10.0, max_drawdown_pct=-10.0, sharpe_ratio=1.0)
+    first_entry = _build_leaderboard_entry_in_session(session, testset_run.id)
+    assert first_entry is not None
+
+    # Zweiter Lauf am selben TestSet, danach verschwindet die TestSet-Zeile
+    second_run = TestSetRun(
+        testset_id=testset_id,
+        strategy_family='teststrategie',
+        strategy_name='teststrategie_v1',
+        n_runs_total=1,
+        n_runs_completed=1,
+        status='completed',
+        indicators_config_json=indicator_config.config_json,
+        created_by='test-aggregat',
+    )
+    session.add(second_run)
+    session.commit()
+    session.refresh(second_run)
+
+    br1 = _make_backtest_run(session, second_run.id, config_ids[1])
+    _make_backtest_result(session, br1.id, total_return_pct=42.0, max_drawdown_pct=-4.0, sharpe_ratio=2.5)
+
+    session.delete(test_set)
+    session.commit()
+
+    entry = _build_leaderboard_entry_in_session(session, second_run.id)
+
+    assert entry is not None
+    assert entry.testset_id == testset_id
+    assert entry.testset_snapshot_json['name'] == testset_name
+    assert entry.testset_snapshot_json['backtest_config_ids_json'] == config_ids
+    assert float(entry.total_return_avg) == pytest.approx(42.0)
+
+
+def test_geloeschtes_testset_ohne_snapshot_kein_eintrag(
+    session, testset_run, test_set, three_backtest_configs,
+):
+    """Ohne früheren Eintrag fehlt die Config-Liste — dann entsteht kein Eintrag."""
+    config_ids = [c.id for c in three_backtest_configs]
+
+    br0 = _make_backtest_run(session, testset_run.id, config_ids[0])
+    _make_backtest_result(session, br0.id, total_return_pct=10.0, max_drawdown_pct=-10.0, sharpe_ratio=1.0)
+
+    session.delete(test_set)
+    session.commit()
+
+    entry = _build_leaderboard_entry_in_session(session, testset_run.id)
+
+    assert entry is None
+    count = session.query(LeaderboardEntry).filter(
+        LeaderboardEntry.testset_run_id == testset_run.id
+    ).count()
+    assert count == 0

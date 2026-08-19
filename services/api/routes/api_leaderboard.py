@@ -116,6 +116,8 @@ class DrilldownResultItem(BaseModel):
     max_drawdown_pct: Optional[float] = None
     sharpe_ratio: Optional[float] = None
     n_trades: Optional[int] = None
+    # GEÄNDERT: Ticket 58 — Nenner der Trefferquote (n_trades - open_trades).
+    open_trades: Optional[int] = None
     win_rate_pct: Optional[float] = None
     profit_factor: Optional[float] = None
 
@@ -325,6 +327,7 @@ def drilldown_leaderboard(entry_id: int):
                 max_drawdown_pct=br.max_drawdown_pct,
                 sharpe_ratio=br.sharpe_ratio,
                 n_trades=br.total_trades,
+                open_trades=br.open_trades,
                 win_rate_pct=br.win_rate_pct,
                 profit_factor=br.profit_factor,
             ))
@@ -365,6 +368,13 @@ def rerun_from_snapshot(entry_id: int):
     """
     from decimal import Decimal
 
+    # GEÄNDERT: Ticket 72 — Befund Phase 1 auch für den Rerun (einzige Implementierung,
+    # siehe api_testset_runs.start_testset_run) sowie die Iterations-Auflösung aus dem
+    # LeaderboardEntry-Snapshot
+    from services.api.utils.finding_aggregation import (
+        open_finding_for_testset_run,
+        resolve_iteration_for_rerun_finding,
+    )
     from user_data.strategies.generic.spec_runner import (
         SPEC_RUNNER_IMPORT_PATH,
         VERSION as _spec_runner_version,
@@ -436,6 +446,19 @@ def rerun_from_snapshot(entry_id: int):
         )
         testset_id: int = testset_snap.get('id', entry.testset_id)
 
+        # GEÄNDERT: Ticket 72 — Iteration für den Befund auflösen, solange die Session
+        # noch offen ist. Einzige Implementierung, siehe
+        # finding_aggregation.resolve_iteration_for_rerun_finding.
+        # GEÄNDERT: Ticket 101 — direkter Weg über die im Snapshot eingefrorene
+        # iteration_id, Reserve-Weg über die IndicatorConfig bleibt bestehen.
+        finding_indicator_config_id: Optional[int] = entry.indicator_config_id
+        snapshot_iteration_id: Optional[int] = strategy_snap.get('iteration_id')
+        resolved_iteration_id, resolved_concept_id, goal_snapshot = (
+            resolve_iteration_for_rerun_finding(
+                session, finding_indicator_config_id, entry_id, snapshot_iteration_id,
+            )
+        )
+
     finally:
         session.close()
 
@@ -455,6 +478,35 @@ def rerun_from_snapshot(entry_id: int):
         testset_run_id: int = testset_run.id
     finally:
         session.close()
+
+    # GEÄNDERT: Ticket 72 — Befund Phase 1, bevor gerechnet wird (analog zum regulären
+    # Startweg). Nur wenn die Iteration aufgelöst werden konnte (siehe oben) — ohne sie
+    # fehlt der Pflicht-Kontext des Befunds, der Rerun selbst läuft trotzdem weiter.
+    # Ein Fehler bei der Anlage reißt den Rerun nicht ab (analog close_finding_for_testset_run).
+    if resolved_iteration_id is not None:
+        session = get_session()
+        try:
+            open_finding_for_testset_run(
+                session=session,
+                testset_run_id=testset_run_id,
+                iteration_id=resolved_iteration_id,
+                concept_id=resolved_concept_id,
+                testset_id=testset_id,
+                indicator_config_id=finding_indicator_config_id,
+                indicators_json=indicators_json,
+                spec_runner_version=_spec_runner_version,
+                goal_snapshot=goal_snapshot,
+                planned_n_runs=len(configs),
+            )
+        except Exception as exc:
+            session.rollback()
+            logger.error(
+                '[BEFUND] Befund für Rerun-TestSetRun #%d (Entry #%d) konnte nicht '
+                'angelegt werden: %s',
+                testset_run_id, entry_id, exc, exc_info=True,
+            )
+        finally:
+            session.close()
 
     # --- Pro Config synchron ausführen ---
     run_ids: List[int] = []
@@ -476,6 +528,12 @@ def rerun_from_snapshot(entry_id: int):
                 'size_type': cfg.get('size_type'),
                 'init_cash': cfg.get('init_cash'),
                 'fees': cfg.get('fees'),
+                # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter aus dem
+                # eingefrorenen Testset-Snapshot lesen. Alt-Einträge ohne die Keys
+                # liefern None = VBT-Default (slippage normalisiert der Spec-Runner auf 0.0).
+                'slippage': cfg.get('slippage'),
+                'stop_exit_price': cfg.get('stop_exit_price'),
+                'stop_order_type': cfg.get('stop_order_type'),
                 # GEÄNDERT: Schritt 3d — Stop-Formate kommen über '_stops'
                 # (indicators_json), nicht mehr aus dem Config-portfolio-Block.
             },
@@ -522,6 +580,8 @@ def rerun_from_snapshot(entry_id: int):
     # --- TestSetRun auf completed setzen und LeaderboardEntry erzeugen ---
     from user_data.utils.database.db import get_engine
     from sqlalchemy import text
+    # GEÄNDERT: Ticket 56 — zweiter Abschlusspfad; auch hier wird der Befund geschlossen
+    from services.api.utils.finding_aggregation import close_finding_for_testset_run
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -533,6 +593,11 @@ def rerun_from_snapshot(entry_id: int):
             ),
             {'n': len(configs), 'tid': testset_run_id},
         )
+
+    # GEÄNDERT: Ticket 56 — Befund Phase 2. Der Snapshot-Rerun legt selbst keinen Befund
+    # an (er läuft ohne Iteration, die Phase 1 zwingend braucht); die Funktion meldet
+    # das dann als „kein Befund vorhanden" und lässt den Abschluss unberührt.
+    close_finding_for_testset_run(testset_run_id)
 
     new_entry = build_leaderboard_entry_for_testset_run(testset_run_id)
     if new_entry is None:

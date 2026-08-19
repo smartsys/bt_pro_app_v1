@@ -12,13 +12,17 @@ db_engine und session kommen aus tests/conftest.py (Ticket 14).
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 
-from user_data.utils.database.models import BacktestConfig, TestSet
+from datetime import datetime
+
+from user_data.utils.database.models import BacktestConfig, BacktestRun, TestSet, TestSetRun
 # GEÄNDERT: Ticket 13 — Funktionsnamen auf testset-Varianten umgestellt
 from user_data.utils.database.repository_testsets import (
+    TestSetRunsBlockingError,
     create_testset,
     delete_testset,
     get_testset,
     list_testsets,
+    purge_empty_testset_runs,
     toggle_testset_favorite,
     update_testset,
 )
@@ -231,7 +235,7 @@ def test_update_testset_not_found(session):
 # ============================================================================
 
 def test_delete_testset(session, backtest_config):
-    """TestSet löschen."""
+    """TestSet ohne Läufe löschen — geht ohne Rückfrage durch."""
     ts = create_testset(session=session, name='Zu-Löschen', backtest_config_ids=[backtest_config.id])
     deleted = delete_testset(session, ts.id)
     assert deleted is True
@@ -239,6 +243,107 @@ def test_delete_testset(session, backtest_config):
 
 
 def test_delete_testset_not_found(session):
-    """Löschen eines nicht-existierenden TestSets gibt False zurück."""
+    """Löschen eines nicht-existierenden TestSets gibt None zurück."""
     result = delete_testset(session, 99999999)
-    assert result is False
+    assert result is None
+
+
+# ============================================================================
+# Tests: Löschen mit abhängigen Testset-Läufen
+# ============================================================================
+
+def _make_testset_run(session, testset_id: int) -> TestSetRun:
+    """Legt einen minimalen Testset-Lauf für das gegebene TestSet an."""
+    run = TestSetRun(
+        testset_id=testset_id,
+        strategy_family='test_family',
+        strategy_name='test_strategy',
+        indicators_config_json={},
+        status='completed',
+        n_runs_total=1,
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+def _make_backtest_run(session, testset_run_id: int) -> BacktestRun:
+    """Legt einen minimalen Backtest-Run an, der auf den Testset-Lauf zeigt."""
+    run = BacktestRun(
+        strategy_family='test_family',
+        strategy_name='test_strategy',
+        symbol='BTCUSDT',
+        exchange='binance',
+        timeframe='4h',
+        start_date=datetime(2024, 1, 1),
+        end_date=datetime(2024, 12, 31),
+        backtest_config_json={},
+        indicators_config_json={},
+        n_combinations=1,
+        status='completed',
+        testset_run_id=testset_run_id,
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+def test_delete_testset_keeps_empty_testset_runs(session, backtest_config):
+    """Auch leere Testset-Läufe bleiben beim Löschen des TestSets stehen."""
+    ts = create_testset(session=session, name='Mit-Huelsen', backtest_config_ids=[backtest_config.id])
+    _make_testset_run(session, ts.id)
+    _make_testset_run(session, ts.id)
+
+    deleted = delete_testset(session, ts.id, force=True)
+
+    assert deleted is True
+    assert get_testset(session, ts.id) is None
+    assert session.query(TestSetRun).filter(TestSetRun.testset_id == ts.id).count() == 2
+
+
+def test_delete_testset_asks_back_when_runs_attached(session, backtest_config):
+    """Hängen noch Läufe daran, wird ohne force nichts gelöscht und nachgefragt."""
+    ts = create_testset(session=session, name='Belegt', backtest_config_ids=[backtest_config.id])
+    tsr = _make_testset_run(session, ts.id)
+    _make_backtest_run(session, tsr.id)
+    _make_backtest_run(session, tsr.id)
+
+    with pytest.raises(TestSetRunsBlockingError) as exc_info:
+        delete_testset(session, ts.id)
+
+    assert exc_info.value.blocking_testset_runs == 1
+    assert exc_info.value.blocking_backtest_runs == 2
+    session.rollback()
+    assert get_testset(session, ts.id) is not None
+    assert session.query(TestSetRun).filter(TestSetRun.id == tsr.id).first() is not None
+
+
+def test_delete_testset_with_force_keeps_runs(session, backtest_config):
+    """Mit force wird nur das TestSet entfernt — Läufe und Backtest-Runs bleiben."""
+    ts = create_testset(session=session, name='Belegt-Force', backtest_config_ids=[backtest_config.id])
+    tsr = _make_testset_run(session, ts.id)
+    br = _make_backtest_run(session, tsr.id)
+
+    deleted = delete_testset(session, ts.id, force=True)
+
+    assert deleted is True
+    assert get_testset(session, ts.id) is None
+    assert session.query(TestSetRun).filter(TestSetRun.id == tsr.id).first() is not None
+    assert session.query(BacktestRun).filter(BacktestRun.id == br.id).first() is not None
+
+
+def test_purge_empty_testset_runs_only_removes_empty(session, backtest_config):
+    """Aufräumen entfernt ausschließlich Testset-Läufe ohne Backtest-Runs."""
+    ts = create_testset(session=session, name='Gemischt', backtest_config_ids=[backtest_config.id])
+    empty_run_id = _make_testset_run(session, ts.id).id
+    used_run_id = _make_testset_run(session, ts.id).id
+    _make_backtest_run(session, used_run_id)
+
+    purged = purge_empty_testset_runs(session, [empty_run_id, used_run_id, None])
+    session.commit()
+
+    assert purged == 1
+    assert session.query(TestSetRun).filter(TestSetRun.id == empty_run_id).first() is None
+    assert session.query(TestSetRun).filter(TestSetRun.id == used_run_id).first() is not None

@@ -48,6 +48,16 @@ class BacktestRunOut(BaseModel):
     # GEÄNDERT: Chunk-Fortschritt für laufende Runs (NULL bei ungechunkt/Alt-Runs)
     current_chunk: Optional[int] = None
     total_chunks: Optional[int] = None
+    # GEÄNDERT: Ticket 71 — Fortsetzungspunkt: Zahl der fertig gespeicherten Chunks.
+    # > 0 heißt, ein abgebrochener Lauf trägt Teilergebnisse und ist fortsetzbar.
+    completed_chunks: int = 0
+    # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs ('usable' | 'no_signals' |
+    # 'insufficient_history') mit lesbarem Grund, plus Ergebnis der Vorlauf-Prüfung.
+    usability: Optional[str] = None
+    usability_note: Optional[str] = None
+    warmup_bars: Optional[int] = None
+    warmup_required_bars: Optional[int] = None
+    warmup_note: Optional[str] = None
     remarks: Optional[str] = None
     testset_run_id: Optional[int] = None
     # GEÄNDERT: Iteration-Verknüpfung (FK) ausgeben — Anker für "Runs zu Strategie+Version"
@@ -84,6 +94,17 @@ class BacktestResultOut(BaseModel):
 
     # Trade-Metriken
     total_trades: Optional[int] = None
+    # GEÄNDERT: Ticket 58 — am Fensterende offene Positionen. Die Trefferquote rechnet
+    # über total_trades - open_trades; der Nenner gehört überall dorthin, wo sie steht.
+    open_trades: Optional[int] = None
+    # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung (long_trades + short_trades = total_trades)
+    # sowie der tatsächlich gerechnete Zeitraum und die Balkenzahl. NULL bei Alt-Results.
+    long_trades: Optional[int] = None
+    short_trades: Optional[int] = None
+    start_index: Optional[datetime] = None
+    end_index: Optional[datetime] = None
+    total_duration: Optional[str] = None
+    bar_count: Optional[int] = None
     win_rate_pct: Optional[float] = None
     profit_factor: Optional[float] = None
     expectancy: Optional[float] = None

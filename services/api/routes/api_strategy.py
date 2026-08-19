@@ -6,7 +6,7 @@ POST   /api/strategy/concepts              — Neues Konzept anlegen
 GET    /api/strategy/concepts/{id}         — Einzelnes Konzept abrufen
 PUT    /api/strategy/concepts/{id}         — Konzept aktualisieren
 DELETE /api/strategy/concepts/{id}         — Konzept löschen (optional force + delete_vault)
-POST   /api/strategy/concepts/{id}/vault-create  — Konzept-Notiz im Vault anlegen
+POST   /api/strategy/concepts/{id}/vault-create  — Konzept-Notiz + status.md im Vault anlegen
 
 GET    /api/strategy/iterations            — Alle Iterationen auflisten (optional: concept_id)
 POST   /api/strategy/iterations            — Neue Iteration anlegen
@@ -14,22 +14,32 @@ GET    /api/strategy/iterations/{id}       — Einzelne Iteration abrufen
 POST   /api/strategy/iterations/{id}/copy  — Iteration kopieren
 PUT    /api/strategy/iterations/{id}       — Iteration aktualisieren
 POST   /api/strategy/iterations/{id}/vault-create  — Iterations-Notiz im Vault anlegen
+
+POST   /api/strategy/iterations/{id}/logs  — Log-Eintrag anlegen (append-only, Ticket 67)
+GET    /api/strategy/iterations/{id}/logs  — Log-Einträge chronologisch aufsteigend auflisten
 """
 
 import json
 import shutil
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict
 
+from services.api.utils.obsidian_notes import (
+    build_concept_note,
+    build_iteration_note,
+    build_status_note,
+)
 from services.api.utils.obsidian_paths import (
     concept_dir,
     concept_md_path,
     iteration_md_path,
     iteration_dir,
     normalize_slug,
+    status_md_path,
+    world_dir,
 )
 from services.api.utils.strategy_io import (
     export_concept,
@@ -41,6 +51,7 @@ from user_data.utils.database.db import get_session
 from user_data.utils.database.repository_strategies import (
     create_concept,
     create_iteration,
+    create_iteration_log,
     delete_concept,
     delete_iteration,
     force_delete_concept,
@@ -50,6 +61,7 @@ from user_data.utils.database.repository_strategies import (
     get_iteration,
     get_iteration_blockers,
     list_concepts,
+    list_iteration_logs,
     list_iterations,
     next_iteration_version,
     update_concept,
@@ -79,6 +91,13 @@ class StrategyConceptSchema(BaseModel):
     iteration_counter: int = 0
     created_at: Optional[datetime] = None
     created_by: Optional[str] = None
+    # GEÄNDERT: Ticket 66 — Entwicklungsziel des Konzepts (kein Gate, reine Anzeige/Speicherung)
+    goal_json: Optional[Dict[str, Any]] = None
+    goal_prompt: Optional[str] = None
+    # GEÄNDERT: Ticket 66 — abgeleitetes Flag, damit Listen-Clients nicht das volle goal_json brauchen
+    has_goal: bool = False
+    # GEÄNDERT: Ticket 92 — Zählerstand der Lite-Sondierungen (reiner Ausweis, keine Bewertung)
+    probe_count: int = 0
 
 
 class StrategyConceptCreateSchema(BaseModel):
@@ -90,6 +109,10 @@ class StrategyConceptCreateSchema(BaseModel):
     # GEÄNDERT: Ticket 16 — obsidian_slug entfernt
     status: str = 'active'
     created_by: Optional[str] = None
+    # GEÄNDERT: Ticket 66 — Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
+    # (Dict[str, Any] lehnt String/Liste/Zahl bereits über die Pydantic-Validierung ab)
+    goal_json: Optional[Dict[str, Any]] = None
+    goal_prompt: Optional[str] = None
 
 
 class StrategyConceptUpdateSchema(BaseModel):
@@ -101,6 +124,9 @@ class StrategyConceptUpdateSchema(BaseModel):
     # GEÄNDERT: Ticket 16 — obsidian_slug entfernt
     status: Optional[str] = None
     created_by: Optional[str] = None
+    # GEÄNDERT: Ticket 66 — Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
+    goal_json: Optional[Dict[str, Any]] = None
+    goal_prompt: Optional[str] = None
 
 
 class StrategyIterationSchema(BaseModel):
@@ -162,6 +188,24 @@ class StrategyIterationUpdateSchema(BaseModel):
     created_by: Optional[str] = None
 
 
+# GEÄNDERT: Ticket 67 — Iterations-Log (append-only Denkprotokoll)
+class IterationLogSchema(BaseModel):
+    """Ausgabe-Schema für einen Log-Eintrag."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    iteration_id: int
+    run_id: Optional[int] = None
+    created_at: datetime
+    text: str
+
+
+class IterationLogCreateSchema(BaseModel):
+    """Eingabe-Schema für einen neuen Log-Eintrag."""
+    text: str
+    run_id: Optional[int] = None
+
+
 def _validate_iteration_type_xor(type_: Optional[str], import_path: Optional[str]) -> Optional[str]:
     """Prüfft XOR-Bedingung: type='hardcoded' => import_path Pflicht; type='generic' => import_path NULL.
 
@@ -196,6 +240,8 @@ def _concept_to_dict(concept) -> Dict[str, Any]:
     """
     data = StrategyConceptSchema.model_validate(concept).model_dump(mode='json')
     data['vault_exists'] = concept_md_path(concept.slug).exists()
+    # GEÄNDERT: Ticket 66 — has_goal rein anzeigend, keine Filterung/Bewertung
+    data['has_goal'] = bool(concept.goal_json) or bool(concept.goal_prompt)
     return data
 
 
@@ -331,15 +377,16 @@ def update_concept_endpoint(concept_id: int, body: StrategyConceptUpdateSchema):
 
 @router.post('/concepts/{concept_id}/vault-create')
 def create_concept_vault(concept_id: int):
-    """Konzept-Ordner und Konzept-Notiz mit Frontmatter im Vault anlegen.
+    """Konzept-Ordner, Konzept-Notiz und status.md im Vault anlegen.
 
-    Idempotent: Existiert die Notiz bereits, wird sie nicht überschrieben.
+    Legt zusätzlich die Unterordner iterations/, lessons/ und ideas/ an.
+    Idempotent: Vorhandene Dateien werden nicht überschrieben.
 
     Args:
         concept_id: Primärschlüssel des Konzepts.
 
     Returns:
-        JSON mit created (bool), exists (bool) und path.
+        JSON mit created (bool), exists (bool), path und status_created (bool).
     """
     session = get_session()
     try:
@@ -348,29 +395,43 @@ def create_concept_vault(concept_id: int):
             raise HTTPException(status_code=404, detail=f"Konzept {concept_id} nicht gefunden.")
 
         md_path = concept_md_path(concept.slug)
+        # GEÄNDERT: Vault-Umbau 2026-08-18 — Status, Iterationen, Lessons und Ideen
+        # gibt es nur auf der vbt-Seite und liegen deshalb im Welten-Ordner. Die
+        # Konzept-Notiz gehört beiden Welten und bleibt eine Ebene darüber.
+        welt_dir = world_dir(concept.slug)
+        for sub in ('iterations', 'lessons', 'ideas'):
+            (welt_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        # GEÄNDERT: status.md ist der operative Anker — wird mit angelegt
+        status_path = status_md_path(concept.slug)
+        status_created = False
+        if not status_path.exists():
+            status_path.write_text(build_status_note(concept.slug, concept.name), encoding='utf-8')
+            status_created = True
 
         if md_path.exists():
-            return {"data": {"created": False, "exists": True, "path": str(md_path)}, "error": None}
+            return {
+                "data": {
+                    "created": False,
+                    "exists": True,
+                    "path": str(md_path),
+                    "status_created": status_created,
+                },
+                "error": None,
+            }
 
-        # Ordner anlegen
-        md_path.parent.mkdir(parents=True, exist_ok=True)
+        # GEÄNDERT: Inhalt folgt dem Vault-Template _templates/strategy-concept.md
+        md_path.write_text(build_concept_note(concept.slug, concept.name), encoding='utf-8')
 
-        # Minimal-Frontmatter schreiben
-        frontmatter = (
-            "---\n"
-            "type: strategy-concept\n"
-            f"concept_id: {concept.id}\n"
-            f"slug: {concept.slug}\n"
-            f"name: {concept.name}\n"
-            f"created_at: {date.today().isoformat()}\n"
-            "---\n"
-            "\n"
-            f"# {concept.name}\n"
-            "\n"
-        )
-        md_path.write_text(frontmatter, encoding='utf-8')
-
-        return {"data": {"created": True, "exists": True, "path": str(md_path)}, "error": None}
+        return {
+            "data": {
+                "created": True,
+                "exists": True,
+                "path": str(md_path),
+                "status_created": status_created,
+            },
+            "error": None,
+        }
     finally:
         session.close()
 
@@ -642,40 +703,27 @@ def create_iteration_vault(iteration_id: int):
         # Ordner anlegen
         md_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # GEÄNDERT: Volles ("reiches") Frontmatter-Schema — geteilt von App-Route,
-        # _templates/iteration.md und den Dataview-Tabellen in den Concept-Notizen.
-        # DB-Link-Felder werden befüllt; editoriale Felder als Platzhalter (später ausfüllen).
-        parent = iteration.parent_iteration_id if iteration.parent_iteration_id is not None else "null"
-        frontmatter = (
-            "---\n"
-            "type: strategy-iteration\n"
-            f"iteration_id: {iteration.id}\n"
-            f"concept_id: {concept.id}\n"
-            f"concept_slug: {concept.slug}\n"
-            f"version: {iteration.version}\n"
-            f"iteration: \"v{iteration.version}\"\n"
-            f"parent_iteration_id: {parent}\n"
-            "status: idea\n"
-            "workflow_state: drafted\n"
-            "archetype: null\n"
-            "hypothesis: \"\"\n"
-            "verdict: \"\"\n"
-            "metrics:\n"
-            "  total_return_pct: null\n"
-            "  sharpe: null\n"
-            "  max_drawdown: null\n"
-            "  profit_factor: null\n"
-            "  win_rate: null\n"
-            "  trades: null\n"
-            "  period: null\n"
-            "result_ids: []\n"
-            f"created_at: {date.today().isoformat()}\n"
-            "---\n"
-            "\n"
-            f"# v{iteration.version}\n"
-            "\n"
+        # GEÄNDERT: Inhalt folgt dem Vault-Template _templates/iteration.md — Frontmatter-Schema
+        # geteilt von App-Route, Template und den Dataview-Tabellen in den Konzept-Notizen.
+        # DB-Felder werden befüllt; editoriale Felder als Platzhalter (später ausfüllen).
+        parent_version = None
+        if iteration.parent_iteration_id is not None:
+            parent_iteration = get_iteration(session, iteration.parent_iteration_id)
+            if parent_iteration is not None:
+                parent_version = parent_iteration.version
+
+        md_path.write_text(
+            build_iteration_note(
+                slug=concept.slug,
+                version=iteration.version,
+                version_name=iteration.version_name,
+                iteration_id=iteration.id,
+                concept_id=concept.id,
+                parent_iteration_id=iteration.parent_iteration_id,
+                parent_version=parent_version,
+            ),
+            encoding='utf-8',
         )
-        md_path.write_text(frontmatter, encoding='utf-8')
 
         return {"data": {"created": True, "exists": True, "path": str(md_path)}, "error": None}
     finally:
@@ -685,6 +733,10 @@ def create_iteration_vault(iteration_id: int):
 @router.post('/iterations/{iteration_id}/favorite')
 def toggle_iteration_favorite(iteration_id: int):
     """Favoriten-Flag der Iteration toggeln (Stern an/aus).
+
+    Bleibt der reine Toggle für den manuellen Frontend-Stern (Ticket 89 rührt daran
+    nicht). Für idempotentes Setzen/Entfernen (z. B. aus der Toolbox) siehe
+    /favorite/mark und /favorite/unmark direkt darunter.
 
     Args:
         iteration_id: Primärschlüssel der Iteration.
@@ -704,13 +756,52 @@ def toggle_iteration_favorite(iteration_id: int):
         session.close()
 
 
+# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den gelben
+# Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
+@router.post('/iterations/{iteration_id}/favorite/mark')
+def mark_iteration_favorite(iteration_id: int):
+    """Setzt das Favoriten-Flag der Iteration idempotent (schaltet nie aus)."""
+    session = get_session()
+    try:
+        iteration = get_iteration(session, iteration_id)
+        if iteration is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        was_set = bool(iteration.is_favorite)
+        iteration.is_favorite = True
+        session.commit()
+        return {"data": {"id": iteration_id, "is_favorite": True, "changed": not was_set}, "error": None}
+    finally:
+        session.close()
+
+
+# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+@router.post('/iterations/{iteration_id}/favorite/unmark')
+def unmark_iteration_favorite(iteration_id: int):
+    """Entfernt das Favoriten-Flag der Iteration gezielt und idempotent (schaltet nie an)."""
+    session = get_session()
+    try:
+        iteration = get_iteration(session, iteration_id)
+        if iteration is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        was_set = bool(iteration.is_favorite)
+        iteration.is_favorite = False
+        session.commit()
+        return {"data": {"id": iteration_id, "is_favorite": False, "changed": was_set}, "error": None}
+    finally:
+        session.close()
+
+
 # GEÄNDERT: Doku-Favoriten-Toggle für Iterationen (roter Stern, unabhängig vom gelben)
 # HINWEIS: Falls künftig ein Iterations-Bulk-Delete ("Alle löschen") entsteht, muss er
 # sowohl is_favorite == False ALS AUCH is_doc_favorite == False filtern (beide Stern-
 # Markierungen schützen vor Löschung).
 @router.post('/iterations/{iteration_id}/doc_favorite')
 def toggle_iteration_doc_favorite(iteration_id: int):
-    """Doku-Favoriten-Flag der Iteration toggeln (roter Stern an/aus)."""
+    """Doku-Favoriten-Flag der Iteration toggeln (roter Stern an/aus).
+
+    Bleibt der reine Toggle (Ticket 89 rührt daran nicht); für idempotentes
+    Setzen/Entfernen siehe /doc_favorite/mark und /doc_favorite/unmark direkt darunter.
+    """
     session = get_session()
     try:
         iteration = get_iteration(session, iteration_id)
@@ -719,6 +810,98 @@ def toggle_iteration_doc_favorite(iteration_id: int):
         iteration.is_doc_favorite = not bool(iteration.is_doc_favorite)
         session.commit()
         return {"data": {"id": iteration_id, "is_doc_favorite": bool(iteration.is_doc_favorite)}, "error": None}
+    finally:
+        session.close()
+
+
+# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den roten
+# Doku-Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
+@router.post('/iterations/{iteration_id}/doc_favorite/mark')
+def mark_iteration_doc_favorite(iteration_id: int):
+    """Setzt das Doku-Favoriten-Flag der Iteration idempotent (schaltet nie aus)."""
+    session = get_session()
+    try:
+        iteration = get_iteration(session, iteration_id)
+        if iteration is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        was_set = bool(iteration.is_doc_favorite)
+        iteration.is_doc_favorite = True
+        session.commit()
+        return {"data": {"id": iteration_id, "is_doc_favorite": True, "changed": not was_set}, "error": None}
+    finally:
+        session.close()
+
+
+# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+@router.post('/iterations/{iteration_id}/doc_favorite/unmark')
+def unmark_iteration_doc_favorite(iteration_id: int):
+    """Entfernt das Doku-Favoriten-Flag der Iteration gezielt und idempotent (schaltet nie an)."""
+    session = get_session()
+    try:
+        iteration = get_iteration(session, iteration_id)
+        if iteration is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        was_set = bool(iteration.is_doc_favorite)
+        iteration.is_doc_favorite = False
+        session.commit()
+        return {"data": {"id": iteration_id, "is_doc_favorite": False, "changed": was_set}, "error": None}
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Iterations-Log (Ticket 67) — append-only Denkprotokoll, kein Update/Delete
+# ============================================================================
+
+@router.post('/iterations/{iteration_id}/logs')
+def create_iteration_log_endpoint(iteration_id: int, body: IterationLogCreateSchema):
+    """Log-Eintrag an einer Iteration anlegen (append-only, kein Update/Delete).
+
+    Args:
+        iteration_id: Primärschlüssel der Iteration, an der der Eintrag hängt.
+        body: Freitext (Pflicht, nach Trim nicht leer) und optionale lose
+            Referenz auf einen Run (kein FK — der Run kann später gelöscht werden).
+
+    Returns:
+        JSON mit dem neu angelegten Log-Eintrag.
+
+    Raises:
+        HTTPException: 404 wenn die Iteration nicht existiert, 422 bei leerem Text.
+    """
+    stripped_text = body.text.strip()
+    if not stripped_text:
+        raise HTTPException(status_code=422, detail="text darf nach Trim nicht leer sein.")
+    session = get_session()
+    try:
+        entry = create_iteration_log(session, iteration_id, stripped_text, run_id=body.run_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        result = IterationLogSchema.model_validate(entry).model_dump(mode='json')
+        return {"data": result, "error": None}
+    finally:
+        session.close()
+
+
+@router.get('/iterations/{iteration_id}/logs')
+def list_iteration_logs_endpoint(iteration_id: int):
+    """Log-Einträge einer Iteration chronologisch aufsteigend auflisten (älteste zuerst).
+
+    Args:
+        iteration_id: Primärschlüssel der Iteration.
+
+    Returns:
+        JSON mit Liste der Log-Einträge (items) und Gesamtanzahl (total).
+
+    Raises:
+        HTTPException: 404 wenn die Iteration nicht existiert.
+    """
+    session = get_session()
+    try:
+        entries = list_iteration_logs(session, iteration_id)
+        if entries is None:
+            raise HTTPException(status_code=404, detail=f"Iteration {iteration_id} nicht gefunden.")
+        items = [IterationLogSchema.model_validate(e).model_dump(mode='json') for e in entries]
+        return {"data": {"items": items, "total": len(items)}, "error": None}
     finally:
         session.close()
 

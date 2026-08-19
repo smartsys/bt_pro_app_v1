@@ -1,9 +1,31 @@
 name: bt_pro_app_v1
 
+# Besitzrechte in den Bind-Mounts (Ticket 81)
+# ------------------------------------------
+# Alle Container, die ./data/ohlc_data, ./user_data oder ./services beschreiben, laufen
+# hier als uid/gid 1000:1000 — also als der Host-Benutzer, dem das Projektverzeichnis
+# gehört. Läuft auch nur EIN schreibender Dienst als root, legt er Dateien und Ordner
+# als root:root mit Modus 644/755 an; alle anderen Dienste können sie danach nicht mehr
+# beschreiben. Genau so entstanden die nicht schreibbaren HDF5-Dateien unter
+# data/ohlc_data (Erzeuger: services/api/worker_tasks.py im Worker-Container).
+# Ein einmaliges chown heilt nur den Ist-Zustand — die uid der erzeugenden Dienste
+# gehört mit, sonst kehrt das Problem beim nächsten Download zurück.
+# Ausgenommen bleiben Dienste mit eigener uid-Erwartung, die diese Mounts gar nicht
+# brauchen: db_bt_pro_v1/db_bt_pro_v1_test (postgres, uid 70), pgadmin, redis (uid 999)
+# sowie der scheduler, dessen cron zwingend root braucht (siehe dort).
+
 x-worker-base: &worker-base
   build:
     context: .
     dockerfile: services/api/Dockerfile
+    # GEÄNDERT (Ticket 88): Ausdrückliches Stage-Ziel. Das Dockerfile hat seitdem ein
+    # zweites Stage "test"; ohne target würde Docker das letzte Stage bauen und pytest
+    # ins Laufzeit-Image ziehen.
+    target: runtime
+  # Gleiche uid wie der app-Dienst: Der Worker schreibt die HDF5-Kursdateien
+  # (data-download/data-update) und muss dieselben Dateien erzeugen, die die App
+  # anschließend beschreibt (z.B. data-delete-symbol).
+  user: "1000:1000"
   volumes:
     - ./services:/app/services
     - ./user_data:/app/user_data
@@ -23,6 +45,12 @@ x-worker-base: &worker-base
     OHLC_FETCH_LIMIT: ${OHLC_FETCH_LIMIT:-1000}
     VAULT_ROOT: /obsidian_vault
     EMBEDDING_BACKEND_URL: ${EMBEDDING_BACKEND_URL}
+    # GEÄNDERT: Numba-Cache-Verzeichnis wie beim app-Dienst. Seit der Worker als
+    # uid 1000 läuft (Ticket 81), ist site-packages für ihn nicht mehr schreibbar;
+    # ohne dieses Ziel bricht bereits `import vectorbtpro` mit
+    # "cannot cache function ...: no locator available" ab und JEDER Backtest-Job
+    # stirbt beim Import.
+    NUMBA_CACHE_DIR: /tmp/numba_cache
   networks:
     - bt_pro_network
 
@@ -33,6 +61,12 @@ services:
     pull_policy: never
     container_name: framework_vbt_v1
     restart: unless-stopped
+    # Gleiche uid wie app/worker: Der Container teilt sich user_data und
+    # data/ohlc_data mit ihnen; als root würde jeder Schreibzugriff von hier aus
+    # wieder root-eigene Dateien hinterlassen. Wird doch einmal root gebraucht
+    # (z.B. ad-hoc pip install im Container), geht das weiterhin über
+    # docker exec -u 0 framework_vbt_v1 ...
+    user: "1000:1000"
     volumes:
       - ./user_data:/workspace/user_data
       - ./data/ohlc_data:/workspace/data/ohlc_data
@@ -40,6 +74,12 @@ services:
       - ./.env:/workspace/.env
     env_file:
       - .env
+    environment:
+      # GEÄNDERT (Ticket 87): Numba-Cache-Verzeichnis wie beim app-Dienst. Seit der
+      # Container als uid 1000 läuft (Ticket 81), ist site-packages nicht mehr schreibbar;
+      # ohne dieses Ziel bricht `import vectorbtpro` mit "cannot cache function ...:
+      # no locator available" ab.
+      NUMBA_CACHE_DIR: /tmp/numba_cache
     depends_on:
       db_bt_pro_v1:
         condition: service_healthy
@@ -52,6 +92,8 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
+      # GEÄNDERT (Ticket 88): siehe x-worker-base — Laufzeit-Stage ohne Test-Pakete.
+      target: runtime
     container_name: frontend_bt_pro_v1
     restart: unless-stopped
     ports:
@@ -77,6 +119,12 @@ services:
       PROJECT_ROOT: /app
       OBSIDIAN_VAULT_PATH: /obsidian_vault
       NUMBA_CACHE_DIR: /tmp/numba_cache
+      # GEÄNDERT (Ticket 100): Adressen für die Analyse-Screenshot-Route.
+      # RENDERER_BASE_URL — der Screenshot-Dienst im selben Netz (kein Port nach aussen).
+      # APP_INTERNAL_BASE_URL — unter dieser Adresse ruft der Renderer die Analyse-Seite
+      # auf; "localhost" wäre dort der Renderer-Container selbst.
+      RENDERER_BASE_URL: ${RENDERER_BASE_URL:-http://renderer:8080}
+      APP_INTERNAL_BASE_URL: ${APP_INTERNAL_BASE_URL:-http://app:8000}
     user: "1000:1000"
     depends_on:
       db_bt_pro_v1:
@@ -121,7 +169,112 @@ services:
       - "python"
       - "services/api/recovery_oneshot.py"
 
+  # GEÄNDERT (Ticket 88): Test-Runner. Baut das Stage "test" desselben Dockerfiles und
+  # fährt damit pytest in genau der Umgebung, in der die App rechnet (gleiche Python-
+  # und vectorbtpro-Version). Läuft nie bei `up` mit — das Profil "test" schaltet den
+  # Dienst nur für den ausdrücklichen Aufruf frei:
+  #   docker compose -f docker-compose-local.yml run --rm --build test
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+      target: test
+    image: bt_pro_app_v1-test:latest
+    # Gleiche uid wie app/worker — sonst gehören erzeugte __pycache__-Ordner in den
+    # geteilten Mounts root und die anderen Dienste können sie nicht mehr schreiben.
+    user: "1000:1000"
+    volumes:
+      - ./services:/app/services
+      - ./user_data:/app/user_data
+      - ./data/ohlc_data:/app/data/ohlc_data
+      - ./.env:/app/.env
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+      # Top-Level-conftest.py: registriert tests/conftest.py als Plugin, damit auch
+      # services/api/tests die db_engine-/session-Fixtures sieht. Ohne diesen Mount
+      # brechen dort alle DB-Tests mit "fixture 'db_engine' not found" ab.
+      - ./conftest.py:/app/conftest.py
+      # test_run_wait.py lädt die Toolbox aus dem Skill-Ordner
+      - ./.claude:/app/.claude:ro
+      # Numba- und Bytecode-Cache über Laufgrenzen hinweg halten: Der Dienst läuft mit
+      # "run --rm", ohne diese Mounts kompiliert jeder Testlauf die komplette
+      # Numba-Schicht von vectorbtpro neu.
+      - ./data/numba_cache_test:/tmp/numba_cache
+      - ./data/pycache_test:/tmp/pycache
+      - ${OBSIDIAN_VAULT_HOST_PATH}:/obsidian_vault:ro
+    environment:
+      # Die POSTGRES_*-Werte zeigen bewusst ebenfalls auf die Test-DB: Greift Code unter
+      # Test doch einmal über user_data/utils/database/db.py auf die Datenbank zu, landet
+      # er dort und nicht auf der Arbeits-DB.
+      POSTGRES_SERVER: db_bt_pro_v1_test
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Container-interne Adresse der Test-DB; überschreibt den Host-Wert aus der .env,
+      # weil load_dotenv gesetzte Umgebungsvariablen nicht überschreibt.
+      VBT_TEST_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db_bt_pro_v1_test:5432/${POSTGRES_DB}
+      BACKTEST_RESULTS_PATH: /app/user_data/backtest_results
+      PROJECT_ROOT: /app
+      OBSIDIAN_VAULT_PATH: /obsidian_vault
+      VAULT_ROOT: /obsidian_vault
+      NUMBA_CACHE_DIR: /tmp/numba_cache
+      # Eigener Bytecode-Cache im Container. Ohne das lädt Python die __pycache__-
+      # Dateien aus den gemounteten Windows-Ordnern; deren einkompilierte Pfade
+      # (D:\...) machen Tracebacks unlesbar ("source code not available").
+      PYTHONPYCACHEPREFIX: /tmp/pycache
+      # Adresse der laufenden App für die 'integration'-Tests: 'localhost' wäre hier
+      # der Test-Container selbst. Diese Tests laufen nicht im Standardlauf mit
+      # (Marker 'integration'), sondern nur auf Anforderung mit '-m integration'.
+      APP_BASE_URL: http://app:8000
+    depends_on:
+      db_bt_pro_v1_test:
+        condition: service_healthy
+    networks:
+      - bt_pro_network
+
+  # GEÄNDERT (Ticket 100): Screenshot-Renderer für die Analyse-Seite.
+  # Bewusst nur im lokalen Stack: Screenshots entstehen beim Entwickeln am
+  # Arbeitsplatz; die übrigen Umgebungen laufen ohne Chromium-Image.
+  # Kein Port-Mapping: Der Dienst ist ausschließlich über bt_pro_network erreichbar und
+  # wird allein von der App-Route /api/backtest/runs/{id}/analyse/screenshot gerufen.
+  renderer:
+    build:
+      context: .
+      dockerfile: services/renderer/Dockerfile
+    container_name: renderer_bt_pro_v1
+    restart: unless-stopped
+    volumes:
+      # Code lesend einhängen: Änderungen am Dienst brauchen nur einen Neustart,
+      # keinen Neubau. Schreibzugriffe hat der Dienst hier ausdrücklich nicht.
+      - ./services/renderer:/app/renderer:ro
+    environment:
+      # Leerlauf-Timeout: So lange darf der Chromium-Prozess ohne Aufnahme bestehen
+      # bleiben. Zum Prüfen kurz setzbar (z.B. RENDERER_IDLE_TIMEOUT_SECONDS=20).
+      RENDERER_IDLE_TIMEOUT_SECONDS: ${RENDERER_IDLE_TIMEOUT_SECONDS:-300}
+      RENDERER_IDLE_CHECK_INTERVAL_SECONDS: ${RENDERER_IDLE_CHECK_INTERVAL_SECONDS:-5}
+      RENDERER_DEFAULT_TIMEOUT_MS: ${RENDERER_DEFAULT_TIMEOUT_MS:-90000}
+    # Chromium legt seine Puffer in /dev/shm ab; die Docker-Vorgabe von 64 MB reicht
+    # für Vollseiten-Aufnahmen nicht zuverlässig.
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - bt_pro_network
+
   scheduler:
+    # Bleibt bewusst root: Der Container startet cron, und cron verlangt root.
+    # Er beschreibt keine Nutzdaten — die gemounteten ./services und ./user_data
+    # liest er nur. Damit er trotzdem keine root-eigenen __pycache__-Ordner in die
+    # geteilten Mounts schreibt, ruft die crontab python3 mit -B auf
+    # (services/scheduler/crontab).
     build:
       context: .
       dockerfile: services/scheduler/Dockerfile

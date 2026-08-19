@@ -1,4 +1,8 @@
-FROM bt_pro_app_v1-vbt:latest
+# GEÄNDERT (Ticket 88): Zwei benannte Stages. "runtime" ist unverändert das Laufzeit-Image
+# für app/worker; "test" setzt darauf auf und ergänzt nur die Test-Abhängigkeiten. Die
+# Compose-Dienste bauen ausdrücklich mit target: runtime, damit kein pytest ins produktive
+# Image gerät.
+FROM bt_pro_app_v1-vbt:latest AS runtime
 
 WORKDIR /app
 
@@ -23,3 +27,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # startet dann uvicorn. So braucht es keinen manuellen Migrations-Schritt und keinen
 # Crash-Restart-Zyklus, wenn die DB beim ersten Hochfahren noch nicht bereit ist.
 CMD ["sh", "services/api/entrypoint.sh"]
+
+
+# GEÄNDERT (Ticket 88): Test-Stage. Erbt Python, vectorbtpro und alle Laufzeit-Pakete vom
+# runtime-Stage — damit läuft die Suite gegen exakt die Version, die ausgeliefert wird.
+# Ergänzt wird nur pytest samt der von fastapi.testclient benötigten httpx.
+FROM runtime AS test
+
+COPY services/api/requirements-test.txt .
+RUN pip install --no-cache-dir -r requirements-test.txt
+
+# Ohne Pfadangabe: Es gibt zwei Test-Ordner (tests/ und services/api/tests/), pytest
+# sammelt von der rootdir /app aus beide ein.
+CMD ["python", "-m", "pytest"]

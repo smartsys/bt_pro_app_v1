@@ -4,6 +4,8 @@ Worker-Tasks — RQ-Aufgaben für Hintergrund-Jobs
 Jede Task-Funktion wird vom RQ-Worker aufgerufen.
 - run_recompute_job: Equity-Recompute für einzelne Results
 - run_backtest_job: Kompletten Backtest starten (Strategie ausführen + DB speichern)
+- run_significance_permutation_job: Permutationstest eines Kandidaten (Ticket 79),
+  save-frei — schreibt ausschließlich den eigenen significance_tests-Datensatz
 """
 
 import inspect
@@ -15,6 +17,7 @@ import pandas as pd
 from user_data.utils.database.db import get_session
 from user_data.utils.database.models import BacktestJob
 from services.api.recompute import recompute_single_result
+from services.api.ohlc_file_lock import ohlc_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -67,31 +70,6 @@ def run_recompute_job(job_id: int, result_id: int) -> bool:
     return status == 'completed'
 
 
-def run_full_metrics_job(result_id: int) -> bool:
-    """Berechnet die langsamen Full-Metriken für ein einzelnes Result.
-
-    Stufe 3: tail_ratio, VaR, CVaR, alpha, beta, information_ratio etc.
-    Wird als Hintergrund-Job in der Recompute-Queue ausgeführt.
-
-    Args:
-        result_id: ID des BacktestResult
-
-    Returns:
-        True wenn erfolgreich
-    """
-    from services.api.recompute import compute_full_metrics
-    try:
-        success = compute_full_metrics(result_id)
-        if success:
-            logger.info(f"[WORKER] Full-Metriken für Result {result_id} berechnet")
-        else:
-            logger.error(f"[WORKER] Full-Metriken für Result {result_id} fehlgeschlagen")
-        return success
-    except Exception as e:
-        logger.error(f"[WORKER] Full-Metriken für Result {result_id} Fehler: {e}")
-        return False
-
-
 def run_backtest_job(run_id: int) -> bool:
     """Führt einen kompletten Backtest aus: OHLC laden, Strategie ausführen, Ergebnisse speichern.
 
@@ -106,12 +84,18 @@ def run_backtest_job(run_id: int) -> bool:
     """
     from services.api.recompute import load_strategy_function
     from user_data.utils.database.repository import (
+        assess_run_usability,
+        save_result_chunk,
         save_strategy_results,
         update_backtest_run_status,
         update_backtest_run_progress,
+        update_backtest_run_warmup,
     )
     from user_data.utils.database.models import BacktestRun
     from user_data.utils.ohlc.loader import load_ohlc_data
+    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung beim Run-Start (einzige Rechenstelle,
+    # dieselbe Funktion nutzt der Preflight)
+    from user_data.strategies.generic.warmup import check_warmup
     # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
     from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
     from sqlalchemy import text
@@ -128,6 +112,10 @@ def run_backtest_job(run_id: int) -> bool:
         indicators_json = dict(run.indicators_config_json)
         # testset_run_id für Increment-Logik merken (Ticket 05)
         testset_run_id = run.testset_run_id
+        # GEÄNDERT: Ticket 71 — Fortsetzungspunkt. Bei einem frischen oder neu
+        # gestarteten Lauf 0, bei einem fortgesetzten die Zahl der bereits
+        # gespeicherten Chunks.
+        completed_chunks = run.completed_chunks or 0
         # GEÄNDERT: Ticket 21 — _rules-Fallback entfernt. Rules kommen ausschließlich aus iteration.spec_json.
         if run.iteration_id is None or run.iteration is None:
             raise ValueError(
@@ -148,6 +136,15 @@ def run_backtest_job(run_id: int) -> bool:
 
     logger.info(f"[BACKTEST] Start: {backtest_config_json['symbols'][0]} "
                 f"{backtest_config_json['exchange']} {backtest_config_json['timeframe']} (Run #{run_id})")
+
+    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung. Berichtet, blockiert nicht: der Lauf startet
+    # auch bei zu kurzem Vorlauf, die Meldung hängt aber am Run und steht im Log.
+    warmup = check_warmup(backtest_config_json, indicators_json)
+    update_backtest_run_warmup(run_id, warmup)
+    if warmup['level'] == 'ok':
+        logger.info('[BACKTEST] Run #%d Vorlauf: %s', run_id, warmup['note'])
+    else:
+        logger.warning('[BACKTEST] Run #%d Vorlauf: %s', run_id, warmup['note'])
 
     run_status = 'failed'
     try:
@@ -175,6 +172,33 @@ def run_backtest_job(run_id: int) -> bool:
                     run_id, current_chunk, total_chunks
                 )
             )
+        # GEÄNDERT: Ticket 71 — Chunk-Senke injizieren. Jeder fertig gerechnete Chunk
+        # geht sofort in die Datenbank, statt bis zum Ende im Speicher zu warten; ein
+        # hart beendeter Lauf behält damit die Arbeit der abgeschlossenen Chunks und
+        # ist über completed_chunks fortsetzbar. Kein try/except: scheitert das
+        # Speichern, ist die Arbeit dieses Chunks nicht gesichert — das muss den Lauf
+        # sichtbar abbrechen, nicht still weiterlaufen.
+        if 'chunk_sink' in strategy_params:
+            def _sink(chunk_index, metrics_table, columns, ann_factor) -> None:
+                """Schreibt einen fertigen Chunk samt Fortsetzungspunkt in die DB."""
+                save_result_chunk(
+                    run_id=run_id,
+                    metrics_table=metrics_table,
+                    columns=columns,
+                    chunk_index=chunk_index,
+                    ann_factor=ann_factor,
+                    spec_runner_version=_spec_runner_version,
+                    rules=rules_json,
+                    backtest_config=backtest_config_json,
+                )
+
+            strategy_kwargs['chunk_sink'] = _sink
+            strategy_kwargs['completed_chunks'] = completed_chunks
+            if completed_chunks:
+                logger.info(
+                    '[BACKTEST] Run #%d wird fortgesetzt: %d Chunk(s) bereits '
+                    'gespeichert und werden übersprungen.', run_id, completed_chunks,
+                )
         strategy_results = strategy_fn(ohlc_data, **strategy_kwargs)
 
         # Ergebnisse in DB speichern
@@ -190,6 +214,22 @@ def run_backtest_job(run_id: int) -> bool:
 
         logger.info(f"[BACKTEST] Fertig: {n_results} Kombinationen gespeichert (Run #{run_id})")
         run_status = 'completed'
+
+        # GEÄNDERT: Ticket 60 — Selbstauskunft: hat der Lauf überhaupt Substanz?
+        # Reine Kennzeichnung am Run, die Results bleiben unangetastet.
+        # GEÄNDERT: Ticket 68 — 'metrics_auto_note' kommt aus create_backtest_run
+        # (nur gesetzt, wenn 'auto' den Lauf tatsächlich gekürzt hat) und wird an die
+        # Verwertbarkeits-Note angehängt, statt sie zu ersetzen.
+        verdict = assess_run_usability(
+            run_id, warmup, metrics_note=backtest_config_json.get('metrics_auto_note')
+        )
+        if verdict['usability'] == 'usable':
+            logger.info('[BACKTEST] Run #%d verwertbar: %s', run_id, verdict['note'])
+        else:
+            logger.warning(
+                '[BACKTEST] Run #%d NICHT verwertbar (%s): %s',
+                run_id, verdict['usability'], verdict['note'],
+            )
 
     except Exception as e:
         update_backtest_run_status(run_id, status='failed', error_message=str(e))
@@ -271,7 +311,7 @@ def run_ohlc_download_job(job_id: int) -> bool:
     """Lädt OHLC-Daten via vbt.BinanceData.pull und schreibt sie in die HDF5-Datei.
 
     job_type 'download': neue Datei anlegen (oder Symbole ergänzen)
-    job_type 'update':   bestehende Datei per .update() fortschreiben
+    job_type 'update':   bestehendes Symbol per merge() mit frischen Kerzen überlagern
 
     Jeder Job trägt im Regelfall genau ein Symbol (die API zerlegt Mehrfach-Eingaben
     in Einzel-Jobs). Der Worker schätzt vorab die zu ladenden Intervalle und meldet
@@ -365,21 +405,27 @@ def run_ohlc_download_job(job_id: int) -> bool:
         if job_type == 'update':
             if not os.path.exists(datafile):
                 raise FileNotFoundError(f'Datei nicht gefunden: {datafile}')
-            with pd.HDFStore(datafile, mode='r') as store:
-                file_keys = set(k.lstrip('/') for k in store.keys())
+            # GEÄNDERT: Ticket 97 — auch lesender Zugriff steht unter der Datei-Sperre.
+            # HDF5 verweigert einem Leser das Öffnen, solange ein anderer Worker
+            # gerade schreibt (dasselbe errno 11 wie bei zwei Schreibern); ohne die
+            # Sperre hier bliebe die Planungsphase eine Fehlerquelle.
+            with ohlc_file_lock(exchange, timeframe):
+                with pd.HDFStore(datafile, mode='r') as store:
+                    file_keys = set(k.lstrip('/') for k in store.keys())
             for sym in symbols:
                 if sym not in file_keys:
                     plan.append((sym, None, None, 0, f'{sym}: nicht in Datei'))
                     continue
-                d0 = vbt.BinanceData.from_hdf(
-                    sym, paths=datafile, match_paths=False,
-                    fetch_kwargs=dict(timeframe=timeframe),
-                )
+                with ohlc_file_lock(exchange, timeframe):
+                    d0 = vbt.BinanceData.from_hdf(
+                        sym, paths=datafile, match_paths=False,
+                        fetch_kwargs=dict(timeframe=timeframe),
+                    )
                 idx = d0.index
                 if len(idx):
                     # GEÄNDERT: Start = ein Tag vor dem letzten Bar (Nutzer-Vorgabe),
                     # geclamped auf den ersten Bar. Der Tages-Puffer deckt einen evtl.
-                    # unvollständigen letzten Bar mit ab; update() merged per Index.
+                    # unvollständigen letzten Bar mit ab; merge() ersetzt ihn per Index.
                     start_ts = max(idx[-1] - pd.Timedelta(days=1), idx[0])
                 else:
                     start_ts = None
@@ -418,22 +464,45 @@ def run_ohlc_download_job(job_id: int) -> bool:
             })
             try:
                 if job_type == 'update':
-                    d = vbt.BinanceData.from_hdf(
-                        sym, paths=datafile, match_paths=False,
-                        fetch_kwargs=dict(timeframe=timeframe),
+                    # GEÄNDERT: Ticket 97 — Datei-Sperre je Timeframe-Datei. Mehrere
+                    # parallele Symbol-Jobs auf dieselbe Datei würden ohne Sperre in
+                    # errno 11 laufen — sowohl beim Schreiben als auch beim Lesen
+                    # (HDF5 verweigert das Öffnen, solange ein anderer Worker
+                    # schreibt). Die Sperre serialisiert deshalb Lesen UND Schreiben,
+                    # aber nicht den dazwischenliegenden Netzwerk-Download.
+                    with ohlc_file_lock(exchange, timeframe):
+                        stored = vbt.BinanceData.from_hdf(
+                            sym, paths=datafile, match_paths=False,
+                            fetch_kwargs=dict(timeframe=timeframe),
+                        )
+                    # GEÄNDERT: Overlay statt Fortschreiben. `.update()` schneidet den
+                    # Bestand am Beginn des neuen Fensters ab und hängt die frischen
+                    # Kerzen an — alles hinter dem Fensterende ginge dabei still
+                    # verloren, sobald das Fenster nicht bis zum Bestandsende reicht.
+                    # `merge()` legt die frischen Kerzen stattdessen per Zeitstempel
+                    # über den Bestand (spätere Instanz gewinnt), alles außerhalb des
+                    # Fensters bleibt unberührt.
+                    fresh = vbt.BinanceData.pull(
+                        sym, start=sym_start, end='now UTC', timeframe=timeframe,
                     )
-                    if sym_start is not None:
-                        d = d.update(start=sym_start, end='now UTC')
-                    else:
-                        d = d.update(end='now UTC')
-                    d.to_hdf(datafile)
+                    # Die Zeitzonen-Angaben der beiden Instanzen meinen dasselbe, sind
+                    # aber verschieden geschrieben (aus HDF: datetime.timezone.utc, aus
+                    # pull: 'utc'). merge() besteht auf identischen Angaben und bricht
+                    # sonst mit ValueError ab — deshalb die des Bestands durchreichen.
+                    d = vbt.BinanceData.merge(
+                        stored, fresh,
+                        tz_localize=stored.tz_localize, tz_convert=stored.tz_convert,
+                    )
+                    with ohlc_file_lock(exchange, timeframe):
+                        d.to_hdf(datafile)
                     logger.info(f"[OHLC-DL] Job #{job_id} updated: {sym}")
                 else:
                     d = vbt.BinanceData.pull(
                         sym, start=start_date, end=job_end_date or 'now UTC',
                         timeframe=timeframe,
                     )
-                    d.to_hdf(datafile)
+                    with ohlc_file_lock(exchange, timeframe):
+                        d.to_hdf(datafile)
                     logger.info(f"[OHLC-DL] Job #{job_id} geladen: {sym}")
                 loaded.append(sym)
                 idx = d.index
@@ -492,12 +561,18 @@ def _delete_all_non_favorites() -> dict:
     beide Stern-Markierungen (is_favorite=0 UND is_doc_favorite=0) und meldet den
     Fortschritt ins RQ-Job-Meta (vom delete-status-Endpoint gelesen).
 
+    GEÄNDERT: Ticket 61 — Testset-Läufe, die durch die Run-Löschung leer werden,
+    werden mitgeräumt (nur die betroffenen, kein globaler Aufräumlauf).
+
     Returns:
         dict mit Anzahl gelöschter Results und Runs.
     """
     # Lazy-Import, um den Worker-Start nicht an den schweren Router zu koppeln
     from rq import get_current_job
     from sqlalchemy import text
+
+    # GEÄNDERT: Ticket 61 — Waisen-Schutz für die mitgelöschten Testset-Läufe
+    from user_data.utils.database.repository_testsets import purge_empty_testset_runs
 
     rq_job = get_current_job()
 
@@ -521,6 +596,12 @@ def _delete_all_non_favorites() -> dict:
     try:
         total_before = session.execute(text("SELECT count(*) FROM backtest_results")).scalar() or 0
         runs_before = session.execute(text("SELECT count(*) FROM backtest_runs")).scalar() or 0
+        # GEÄNDERT: Ticket 61 — betroffene Testset-Läufe vor dem Löschen merken
+        affected_testset_run_ids = [
+            row[0] for row in session.execute(text(
+                "SELECT DISTINCT testset_run_id FROM backtest_runs WHERE testset_run_id IS NOT NULL"
+            )).fetchall()
+        ]
         _report(0, total_before)
 
         # Favoriten-Result-IDs bestimmen (beide Stern-Markierungen schützen)
@@ -531,6 +612,7 @@ def _delete_all_non_favorites() -> dict:
         if not keep_ids:
             # Kein Favorit -> alle Tabellen komplett leeren (schnellster Weg, eine Sperre)
             session.execute(text("TRUNCATE TABLE " + ", ".join(all_tables)))
+            purged_testset_runs = purge_empty_testset_runs(session, affected_testset_run_ids)
             session.commit()
             deleted_results = total_before
             deleted_runs = runs_before
@@ -569,13 +651,15 @@ def _delete_all_non_favorites() -> dict:
             for tbl in detail_tables:
                 session.execute(text(f"INSERT INTO {tbl} SELECT * FROM _keep_{tbl}"))
 
+            purged_testset_runs = purge_empty_testset_runs(session, affected_testset_run_ids)
             session.commit()
             kept_runs = session.execute(text("SELECT count(*) FROM backtest_runs")).scalar() or 0
             deleted_results = total_before - len(keep_ids)
             deleted_runs = runs_before - kept_runs
 
         _report(total_before, total_before)
-        logger.info(f"[DELETE-ALL] {deleted_results} Results, {deleted_runs} verwaiste Runs "
+        logger.info(f"[DELETE-ALL] {deleted_results} Results, {deleted_runs} verwaiste Runs, "
+                    f"{purged_testset_runs} leer gewordene Testset-Läufe "
                     f"geloescht (TRUNCATE-Pfad, {len(keep_ids)} Favoriten erhalten)")
         return {'deleted_results': deleted_results, 'deleted_runs': deleted_runs}
     finally:
@@ -613,6 +697,51 @@ def delete_all_runs_job() -> dict:
     return result
 
 
+def run_significance_permutation_job(
+    test_id: int, metrics: list | None = None,
+) -> bool:
+    """Rechnet den Permutationstest eines Kandidaten (Ticket 79).
+
+    Dünner Job-Mantel um `significance_runner.run_permutation_test` — dieselbe
+    Arbeitsteilung wie `run_recompute_job` / `recompute_single_result`. Der Job
+    liefert nur den Fortschritts-Callback ins RQ-Job-Meta; Status, Ergebnis und
+    Fehlermeldung schreibt der Runner in den `significance_tests`-Datensatz.
+
+    Der Job schreibt **nichts** in `backtest_runs` oder `backtest_results`: die N
+    synthetischen Läufe gehen über den save-freien Rechenweg (Vorbild
+    `/run-backtest-lite`). Damit gibt es auch keinen Aufräumschritt.
+
+    Args:
+        test_id: ID des vorbereiteten significance_tests-Datensatzes.
+        metrics: Auszuwertende Kennzahlen; None nimmt die Standard-Auswahl
+            (sharpe_ratio, profit_factor, total_return_pct).
+
+    Returns:
+        True wenn der Test mit Ergebnis abgeschlossen wurde.
+    """
+    from rq import get_current_job
+
+    from services.api.significance_runner import run_permutation_test
+
+    rq_job = get_current_job()
+
+    def _report(step: int, total: int) -> None:
+        """Schreibt den Lauf-Fortschritt ins RQ-Job-Meta (wie der Lösch-Job)."""
+        if rq_job is None:
+            return
+        pct = round(step / total * 100) if total else 100
+        rq_job.meta['progress'] = {
+            'step': step, 'total': total, 'pct': pct,
+            'label': f'{step}/{total} synthetische Reihen gerechnet',
+        }
+        rq_job.save_meta()
+
+    logger.info('[SIGNIFIKANZ] Job für Test %d gestartet.', test_id)
+    return run_permutation_test(
+        test_id=test_id, metrics=metrics, progress_callback=_report,
+    )
+
+
 def _increment_testset_run(testset_run_id: int, run_status: str) -> None:
     """Inkrementiert n_runs_completed atomar via SQL und setzt ggf. den Gesamt-Status.
 
@@ -625,6 +754,8 @@ def _increment_testset_run(testset_run_id: int, run_status: str) -> None:
     """
     from user_data.utils.database.db import get_engine
     from sqlalchemy import text
+    # GEÄNDERT: Ticket 56 — Befund Phase 2 beim Abschluss des Testset-Laufs
+    from services.api.utils.finding_aggregation import close_finding_for_testset_run
 
     engine = get_engine()
     with engine.begin() as conn:
@@ -675,6 +806,10 @@ def _increment_testset_run(testset_run_id: int, run_status: str) -> None:
                 )
                 # GEÄNDERT: Aggregat-Trigger (Ticket 06) — direkter Aufruf im Worker-Prozess
                 _trigger_leaderboard_aggregation(testset_run_id)
+                # GEÄNDERT: Ticket 56 — Befund Phase 2. Dies ist der einzige Punkt, an
+                # dem zuverlässig feststeht, dass alle Runs des Laufs fertig sind.
+                # Fehler reißen den Abschluss nicht ab (die Funktion protokolliert sie).
+                close_finding_for_testset_run(testset_run_id)
 
 
 def _trigger_leaderboard_aggregation(testset_run_id: int) -> None:
@@ -696,8 +831,13 @@ def _trigger_leaderboard_aggregation(testset_run_id: int) -> None:
                 entry.id, testset_run_id,
             )
         else:
+            # GEÄNDERT: Der Grund steht in der Meldung von build_leaderboard_entry
+            # selbst (Idempotenz, leaderboard_enabled=False, gelöschtes TestSet ohne
+            # Snapshot). Die frühere Sammelformel nannte zwei Gründe und verdeckte
+            # damit die übrigen — deshalb hier nur noch der Verweis.
             logger.info(
-                '[TESTSET-RUN] Aggregat für TestSetRun #%d: No-Op (bereits vorhanden oder nicht gefunden).',
+                '[TESTSET-RUN] Kein LeaderboardEntry für TestSetRun #%d angelegt '
+                '(Grund siehe vorangehende build_leaderboard_entry-Meldung).',
                 testset_run_id,
             )
     except Exception as exc:

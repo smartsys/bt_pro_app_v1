@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from user_data.utils.database.db import get_session
 from user_data.utils.database.repository_testsets import (
+    TestSetRunsBlockingError,
     create_testset,
     delete_testset,
     get_testset,
@@ -156,13 +157,42 @@ def toggle_testset_favorite_endpoint(testset_id: int):
 
 
 @router.delete('/{testset_id}')
-def delete_testset_endpoint(testset_id: int):
-    """TestSet löschen."""
+def delete_testset_endpoint(testset_id: int, force: bool = False):
+    """TestSet löschen — nachgelagerte Läufe, Runs und Results bleiben bestehen.
+
+    GEÄNDERT: Ticket 61 — fing den Lösch-Konflikt ab, statt eine
+    Fremdschlüsselverletzung als rohen HTTP-500 durchzureichen.
+    GEÄNDERT: Ticket 62 — der Fremdschlüssel ist per Migration entfernt; die
+    HTTP-409-Ablehnung blieb dabei als harte Sperre stehen.
+    GEÄNDERT: Aus der Sperre wird eine Rückfrage. Hängen noch Testset-Läufe am
+    TestSet, antwortet der Endpunkt ohne ``force`` mit HTTP 409 und nennt die
+    Anzahlen — die Oberfläche lässt den Löschwunsch daraufhin bestätigen und ruft
+    erneut mit ``?force=true`` auf. Gelöscht wird dann ausschließlich das TestSet;
+    Testset-Läufe, Backtest-Runs und Results bleiben unangetastet.
+    """
     session = get_session()
     try:
-        deleted = delete_testset(session, testset_id)
-        if not deleted:
+        deleted = delete_testset(session, testset_id, force=force)
+        if deleted is None:
             raise HTTPException(status_code=404, detail=f'TestSet {testset_id} nicht gefunden.')
-        return {'data': {'deleted': True, 'id': testset_id}, 'error': None}
+        return {
+            'data': {
+                'deleted': True,
+                'id': testset_id,
+                'message': f'TestSet {testset_id} gelöscht.',
+            },
+            'error': None,
+        }
+    except TestSetRunsBlockingError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f'Am TestSet {testset_id} hängen noch {exc.blocking_testset_runs} '
+                f'Testset-Läufe mit insgesamt {exc.blocking_backtest_runs} Backtest-Runs. '
+                f'Diese bleiben beim Löschen erhalten — nur das TestSet selbst wird '
+                f'entfernt. Trotzdem löschen?'
+            ),
+        )
     finally:
         session.close()
