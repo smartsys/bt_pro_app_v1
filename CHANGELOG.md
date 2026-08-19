@@ -37,7 +37,7 @@
 - Toolbox: Wissenssuche mit wählbarer Trefferzahl per --k; totes Verb result-metrics-level entfernt (1.37.2)
 - Kennzahlen entstehen in genau einer Funktion — ein Result trägt denselben Satz, egal wie es entstanden ist (1.34.0)
 - Kennzahlen rechnen ausschließlich über das Handelsfenster start–end; dokumentierter Schnitt, alte und neue Zahlen sind nicht vergleichbar (1.32.0)
-- Obsidian-Vault-Umzug nach 30_Trading/vbt/strategies nachgezogen und Notizen an die Vault-Templates angeglichen (1.30.95)
+- Obsidian-Vault-Umzug nachgezogen und Notizen an die Vault-Templates angeglichen (1.30.95)
 
 ### Fixed
 - Obsidian-Vault-Pfade auf die neue Ordnerstruktur gezogen (Werkzeugwelt als Unterordner) (1.45.3)
@@ -65,7 +65,7 @@
 - Deflated Sharpe Ratio: eigene, korrigierte Rechnung als Nachlauf über den ganzen Lauf (1.35.0)
 - Modell/DB-Drift bei testset_runs.testset_id aufgelöst und Karteileichen im Job-Monitor entfernt (1.32.2)
 - Alembic-Migrationsziel sichtbar und unfallsicher gemacht, testset-delete gegen Fremdschlüssel-Konflikt abgesichert (1.32.1)
-- Vault-Pfad-Tests auf den migrierten Pfad 30_Trading/vbt/strategies nachgezogen (1.31.1)
+- Vault-Pfad-Tests auf den migrierten Pfad nachgezogen (1.31.1)
 
 
 ## [1.30.94] - 2026-07-14
