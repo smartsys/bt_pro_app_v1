@@ -131,7 +131,7 @@ Claude Code findet den Ordner im Projekt-Root von allein; bei anderen KI-Werkzeu
 Öffne die **Installations-Übersicht** unter [http://localhost:5570/install](http://localhost:5570/install):
 
 - **Installations-Check** — zeigt, was die Grundausstattung mitgebracht hat: Backtest-Configs, Test-Sets und eine Demo-Strategie als Einstiegsbeispiel.
-- **Kursdaten laden** — der Button legt die OHLC-Download-Jobs für die Symbole der mitgelieferten Test-Sets an (Binance, je Symbol ein Hintergrund-Job; bereits vorhandene Symbole werden übersprungen). Den Fortschritt siehst du unter [OHLC-Daten](http://localhost:5570/config/data). Danach sind Backtests und die Demo-Strategie lauffähig.
+- **Kursdaten laden** — **der erste Weg ist die KI:** sag ihr „Lade BTCUSDT im 4-Stunden-Timeframe herunter“, sie hat die Werkzeuge dazu und erledigt den Download. **Der zweite, manuelle Weg** führt über **Konfiguration → OHLC-Daten**. Der Button hier auf der Installations-Übersicht ist der Schnellstart: Er legt die Download-Jobs für die Symbole der mitgelieferten Test-Sets an (Binance, je Symbol ein Hintergrund-Job; bereits vorhandene Symbole werden übersprungen). Danach sind Backtests und die Demo-Strategie lauffähig.
 - **Der erste Backtest dauert länger** — VectorBT Pro kompiliert seine Numba-Rechenfunktionen beim ersten Aufruf und legt sie im Cache ab. Das geschieht getrennt pro Prozess: einmal beim ersten echten Lauf (Run/Result, der asynchron über den Worker läuft) und einmal beim ersten Schnellbacktest im Playground (der synchron im Frontend-Prozess läuft, nicht im Worker). Jeder weitere Lauf im jeweiligen Prozess läuft dann mit voller Geschwindigkeit.
 
 ---
