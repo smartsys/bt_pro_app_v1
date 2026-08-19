@@ -77,15 +77,14 @@ entscheidend, *was*:
 Bezugsfall: ein **Multiparameter-Lauf**. Pro Kombination existiert eine Zeile in
 `backtest_results`.
 
-**Die Kennzahlen sind vollständig, bevor die Analyse startet.** Seit der Umstellung entstehen
-sie in genau einer Funktion, die für jeden Lauf denselben Satz liefert — egal ob der Lauf
+**Die Kennzahlen sind vollständig, bevor die Analyse startet.** Sie entstehen in genau einer
+Funktion, die für jeden Lauf denselben Satz liefert — egal ob der Lauf
 eine Kombination hatte oder dreitausend. Die früheren Berechnungsstufen (`partial`,
 `chart`, `full`), das Feld `metrics_level` und der Knopf „Vollanalyse starten" gibt es
 nicht mehr. Die Frage „welchen Rechenpfad ist dieses Result gelaufen?" ist damit nicht
 mehr stellbar.
 
-> **Bruch mit dem Altbestand — bewusst und ohne Umrechnung:** Results, die vor der Umstellung
-> entstanden sind, tragen weiterhin nur die Felder ihrer damaligen Stufe; bei ihnen sind
+> **Bruch mit dem Altbestand — bewusst und ohne Umrechnung:** Ältere Results tragen weiterhin nur die Felder ihrer damaligen Stufe; bei ihnen sind
 > unter anderem `sqn`, `edge_ratio`, `tail_ratio` oder die Trade-Detail-Felder leer, und
 > `skew`/`kurtosis` fehlen ganz. Sie werden **nicht** nachgerechnet. Alte und neue Results
 > sind in ihrer Feldmenge nicht vergleichbar.
@@ -114,7 +113,7 @@ mehr stellbar.
 > liegt bei rund 3, nicht bei 0.
 
 > **`deflated_sharpe_ratio` entsteht als Nachlauf über den ganzen Lauf** und wird von der
-> Analyse nicht mehr angefasst (seit der Umstellung). Sie misst, ob der beste Kandidat nur der
+> Analyse nicht angefasst. Sie misst, ob der beste Kandidat nur der
 > Gewinner einer Zufallsauswahl ist, und rechnet dafür über **alle** Kombinationen des
 > Rasters — ein einzeln nachgerechnetes Result sieht nur sich selbst und könnte sie gar
 > nicht bestimmen. Bis dahin überschrieb jede gestartete Analyse den vorhandenen Wert mit
@@ -326,7 +325,7 @@ Eintrag bleibt in jedem Fall unverändert.
 | `befund --id <befund_id>` | Liefert einen einzelnen Befund per **Befund-ID** (NICHT die Testset-Lauf-Nummer): Kontext + Soll, fünf Ist-Gruppen, Deutung getrennt gekennzeichnet, leere Felder mit Grund. `--id` und `--testset-run` schließen sich aus. |
 | `befund --iteration <id>` | Befund-Historie einer Iteration, chronologisch (kein Sortieren/Filtern, kein Verdict). |
 
-Die Lese-Werkzeuge `result-list`, `symbol-correlation`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest`, `combo-trace`, `iteration-log-list` und `befund` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen. Seit der Umstellung kombinierbar mit **`--out [datei]`**/**`--full`** (schließen sich aus, gleiche Semantik wie beim `api`-Verb): `--out` schreibt das vollständige JSON in eine Datei unter `<TEMP>/bt-toolbox-out/` statt auf stdout (Konsole nur Pfad + Zeichenzahl); ohne `--out`/`--full` bleibt die Konsolen-Ausgabe unverändert vollständig (kein 4000-Zeichen-Limit wie bei den GET-Werkzeugen unten — die `--json`-Ausgabe ist als maschinenlesbares, direkt parsebares JSON gedacht).
+Die Lese-Werkzeuge `result-list`, `symbol-correlation`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest`, `combo-trace`, `iteration-log-list` und `befund` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen. Kombinierbar mit **`--out [datei]`**/**`--full`** (schließen sich aus, gleiche Semantik wie beim `api`-Verb): `--out` schreibt das vollständige JSON in eine Datei unter `<TEMP>/bt-toolbox-out/` statt auf stdout (Konsole nur Pfad + Zeichenzahl); ohne `--out`/`--full` bleibt die Konsolen-Ausgabe unverändert vollständig (kein 4000-Zeichen-Limit wie bei den GET-Werkzeugen unten — die `--json`-Ausgabe ist als maschinenlesbares, direkt parsebares JSON gedacht).
 
 Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--full`** gegen die 4000-Zeichen-Kappung (gleiche Semantik wie beim `api`-Verb, siehe „Generisch" unten; schließen sich gegenseitig aus):
 
@@ -371,8 +370,8 @@ Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--fu
 | `backtest-run-start --backtest-config <id> --indicator-config <id> --iteration <id>` | Startet einen Backtest-Lauf über das Parameter-Raster. |
 | `testset-run-start --testset <id> --iteration <id> --indicator-config <id>` | Startet einen Testset-Lauf (ein Run pro Config), Leaderboard nur bei aktiviertem Testset. |
 | `walk-forward-start --result <id> --months <n>` | Startet eine Walk-Forward-Analyse auf Basis eines Results. |
-| `playground-setup-compute` | Berechnet die Indikatoren eines Playground-Setups. |
-| `playground-setup-run-backtest` | Startet einen vollen Backtest aus einem Playground-Setup. |
+| `playground-compute` | Berechnet die Indikatoren eines Playground-Setups. |
+| `playground-run-backtest` | Startet einen vollen Backtest aus einem Playground-Setup. |
 | `playground-run-backtest-lite` | Startet einen schnellen Lite-Backtest aus einem Playground-Setup (ohne DB). |
 
 ### Prüfen vor dem Start / Warten aufs Ende

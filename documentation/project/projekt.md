@@ -134,7 +134,7 @@ Die Regeln-Engine kennt drei Indikator-Quellen:
 
 OHLCV-Daten (Open, High, Low, Close, Volume) werden von **Binance** heruntergeladen (historische Public-Daten, kein API-Key erforderlich). Der Download läuft über den eingebauten Downloader von VectorBT Pro.
 
-Die Daten werden als **HDF5-Dateien** gespeichert (`user_data/ohlc_data/`) und beim Backtest direkt aus dem Dateisystem gelesen — kein Datenbank-Roundtrip für Kursdaten. Zeitrahmen: 15m, 1h, 4h, 1d — je nach heruntergeladenen Dateien.
+Die Daten werden als **HDF5-Dateien** gespeichert (`data/ohlc_data/`) und beim Backtest direkt aus dem Dateisystem gelesen — kein Datenbank-Roundtrip für Kursdaten. Zeitrahmen: 15m, 1h, 4h, 1d — je nach heruntergeladenen Dateien.
 
 ---
 
@@ -144,7 +144,7 @@ Die Daten werden als **HDF5-Dateien** gespeichert (`user_data/ohlc_data/`) und b
 |---|---|
 | **BT Pro App (dieses Projekt)** | Code, Backtest-Infrastruktur, Ergebnis-Datenbank, operative Iterations-Logs |
 | **Obsidian-Vault** (Host-Pfad über `OBSIDIAN_VAULT_HOST_PATH` in der `.env`) | Strategie-Konzepte, Lessons Learned, Iterationsnotizen, Forschungsquellen |
-| **HDF5-Dateien** (`user_data/ohlc_data/`) | Historische OHLCV-Kursdaten — groß, gitignoriert |
+| **HDF5-Dateien** (`data/ohlc_data/`) | Historische OHLCV-Kursdaten — groß, gitignoriert |
 
 Diese Trennung ist bewusst: Die App ist die Ausführungsplattform, der Vault ist das Wissenssystem. KI-Agenten sollen später beide kombinieren.
 
@@ -166,7 +166,8 @@ Diese Trennung ist bewusst: Die App ist die Ausführungsplattform, der Vault ist
 | Backtest-Engine | VectorBT Pro |
 | Datenbank | PostgreSQL 17 + TimescaleDB + pgvector |
 | Job-Queue | Redis + RQ |
-| Frontend | Tabler (Bootstrap 5) + DataTables + LightweightCharts |
+| Frontend | Tabler (Bootstrap 5) + DataTables + LightweightCharts + ECharts (Analyse-Ansicht) |
+| Screenshot-Dienst | Playwright/Chromium (eigener Renderer-Container, nur lokal) |
 | Container | Docker Compose |
 | Hosting | lokal (Docker Compose) |
 

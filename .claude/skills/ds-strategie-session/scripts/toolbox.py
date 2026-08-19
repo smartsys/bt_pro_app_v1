@@ -264,7 +264,7 @@ Aktionen (POST): iteration-favorite/iteration-doc-favorite/result-favorite/resul
   run-analyse-start/stop/reset <id>
 
 Weitere Anlegen (POST, --file): strategy-config-create ·
-  playground-setup-create/compute/run-backtest/run-backtest-lite · knowledge-reindex
+  playground-setup-create · playground-compute/run-backtest/run-backtest-lite · knowledge-reindex
   data-update --timeframe 4h [--wait] [--timeout 1800] · data-download --file jobs.json [--wait] [--timeout 1800]
       · data-delete-symbol --timeframe 4h --symbol FETUSDT
       --wait: wartet auf das Ende aller angelegten Jobs (5s-Poll, Default-
