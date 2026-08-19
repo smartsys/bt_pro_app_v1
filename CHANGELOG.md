@@ -1,5 +1,73 @@
 # Changelog
 
+## [1.45.4] - 19.08.2026
+
+### Added
+- README: Installationsschritt „KI anbinden" ergänzt — der mitgelieferte Skill-Ordner ist beim Einrichten sichtbar (1.45.4)
+- Testset-Lauf und Preflight nehmen das Indikator-Raster wahlweise inline statt über eine gespeicherte IndicatorConfig (Ticket 102) (1.45.2)
+- Analyse-Screenshots entstehen serverseitig mit einem Toolbox-Aufruf statt über Browser-Fernsteuerung (Ticket 100) (1.45.0)
+- Analyse-Seite liest ihre Heatmap-Ansicht aus Query-Parametern und meldet über window.__analyseReady, wann alle Diagramme fertig gezeichnet sind (1.44.21)
+- --wait-Bilanz für data-update/data-download in der Toolbox (Ticket 97) (1.44.17)
+- Sondierungs-Zähler am Konzept: Lite-Läufe werden mitgezählt und im Befund neben der Rastergröße ausgewiesen (Ticket 92) (1.44.12)
+- Chart-Playground-Schnellbacktest liefert sharpe_ratio und position_coverage_pct (Marktpräsenz) (1.44.10)
+- Ein gechunkter Multiparameterlauf speichert jeden fertigen Chunk sofort und ist nach hartem Abbruch fortsetzbar (Ticket 71) (1.44.0)
+- Konzept-Detailseite mit Ziel neben Befund-Historie, Auto-Linking der Befund-Verweise und Leaderboard-Rerun-Knopf (Ticket 85) (1.43.0)
+- Walk-Forward als Fold-Kette mit eigenem, unveränderlichem Artefakt (Ticket 82) (1.42.0)
+- Positivkontrolle für den Permutationstest: synthetische Momentum-Reihe mit echtem Reihenfolge-Vorteil (Ticket 80) (1.41.0)
+- Signifikanztest je Kandidat: Monte-Carlo-Permutationstest und Trade-Level-Bootstrap (Ticket 79) (1.40.0)
+- Toolbox: befund --testset-run, Eingrenzung von result-delete-all über --run/--testset-run, --out/--full auch bei den --json-Verben (1.39.2)
+- Befund-Artefakt am Testset-Lauf: eigene Tabelle testset_run_findings, zweiphasig und unveränderlich (Ticket 56) (1.38.0)
+- Run-Reaper erkennt Runs, deren RQ-Job durch harten Worker-Abbruch tot ist, und setzt sie mit lesbarer Begründung auf failed (1.37.4)
+- Einzel-Run-Endpunkt GET /api/backtest/runs/{id}; Toolbox stellt run:<id> und run-wait darauf um (Ticket 70) (1.37.1)
+- Metrik-Auswahl beim Run-Start: welche Kennzahl-Gruppen ein Lauf rechnet, ist wählbar (Ticket 68) (1.37.0)
+- Iterations-Log: append-only Denkprotokoll je Iteration mit API, Toolbox-Verben und read-only Frontend-Ansicht (Ticket 67) (1.36.1)
+- Strategie-Konzept trägt ein Entwicklungsziel (goal_json + goal_prompt) sowie den Status „idee" für ungetestete Recherche-Fundsachen (1.36.0)
+- Portfolio-Parameter Slippage und Stop-Ausführung vollständig durchgezogen: slippage, stop_exit_price und stop_order_type als reguläre BacktestConfig-Felder (Ticket 59) (1.33.0)
+- Tests für den Monitor-Karteileichen-Filter und Klarstellung im Modell-Kommentar (Ticket 62 Nachtrag) (1.32.3)
+- Messwerkzeuge zur Bewertung von Multiparameter-Läufen: Symbol-Korrelation und zwei Kontroll-Indikatoren (1.31.0)
+
+### Changed
+- Leaderboard-Eintrag trägt seine Iteration selbst — der Rerun-Befund löst sie über die im strategy_snapshot_json eingefrorene iteration_id auf (1.45.1)
+- Analyse-Screenshots sind keine Pflicht des Entwicklungs-Loops mehr; Screenshot-Standard auf den isolierten Browser nachgezogen (1.44.20)
+- Screenshot-Standard trägt das Verfahren als Hauptteil, deckt kleine Raster ab und löst den Chrome-Profil-Lock (Ticket 96) (1.44.15)
+- TestSet-Löschen fragt nach, statt zu blockieren — Läufe, Runs und Results bleiben erhalten (1.44.6)
+- Test-Suite läuft im Container statt im Windows-venv (Ticket 88) (1.44.3)
+- Doku-Nachzug nach der Skill-Entkernung: Run-Journal-Verweise auf das Iterations-Log umgestellt (Ticket 74) (1.39.4)
+- Skill ds-strategie-session entkernt und auf den agentischen Entwicklungs-Loop ausgerichtet (Ticket 73) (1.39.0)
+- Toolbox: Wissenssuche mit wählbarer Trefferzahl per --k; totes Verb result-metrics-level entfernt (Ticket 70) (1.37.2)
+- Kennzahlen entstehen in genau einer Funktion — ein Result trägt denselben Satz, egal wie es entstanden ist (Ticket 64 + 60) (1.34.0)
+- Kennzahlen rechnen ausschließlich über das Handelsfenster start–end; dokumentierter Schnitt, alte und neue Zahlen sind nicht vergleichbar (Ticket 58) (1.32.0)
+- Obsidian-Vault-Umzug nach 30_Trading/vbt/strategies nachgezogen und Notizen an die Vault-Templates angeglichen (1.30.95)
+
+### Fixed
+- Obsidian-Vault-Pfade auf die neue Ordnerstruktur gezogen (Werkzeugwelt als Unterordner) (1.45.3)
+- data-update überlagert den Kerzenbestand per merge() statt ihn per update() fortzuschreiben (1.44.19)
+- Lesender Zugriff in den OHLC-Anlege-Routen steht ebenfalls unter der Datei-Sperre (Ticket 97) (1.44.18)
+- OHLC-Schreiber auf dieselbe Timeframe-Datei laufen nicht mehr in errno 11 (HDF5-Dateisperre) (1.44.16)
+- Lite-Routentests laufen im Standardlauf mit (Ticket 94) (1.44.14)
+- Lite-Aufruf-Beispiele in der Workflow-Doku tragen --concept <id> (Ticket 93) (1.44.13)
+- Toolbox-Verb playground-run-backtest-lite ist maschinenlesbar auswertbar und läuft nicht mehr in den 10s-Timeout (Ticket 91) (1.44.11)
+- Favoriten-Verben der Toolbox setzen idempotent statt umzuschalten — ein wiederholter Aufruf entfernt keine Markierung mehr (Ticket 89) (1.44.9)
+- Leaderboard: Rerun- und Löschen-Button stehen nebeneinander statt untereinander (1.44.8)
+- Läufe eines gelöschten TestSets landen weiter im Leaderboard (1.44.7)
+- Numba- und Bytecode-Cache des Test-Containers über Laufgrenzen hinweg erhalten (Ticket 88) (1.44.4)
+- API-Tests als integration markiert und stillen pgvector-Fallback beseitigt (Ticket 88) (1.44.5)
+- Scheduler-Cronjobs (enqueue_reindex, reap_stale_jobs, reap_stale_runs) scheitern nicht mehr an fehlender Container-Umgebung (1.44.2)
+- vbt-Container erhält NUMBA_CACHE_DIR zur Behebung von Numba-Cache-Fehlern beim Import von vectorbtpro (Ticket 87) (1.44.1)
+- Response-Race im 3D-Volumen-Widget der Analyse-Seite behoben (1.43.2)
+- OHLC-HDF5-Dateien im Bind-Mount wieder schreibbar — alle schreibenden Container laufen unter derselben uid (1.43.1)
+- Walk-Forward-Einzelschritt reicht die iteration_id des Anker-Laufs durch und weist einen Anker ohne Iteration vor dem Anlegen des Runs ab (1.42.2)
+- Roadmap führte Paket 5 trotz abgeschlossener Tickets 79/80 weiter als offen — Fundstellen auf den belegten Code-Stand nachgezogen (Ticket 84) (1.42.1)
+- Analyse-Heatmap: veraltete Antworten überschreiben nicht mehr die aktuelle Achsenwahl (1.39.3)
+- Bulk-Delete von Results löscht keine fremden Runs mehr über einen globalen Orphan-Sweep (1.39.1)
+- Ein über den Leaderboard-Rerun gestarteter Testset-Lauf erzeugt jetzt einen Befund (Ticket 72) (1.38.1)
+- Konzept-/Iterations-Export nimmt goal_json/goal_prompt und iteration_logs vollständig mit; zwei reihenfolgeabhängige Testfehlerquellen behoben (Ticket 70) (1.37.3)
+- Deflated Sharpe Ratio: eigene, korrigierte Rechnung als Nachlauf über den ganzen Lauf (Ticket 54) (1.35.0)
+- Modell/DB-Drift bei testset_runs.testset_id aufgelöst und Karteileichen im Job-Monitor entfernt (Ticket 62) (1.32.2)
+- Alembic-Migrationsziel sichtbar und unfallsicher gemacht, testset-delete gegen Fremdschlüssel-Konflikt abgesichert (Ticket 61) (1.32.1)
+- Vault-Pfad-Tests auf den migrierten Pfad 30_Trading/vbt/strategies nachgezogen (1.31.1)
+
+
 ## [1.30.94] - 2026-07-14
 
 ### Added
