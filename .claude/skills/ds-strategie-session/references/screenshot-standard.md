@@ -21,7 +21,7 @@ docker exec db_bt_pro_v1 psql -U vbt -d vbt -c \
   "SELECT run_id, count(*) FROM backtest_results WHERE run_id IN (781) GROUP BY run_id;"
 ```
 
-## Hauptweg: Toolbox-Verb `analyse-screenshot` (Ticket 100)
+## Hauptweg: Toolbox-Verb `analyse-screenshot`
 
 Das Bild entsteht mit **einem** Toolbox-Aufruf, der das fertige PNG direkt an seinen
 endgültigen Platz schreibt — kein Browser-Werkzeug, kein DOM-Wissen, kein blindes Warten:
@@ -29,7 +29,7 @@ endgültigen Platz schreibt — kein Browser-Werkzeug, kein DOM-Wissen, kein bli
 ```bash
 python3 .claude/skills/ds-strategie-session/scripts/toolbox.py analyse-screenshot \
   --run 866 --x mom_timeperiod --y tsl_th \
-  --out "$VAULT_ROOT/30_Trading/vbt/strategies/<slug>/iterations/<version>/img/run-866-fet-bull-2021.png"
+  --out "$VAULT_ROOT/30_Trading/strategies/<slug>/vbt/iterations/<version>/img/run-866-fet-bull-2021.png"
 ```
 
 Das Verb ruft ausschließlich die Route `GET /api/backtest/runs/<id>/analyse/screenshot`
@@ -45,7 +45,7 @@ Indikatoren, Stops ohne Präfix, z. B. `tsl_th`). Ohne `--metric`/`--agg` zieht 
 Sollwerte (siehe unten). Für den Zielkennzahl-Schuss desselben Runs zusätzlich mit
 `--metric sharpe_ratio` (o. ä.) aufrufen — zwei Aufrufe, zwei Dateien.
 
-## Sollwerte (serverseitig festgeschrieben, Ticket 100)
+## Sollwerte (serverseitig festgeschrieben)
 
 Die Route trägt diese Werte als Vorgaben im Code (nicht mehr als Prosa, die jeder Durchlauf
 neu befolgen muss). Abweichen kann nur, wer sie ausdrücklich als Parameter setzt.
@@ -86,9 +86,8 @@ docker exec db_bt_pro_v1 psql -U vbt -d vbt -t -c \
 Der standardkonforme Total-Return-Schuss (Aufruf ohne `--metric`) bleibt unverändert daneben
 liegen — die Vergleichbarkeit über Iterationen ist nicht angetastet, es kommt nur etwas dazu.
 Grund: Die Entscheidung über eine Iteration fällt auf der Zielkennzahl; ein Bild, das sie gar
-nicht zeigt, dokumentiert die Entscheidung nicht. (Belegt am Kill von Iteration 4 des
-Auftrags `bb-squeeze`: in der Total-Return-Ansicht von Lauf 697 war das Sharpe-Plateau nicht
-ablesbar.) Die Metrik gilt seitenweit für beide Heatmaps; eine Metrik je Heatmap gibt es im
+nicht zeigt, dokumentiert die Entscheidung nicht. (Belegt am Kill einer Iteration, deren
+Sharpe-Plateau in der Total-Return-Ansicht nicht ablesbar war.) Die Metrik gilt seitenweit für beide Heatmaps; eine Metrik je Heatmap gibt es im
 Frontend nicht.
 
 **Eine Sweep-Achse.** Es gibt keine Heatmap-Geometrie. `--x` = die gesweepte Achse, `--y` =
@@ -105,8 +104,8 @@ Bild benennen.
 ## Ablage im Vault
 
 ```
-$VAULT_ROOT/30_Trading/vbt/strategies/<slug>/iterations/<version>/img/run-<id>-<symbol>-<fenster>.png
-$VAULT_ROOT/30_Trading/vbt/strategies/<slug>/iterations/<version>/img/run-<id>-<symbol>-<fenster>-<metrik>.png
+$VAULT_ROOT/30_Trading/strategies/<slug>/vbt/iterations/<version>/img/run-<id>-<symbol>-<fenster>.png
+$VAULT_ROOT/30_Trading/strategies/<slug>/vbt/iterations/<version>/img/run-<id>-<symbol>-<fenster>-<metrik>.png
 ```
 
 - `<version>` = blanke Integer-Zahl (wie der Iterations-Ordner, kein `v`-Präfix).

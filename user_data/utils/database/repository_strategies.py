@@ -312,7 +312,7 @@ def _clamp_negative_shifts(spec_json: Optional[dict]) -> None:
     inkl. der ds-strategie-session-Toolbox über die API) laufen durch
     create_iteration/update_iteration. Die Rules-Engine wirft zusätzlich zur
     Laufzeit einen ValueError als Backstop (falls ein Spec je an der API vorbei
-    entsteht, z.B. im Offline-Harness).
+    entsteht).
 
     Args:
         spec_json: Das spec_json der Iteration (wird in-place verändert). None

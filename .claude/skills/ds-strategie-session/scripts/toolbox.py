@@ -26,7 +26,7 @@ Beispiele (Lesen — Default, kein Verb):
 
   python3 toolbox.py iteration:26 indicator-config:1970 backtest-config:552 result:2635737 run:1753
   python3 toolbox.py concept:1 strategy-config:12 testset:4 leaderboard:88
-  python3 toolbox.py knowledge:"teststrategie exit logik" vault:30_Trading/vbt/strategies
+  python3 toolbox.py knowledge:"teststrategie exit logik" vault:30_Trading/strategies
   python3 toolbox.py knowledge:"teststrategie exit logik" --k 10
       --k <n>: Trefferzahl der Wissenssuche (Default 5), gilt für alle knowledge:-Aufrufe
       im selben Kommando.
@@ -47,10 +47,10 @@ IndicatorConfig aus Result erstellen (Schreib-Aktion):
 Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py concept-list                             # je Zeile Ziel-Marker (Ziel: ja/-) auf Basis von has_goal
   python3 toolbox.py iteration-list 1            # optional: concept_id
-  python3 toolbox.py iteration-log-list --id 41  # alle Log-Einträge chronologisch (Ticket 67), --json für rohe Items
+  python3 toolbox.py iteration-log-list --id 41  # alle Log-Einträge chronologisch, --json für rohe Items
   python3 toolbox.py befund --id 205             # EIN Befund per Befund-ID (NICHT die Testset-Lauf-Nummer!): Kontext,
                                                   #   Soll, fünf Ist-Gruppen, Deutung getrennt — leere Felder mit Grund
-  python3 toolbox.py befund --testset-run 100    # jüngster Befund dieses Testset-Laufs (Ticket 77/A) — der direkte
+  python3 toolbox.py befund --testset-run 100    # jüngster Befund dieses Testset-Laufs — der direkte
                                                   #   Anschluss an testset-run-start/run-wait; meldet zusätzlich die
                                                   #   Gesamtzahl der Befunde dieses Testset-Laufs (Rerun-Historie).
                                                   #   --id und --testset-run schließen sich aus.
@@ -93,7 +93,7 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   --json (bei result-list, run-top-results, run-best, run-favorites-list, result-lookup,
           result-query, kreuztest, combo-trace, symbol-correlation, iteration-log-list,
           vergleichstabelle, befund): rohe Items als JSON statt Markdown — für Folge-Analysen.
-          Dazu kombinierbar (Ticket 77/C, wie beim `api`-Verb): --out [datei] schreibt das
+          Dazu kombinierbar (wie beim `api`-Verb): --out [datei] schreibt das
           vollständige JSON unter <TEMP>/bt-toolbox-out/ statt auf stdout; --full/--out
           schließen sich aus. Ohne --out bleibt das JSON ungekürzt auf stdout (bisheriges
           Verhalten).
@@ -105,7 +105,7 @@ Anlegen (create — Schreib-Aktion). Komplexe Payloads per --file als JSON-Datei
 KEIN stiller Konverter, kein Fallback: spec_json/config_json wird unverändert
 durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
   python3 toolbox.py concept-create --slug teststrategie --name "Teststrategie" [--category ... --description ... --status active]
-        [--goal <datei-oder-inline-json> --goal-prompt <datei-oder-text>]: Entwicklungsziel (Ticket 66),
+        [--goal <datei-oder-inline-json> --goal-prompt <datei-oder-text>]: Entwicklungsziel,
         kein Gate — --goal ist strukturiertes JSON (Objekt), --goal-prompt der Original-Auftrag im Wortlaut.
         Beide erkennen einen Dateipfad automatisch (wie --file), sonst wird der Wert inline übernommen.
   python3 toolbox.py iteration-create --concept 1 --file spec.json [--name "v5" --type generic --description ... --parent 41]
@@ -129,28 +129,27 @@ durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
         stop_exit_price/stop_order_type optional (leer/nicht gesetzt = VBT-Default).
   python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
   python3 toolbox.py iteration-log-add --id 41 --text "..." [--run 1812]
-        Hängt einen Freitext-Eintrag ans append-only Denkprotokoll der Iteration (Ticket 67).
+        Hängt einen Freitext-Eintrag ans append-only Denkprotokoll der Iteration.
         Kein Update-/Delete-Verb — Einträge sind unveränderlich. --run optional (lose Referenz, kein FK).
 
 Ausführen (start — Schreib-Aktion, ID-basiert):
   python3 toolbox.py backtest-run-start --backtest-config 552 --indicator-config 1970 --iteration 41 [--metrics kern|voll|auto|<gruppe1,gruppe2,...>]
   python3 toolbox.py testset-run-start --testset 293 --iteration 41 --indicator-config 1973 [--metrics kern|voll|auto|<gruppe1,gruppe2,...>]
-        Raster-Quelle alternativ inline: --indicators raster.json statt --indicator-config <id>
-        (Ticket 102). Die Datei trägt dasselbe Format wie indicator-config-create --file
+        Raster-Quelle alternativ inline: --indicators raster.json statt --indicator-config <id>. Die Datei trägt dasselbe Format wie indicator-config-create --file
         (Inhalt von config_json inklusive '_stops'); es entsteht keine IndicatorConfig-Zeile
         und der Befund trägt indicator_config_id = NULL. Genau eine der beiden Angaben ist
         Pflicht — beides oder keines endet mit Fehler.
   python3 toolbox.py walk-forward-start --result 2706026 --months 6
-        --metrics (Ticket 68): welche Kennzahl-Gruppen der Lauf rechnet. Ohne Angabe
+        --metrics: welche Kennzahl-Gruppen der Lauf rechnet. Ohne Angabe
         gilt 'auto' (Server-Default) — volle Rechnung unterhalb der Rastergrößen-
         Schwelle, sonst 'kern'. Eine Kommaliste benennt zusätzlich zu den Pflicht-
         gruppen gewünschte Gruppen-Keys (z.B. drawdown,benchmark); die Prüfung auf
         gültige Stufen/Keys macht der Server, nicht die Toolbox.
 
-Prüfen vor dem Start / Warten aufs Ende (Ticket 60):
+Prüfen vor dem Start / Warten aufs Ende:
   python3 toolbox.py preflight --iteration 41 --indicator-config 1970 --backtest-config 552
       Raster-Quelle alternativ inline: --indicators raster.json statt --indicator-config <id>
-      (Ticket 102, dieselbe Genau-eines-Regel wie testset-run-start).
+      (dieselbe Genau-eines-Regel wie testset-run-start).
       Billiger Vorlauf auf EINER Kombination (Startwerte, kein DB-Schreiben): Entry-/Exit-
       Signalzahl + erster/letzter Signalzeitpunkt, NaN-Anteil je Indikator-Output, tatsächlicher
       Vorlauf, Kombinationszahl des vollen Rasters, grobe Laufzeit-Hochrechnung. Berichtet nur,
@@ -160,7 +159,7 @@ Prüfen vor dem Start / Warten aufs Ende (Ticket 60):
       je Run Dauer, Result-Zahl, ggf. Fehlermeldung. Timeout meldet sich als Timeout, nicht als
       Fehlschlag.
 
-Signifikanztest je Kandidat (Ticket 79) — berichtet, filtert nicht:
+Signifikanztest je Kandidat — berichtet, filtert nicht:
   python3 toolbox.py signifikanz-start --result 2706026 [--method permutation] [--n 300] [--seed 42]
                                        [--metrics sharpe_ratio,profit_factor] [--wait [--timeout 1800]]
       permutation (Default): die Strategie läuft auf N synthetischen Preisreihen (Bar-Permutation,
@@ -179,7 +178,7 @@ Signifikanztest je Kandidat (Ticket 79) — berichtet, filtert nicht:
   python3 toolbox.py signifikanz-list --result 2706026   # Historie, chronologisch (keine Sortierung
                                                     #   nach p-Wert, kein Bestanden-Feld)
 
-Walk-Forward-Fold-Kette (Ticket 82) — Messwerkzeug, kein Ertragsbringer:
+Walk-Forward-Fold-Kette — Messwerkzeug, kein Ertragsbringer:
   python3 toolbox.py walk-forward-chain-start --run 614 --folds 3 --oos-monate 3
                                        [--is-monate 12] --selection-metric sharpe_ratio
                                        [--selection-direction max|min] [--trade-floor 5]
@@ -248,19 +247,19 @@ Löschen (DELETE): <bereich>-delete <id>   (concept/iteration zusätzlich: --for
   playground-setup-delete · knowledge-reset
   Sammellöschen: <bereich>-bulk-delete --ids 1,2,3 (indicator-config/result/run/playground-setup)
   Alle (außer Favoriten): result-delete-all [--run <id> | --testset-run <id>] · run-delete-all
-      Ohne Flag global (Hintergrund-Job); mit --run/--testset-run (Ticket 77/B) synchron
+      Ohne Flag global (Hintergrund-Job); mit --run/--testset-run synchron
       auf die Menge eingegrenzt — Antwort nennt deleted_results/deleted_runs/deleted_run_ids.
       run-delete-all bleibt ausschließlich global.
 
 Aktionen (POST): iteration-favorite/iteration-doc-favorite/result-favorite/result-doc-favorite <id>
-      [--off] (Ticket 89 — setzend statt umschaltend: ohne --off wird der Stern gesetzt,
+      [--off] (setzend statt umschaltend: ohne --off wird der Stern gesetzt,
       mit --off gezielt entfernt; beides idempotent. result-doc-favorite zusätzlich
       [--criteria k1,k2] wie run-bestwerte, nur ohne --off zulässig) ·
   concept-vault-create <id> (Ordner + <slug>-concept.md + status.md) ·
   iteration-vault-create <id> (iterations/<version>/<slug>-<version>.md) · beide idempotent ·
   run-restart <id> (löscht die Results und rechnet von vorn) ·
   run-resume <id> (setzt einen abgebrochenen Lauf fort: behält die gespeicherten
-      Chunks und rechnet ab dem ersten fehlenden weiter, Ticket 71) ·
+      Chunks und rechnet ab dem ersten fehlenden weiter) ·
   run-remarks <id> --text "..." ·
   run-analyse-start/stop/reset <id>
 
@@ -268,31 +267,30 @@ Weitere Anlegen (POST, --file): strategy-config-create ·
   playground-setup-create/compute/run-backtest/run-backtest-lite · knowledge-reindex
   data-update --timeframe 4h [--wait] [--timeout 1800] · data-download --file jobs.json [--wait] [--timeout 1800]
       · data-delete-symbol --timeframe 4h --symbol FETUSDT
-      --wait (Ticket 97): wartet auf das Ende aller angelegten Jobs (5s-Poll, Default-
+      --wait: wartet auf das Ende aller angelegten Jobs (5s-Poll, Default-
       Timeout 1800s) und druckt die Bilanz — Gesamtzahl, erfolgreich, fehlgeschlagene
       Symbole namentlich mit Grund. Exit-Codes: 0 alle erfolgreich, 1 mindestens ein
       Fehlschlag, 2 Timeout. Ohne --wait bleibt das Verhalten asynchron (nur Job-IDs).
-  playground-run-backtest-lite (Ticket 90): Sondierungspfad des Chart-Playgrounds — rechnet
+  playground-run-backtest-lite: Sondierungspfad des Chart-Playgrounds — rechnet
       GENAU EINE Kombination (Startwerte aller Parameter/Stops, kein Raster) und schreibt
       nichts in die DB. Antwort-Felder: total_return, benchmark_return, profit_factor,
       max_drawdown, sharpe_ratio, position_coverage_pct (Marktpräsenz — Anteil der Balken mit
       offener Position), trades, open_trades, duration_ms, equity, trades_data. sharpe_ratio
       und position_coverage_pct kommen direkt vom gerechneten VBT-Portfolio (Handelsfenster-
       Slice wie beim vollen Lauf), keine Ersatzrechnung. Gemessen gegen einen vollen Lauf
-      derselben Kombination (BB-Squeeze Kandidat B, run:779/result:7995171): sharpe_ratio und
-      position_coverage_pct bit-identisch (1,5853102476350878 bzw. 24,281680783922937 in
-      beiden Pfaden) — keine rechnerische Abweichung. Der einzige Unterschied ist konzeptionell:
+      derselben Kombination: sharpe_ratio und position_coverage_pct sind in beiden Pfaden
+      bit-identisch — keine rechnerische Abweichung. Der einzige Unterschied ist konzeptionell:
       Lite deckt bei einer Sweep-Config immer nur die Startwert-Kombination ab, nie das volle
       Raster — die beste Kombination eines vollen Multiparameter-Laufs kann deshalb an anderer
       Stelle im Raster liegen als die von Lite gerechnete.
-      GEÄNDERT: Ticket 91 — die Antwort trägt bei Vollzyklen ~12.000 Equity-Punkte und
+      GEÄNDERT: die Antwort trägt bei Vollzyklen ~12.000 Equity-Punkte und
       sprengt damit die 4000-Zeichen-Anzeige; anders als bei den übrigen schreibenden
       Verben ist `--out [datei]` (und `--full`) hier trotzdem erlaubt, weil dieser POST
       serverseitig nichts persistiert: python3 toolbox.py playground-run-backtest-lite
       --file spec.json --out ergebnis.json. Außerdem eigener Timeout-Default (90s statt
       der globalen 10s) für den Numba-Warmup nach Container-Start, per --timeout <s>
       überschreibbar; siehe VERB_TIMEOUT_OVERRIDES.
-      GEÄNDERT: Ticket 92 — --concept <id> ordnet die Sondierung einem Konzept zu und
+      GEÄNDERT: --concept <id> ordnet die Sondierung einem Konzept zu und
       zählt sie dort mit (strategy_concepts.probe_count, atomar; die Antwort trägt den
       neuen Stand als concept_probe_count). Im Auftragskontext IMMER mitgeben:
       python3 toolbox.py playground-run-backtest-lite --file spec.json --concept 12
@@ -309,10 +307,10 @@ Weitere Listen/Reads: strategy-config-list · data-files-list · data-jobs-list 
   lösen `--out [datei]` und `--full` das auf: python3 toolbox.py run-results 1812 --out
   Beide Flags gibt es nur bei diesen Lese-Verben (GET) sowie bei den in
   WRITE_VERBS_ALLOW_OUT gelisteten schreibfreien POST-Verben (aktuell
-  playground-run-backtest-lite, Ticket 91); bei allen anderen (Ändern/Löschen/
+  playground-run-backtest-lite); bei allen anderen (Ändern/Löschen/
   Aktionen/Anlegen) sind sie nicht verfügbar und führen zu einem Fehler.
 
-Analyse-Screenshot (Ticket 100) — fotografiert die echte Analyse-Seite serverseitig,
+Analyse-Screenshot — fotografiert die echte Analyse-Seite serverseitig,
 kein Browser-Werkzeug/Subagent mehr nötig:
   python3 toolbox.py analyse-screenshot --run 866 --x supertrend_period --y supertrend_multiplier \
       --out /pfad/zum/ziel.png [--metric sharpe_ratio] [--agg max]
@@ -351,7 +349,7 @@ Unterstützte Bereiche:
     backtest-config     — Backtest-Config
     strategy-config     — Strategy-Config (hardcoded/generic, Legacy)
     result              — Backtest-Result (Stats)
-    run                 — Backtest-Run (Einzel-GET, Ticket 70/C)
+    run                 — Backtest-Run (Einzel-GET)
     testset             — Testset
     leaderboard         — Leaderboard-Eintrag (Drilldown)
     playground-setup    — Chart-Playground-Setup
@@ -375,19 +373,19 @@ import urllib.error
 # Basis-URL des FastAPI-Backends. Default lokal; per Env VBT_APP_BASE_URL überschreibbar.
 BASE = os.environ.get("VBT_APP_BASE_URL", "http://localhost:5570").rstrip("/")
 TIMEOUT = 10
-# GEÄNDERT: Ticket 91 — playground-run-backtest-lite braucht mehr Zeit als der globale
+# GEÄNDERT: playground-run-backtest-lite braucht mehr Zeit als der globale
 # Default: der erste Aufruf nach Container-Start übersetzt Numba neu (30–60s), erst
 # danach läuft die eigentliche Portfolio-Rechnung. --timeout <s> überschreibt das je
 # Aufruf; ohne Flag greift dieser Verb-Default. Auch Grundlage für den erklärenden
 # Timeout-Fehlertext in _run_table_verb.
 VERB_TIMEOUT_OVERRIDES = {
     "playground-run-backtest-lite": 90,
-    # GEÄNDERT: Ticket 100 — die Route wartet selbst bis zu 90s auf den Renderer und
+    # GEÄNDERT: die Route wartet selbst bis zu 90s auf den Renderer und
     # gibt sich intern 30s Luft darüber (timeout_ms/1000 + 30, siehe
     # api_analyse_screenshot.py); die Toolbox braucht also mehr als die Route selbst.
     "analyse-screenshot": 150,
 }
-# GEÄNDERT: Ticket 91 — --out/--full sind für Nicht-GET-Verben grundsätzlich gesperrt
+# GEÄNDERT: --out/--full sind für Nicht-GET-Verben grundsätzlich gesperrt
 # (siehe _run_table_verb), weil sie i.d.R. etwas verändern/löschen und die Sperre vor
 # blindem Wiederholen bei gekappter Antwort schützt. playground-run-backtest-lite ist
 # ein POST, das serverseitig NICHTS persistiert (kein create_backtest_run, kein
@@ -398,7 +396,7 @@ WRITE_VERBS_ALLOW_OUT = {
     "playground-run-backtest-lite",
 }
 # Maximale Run-Liste für echte Listen-Reads (run-list, run-wait --testset-run).
-# GEÄNDERT: Ticket 70/C — run:<id> und run-wait --run nutzen den Einzel-GET und
+# GEÄNDERT: run:<id> und run-wait --run nutzen den Einzel-GET und
 # sind von diesem Limit nicht mehr betroffen.
 RUN_LIST_LIMIT = 500
 
@@ -477,7 +475,7 @@ def post(path: str, body: dict = None, timeout: int = TIMEOUT) -> dict:
 def request(method: str, path: str, body: dict = None, timeout: int = TIMEOUT) -> dict:
     """Beliebige HTTP-Methode mit optionalem JSON-Body. Leere Antwort -> {}.
 
-    GEÄNDERT: Ticket 91 — timeout überschreitbar, analog zu post() (z.B. für
+    GEÄNDERT: timeout überschreitbar, analog zu post() (z.B. für
     playground-run-backtest-lite über VERB_TIMEOUT_OVERRIDES bzw. --timeout).
     """
     data = json.dumps(body).encode() if body is not None else None
@@ -499,9 +497,9 @@ def trades_str(r: dict, total_key: str = "total_trades") -> str:
     Trefferquote und Profitfaktor rechnen ueber die geschlossenen Trades
     (total_trades - open_trades). Die Trade-Anzahl allein ist deshalb nicht mehr
     der Nenner der Quote - die offenen Positionen werden mit ausgegeben, sobald
-    es welche gibt (Ticket 58). Long/Short-Aufteilung (long_trades + short_trades =
-    total_trades) wird angehaengt, sobald beide Felder vorhanden sind (Ticket 60).
-    Alt-Results (vor Ticket 58/60) haben die Zusatzfelder als None und werden
+    es welche gibt. Long/Short-Aufteilung (long_trades + short_trades =
+    total_trades) wird angehaengt, sobald beide Felder vorhanden sind.
+    Ältere Results haben die Zusatzfelder als None und werden
     unveraendert als reine Zahl ausgegeben.
     """
     total = r.get(total_key)
@@ -538,11 +536,11 @@ def render_spec(spec: dict) -> None:
             # GEÄNDERT: tf nicht mehr filtern — der Rechen-Timeframe ist laufzeit-wirksam
             # (fehlt er beim Zurückschreiben, bricht der Lauf mit ValueError ab)
             params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "indicator"))
-            # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
+            # GEAENDERT: deaktivierte Indikatoren (enabled: false) markieren
             tag = "" if p.get("enabled", True) else " [deaktiviert]"
             print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
     rules = spec.get("rules", {})
-    # GEAENDERT: Ticket 48 — Block-Format (DNF) statt Alt-Format {logic, conditions};
+    # GEAENDERT: Block-Format (DNF) statt Alt-Format {logic, conditions};
     # Blöcke sind ODER-verknüpft, Short- und deaktivierte Blöcke (enabled: false) werden markiert.
     for kind in ("entry", "exit"):
         r = rules.get(kind) or {}
@@ -571,11 +569,11 @@ def concept_read(i: int) -> None:
     d = fetch(f"/api/strategy/concepts/{i}")["data"]
     print(f"## Concept {i} — {d.get('name')} ({d.get('slug')})")
     print(f"- Status: {d.get('status')} · Kategorie: {d.get('category') or '—'} · Vault: {d.get('vault_exists')}")
-    # GEÄNDERT: Ticket 92 — Zählerstand der Lite-Sondierungen (reiner Ausweis)
+    # GEÄNDERT: Zählerstand der Lite-Sondierungen (reiner Ausweis)
     print(f"- Lite-Sondierungen (probe_count): {d.get('probe_count')}")
     if d.get("description"):
         print(f"- {d['description']}")
-    # GEÄNDERT: Ticket 66 — Entwicklungsziel rendern (kein Gate, reine Anzeige)
+    # GEÄNDERT: Entwicklungsziel rendern (kein Gate, reine Anzeige)
     if d.get("goal_prompt"):
         print("- Ziel-Prompt:")
         print(f"  {d['goal_prompt']}")
@@ -594,7 +592,7 @@ def iteration_read(i: int) -> None:
     if d.get("description"):
         print(f"- {d['description']}")
     render_spec(d.get("spec_json") or {})
-    # GEÄNDERT: Ticket 67 — Anzahl + letzte 3 Log-Einträge (Text auf 200 Zeichen gekürzt);
+    # GEÄNDERT: Anzahl + letzte 3 Log-Einträge (Text auf 200 Zeichen gekürzt);
     # für den vollen Verlauf: iteration-log-list
     log_items = fetch(f"/api/strategy/iterations/{i}/logs")["data"]["items"]
     print(f"- Log-Einträge: {len(log_items)}")
@@ -617,7 +615,7 @@ def indicator_config_read(i: int) -> None:
         # GEÄNDERT: tf nicht mehr filtern — der Rechen-Timeframe ist laufzeit-wirksam
         # (fehlt er beim Zurückschreiben, bricht der Lauf mit ValueError ab)
         params = ", ".join(f"{k}={v}" for k, v in p.items() if k not in ("enabled", "indicator"))
-        # GEAENDERT: Ticket 48 — deaktivierte Indikatoren (enabled: false) markieren
+        # GEAENDERT: deaktivierte Indikatoren (enabled: false) markieren
         tag = "" if p.get("enabled", True) else " [deaktiviert]"
         print(f"  - **{name}** ({p.get('indicator')}){tag}: {params}")
     print()
@@ -630,7 +628,7 @@ def backtest_config_read(i: int) -> None:
         print(f"- {d['description']}")
     print(f"- {d['symbol']} {d['timeframe']} · {d['start']} → {d['end']} · exchange {d.get('exchange')}")
     print(f"- Sizing: {d['size']} {d['size_type']}, init_cash {d['init_cash']}, fees {d['fees']}, slippage {d.get('slippage')}")
-    # GEÄNDERT: Ticket 59 — stop_exit_price/stop_order_type ausgeben; None = VBT-Default,
+    # GEÄNDERT: stop_exit_price/stop_order_type ausgeben; None = VBT-Default,
     # nicht als 0/aus verwechselbar. Die alte td_stop/tp_stop/sl_stop/tsl_stop-Zeile referenzierte
     # Felder, die die API seit dem Umzug der Stops in indicators_json['_stops'] nicht mehr liefert
     # (Stale Read seit Schritt 3d) — hier durch die tatsächlich vorhandenen Portfolio-Felder ersetzt.
@@ -659,17 +657,17 @@ def result_read(i: int) -> None:
     print(f"- Return: {num(s.get('Total Return [%]'))}% (Benchmark {num(s.get('Benchmark Return [%]'))}%)")
     print(f"- Sharpe {num(s.get('Sharpe Ratio'))} / Sortino {num(s.get('Sortino Ratio'))} / Calmar {num(s.get('Calmar Ratio'))}")
     print(f"- Max DD {num(s.get('Max Drawdown [%]'))}% (Dauer {s.get('Max Drawdown Duration')})")
-    # GEAENDERT: Ticket 58 — offene Positionen ausweisen; Win-Rate und Profit-Factor
+    # GEAENDERT: offene Positionen ausweisen; Win-Rate und Profit-Factor
     # rechnen ueber die geschlossenen Trades (Total Trades - Open Trades).
-    # GEAENDERT: Ticket 60 — Long/Short-Aufteilung ueber trades_str() mit ausweisen.
+    # GEAENDERT: Long/Short-Aufteilung ueber trades_str() mit ausweisen.
     _tr = trades_str({
         "total_trades": s.get('Total Trades'), "open_trades": s.get('Open Trades'),
         "long_trades": s.get('Long Trades'), "short_trades": s.get('Short Trades'),
     })
     print(f"- Trades: {_tr} · Win-Rate {num(s.get('Win Rate [%]'))}% · Profit-Factor {num(s.get('Profit Factor'))}")
     print(f"- Value: {s.get('Start Value')} → {num(s.get('End Value'))}")
-    # GEAENDERT: Ticket 60 — tatsaechlich gerechneter Zeitraum + Balkenzahl (nicht der
-    # angefragte Run-Zeitraum). NULL bei Alt-Results (vor Ticket 58/60).
+    # GEAENDERT: tatsaechlich gerechneter Zeitraum + Balkenzahl (nicht der
+    # angefragte Run-Zeitraum). NULL bei älteren Results.
     if s.get('Start Index') or s.get('End Index') or s.get('Bar Count'):
         print(f"- Gerechnet: {str(s.get('Start Index') or '—')[:10]} → {str(s.get('End Index') or '—')[:10]} "
               f"({s.get('Bar Count') or '—'} Balken)")
@@ -677,7 +675,7 @@ def result_read(i: int) -> None:
 
 
 def run_read(i: int) -> None:
-    # GEÄNDERT: Ticket 70/C — Einzel-GET statt Listen-Filter; damit ist ein Run
+    # GEÄNDERT: Einzel-GET statt Listen-Filter; damit ist ein Run
     # unabhängig davon lesbar, ob er unter den letzten RUN_LIST_LIMIT Runs liegt.
     try:
         r = fetch(f"/api/backtest/runs/{i}")["data"]
@@ -694,7 +692,7 @@ def run_read(i: int) -> None:
     label = f"{fam} v{ver}" if fam else f"Run {i}"
     print(f"## Run {i} — {label} · {r.get('symbol')} {r.get('timeframe')}")
     print(f"- Status: {r.get('status')} · {r.get('n_combinations')} Kombinationen")
-    # GEAENDERT: Ticket 60 — Selbstauskunft des Laufs: Kennzeichnung (nicht Ausblenden),
+    # GEAENDERT: Selbstauskunft des Laufs: Kennzeichnung (nicht Ausblenden),
     # wenn ein Lauf keine Signale erzeugt hat oder die Historie nicht reichte.
     usability = r.get("usability")
     if usability and usability != "usable":
@@ -706,7 +704,7 @@ def run_read(i: int) -> None:
     wb, wrb = r.get("warmup_bars"), r.get("warmup_required_bars")
     if wb is not None and wrb is not None and wrb > 0 and wb < wrb:
         print(f"- **VORLAUF-WARNUNG:** {r.get('warmup_note') or f'{wb}/{wrb} Balken Vorlauf'}")
-    # GEÄNDERT: Ticket 68 — wirksame Metrik-Auswahl aus backtest_config_json. Ohne
+    # GEÄNDERT: wirksame Metrik-Auswahl aus backtest_config_json. Ohne
     # explizite Angabe zeigt 'metrics_resolved' die 'auto'-Entscheidung (voll/kern);
     # eine gesetzte Kürzungs-Notiz erscheint bereits oben über usability_note.
     bc = r.get("backtest_config_json") or {}
@@ -778,7 +776,7 @@ def playground_setup_read(i: int) -> None:
 
 
 def knowledge_search(query: str, k: int = 5) -> None:
-    # GEÄNDERT: Ticket 70/D — Trefferzahl wählbar (--k <n> in main()), Default bleibt 5.
+    # GEÄNDERT: Trefferzahl wählbar (--k <n> in main()), Default bleibt 5.
     qs = urllib.parse.urlencode({"q": query, "k": k})
     d = fetch(f"/api/knowledge/search?{qs}")
     results = d.get("results") or []
@@ -901,7 +899,7 @@ def _maybe_json(flags: dict, payload, verb: str = "json") -> bool:
     Maschinenlesbarer Ausgabe-Modus für Folge-Analysen — statt die formatierten
     Markdown-Zeilen zurückzuparsen, bekommt der Aufrufer die Items direkt.
 
-    GEÄNDERT: Ticket 77/C — --out schreibt das vollständige JSON in eine Datei unter
+    GEÄNDERT: --out schreibt das vollständige JSON in eine Datei unter
     OUT_DIR (Konsole nur Pfad + Zeichenzahl), analog zum `api`-Verb (_print_data);
     --full und --out schließen sich aus. Ohne beide Flags bleibt das bisherige
     Verhalten (volles JSON auf stdout, maschinenlesbar/parsebar) unverändert — kein
@@ -940,7 +938,7 @@ def _read_json_file(path: str):
         return json.load(fh)
 
 
-# GEÄNDERT: Ticket 102 — Raster-Quelle für testset-run-start und preflight:
+# GEÄNDERT: Raster-Quelle für testset-run-start und preflight:
 # --indicator-config <id> (gespeicherte Config) oder --indicators <datei> (Raster inline).
 def _indicators_source_body(flags: dict, verb: str) -> dict:
     """Baut den Raster-Teil des Request-Bodys aus --indicator-config oder --indicators.
@@ -980,7 +978,7 @@ def _indicators_source_body(flags: dict, verb: str) -> dict:
 
 def _read_file_or_inline(value: str) -> str:
     """Liest value als Dateiinhalt, wenn eine Datei mit diesem Pfad existiert,
-    sonst wird value unverändert als Inline-Wert zurückgegeben (Ticket 66:
+    sonst wird value unverändert als Inline-Wert zurückgegeben (
     --goal/--goal-prompt akzeptieren wahlweise einen Dateipfad oder den
     Inhalt direkt)."""
     path = pathlib.Path(value)
@@ -999,7 +997,7 @@ def concept_list(args: list) -> int:
     items = fetch("/api/strategy/concepts")["data"]["items"]
     print(f"## Konzepte ({len(items)})")
     for c in items:
-        # GEÄNDERT: Ticket 66 — Ziel-Marker auf Basis von has_goal (Abgleich Recherche-Fundsachen mit Bestand)
+        # GEÄNDERT: Ziel-Marker auf Basis von has_goal (Abgleich Recherche-Fundsachen mit Bestand)
         goal_marker = "Ziel: ja" if c.get("has_goal") else "Ziel: -"
         print(f"- concept:{c['id']} **{c.get('name')}** ({c.get('slug')}) · {c.get('status')} · Iter-Zähler {c.get('iteration_counter')} · {goal_marker}")
     print()
@@ -1111,7 +1109,7 @@ def run_list(args: list) -> int:
             ts = f"testset:{tsid} · " if tsid else ""
             print(f"\n### {name} ({ts}testset-run:{gkey})")
         for r in rs:
-            # GEAENDERT: Ticket 60 — Selbstauskunft des Laufs in der Listenzeile: Kennzeichnung
+            # GEAENDERT: Selbstauskunft des Laufs in der Listenzeile: Kennzeichnung
             # nicht verwertbarer Laeufe (Kennzeichnung, kein Ausblenden — die Zeile bleibt stehen).
             usability = r.get("usability")
             flag = f" · NICHT VERWERTBAR ({usability})" if usability and usability != "usable" else ""
@@ -2069,12 +2067,12 @@ def run_favorites_list(args: list) -> int:
     return 0
 
 
-# GEÄNDERT: Ticket 89 — Favoriten-Verben setzend statt umschaltend. Vorher liefen
+# GEÄNDERT: Favoriten-Verben setzend statt umschaltend. Vorher liefen
 # result-doc-favorite/iteration-doc-favorite/result-favorite/iteration-favorite ueber
 # TABLE_VERBS direkt auf die Toggle-Routen (POST .../favorite bzw. .../doc_favorite) —
 # ein zweiter Aufruf auf ein bereits markiertes Objekt hat den Stern wieder entfernt
-# (Feuertaufe 16.08.2026: sechs rote Doku-Favoriten durch Wiederholung versehentlich
-# geloescht, siehe documentation/tickets/89-doc-favorite-setzend-statt-umschaltend.md).
+# In der Praxis wurden dadurch bereits gesetzte Doku-Favoriten durch einen
+# Wiederholungsaufruf versehentlich geloescht.
 # Jetzt idempotent ueber eigene mark/unmark-Routen; --off steuert das gezielte, ebenso
 # idempotente Entfernen. Der manuelle Frontend-Stern bleibt der reine Toggle.
 # verb -> (mark_pfad, unmark_pfad, feld, label, unterstuetzt_criteria)
@@ -2312,7 +2310,7 @@ def concept_create(args: list) -> int:
     for key in ("category", "description", "status"):
         if f.get(key):
             body[key] = f[key]
-    # GEÄNDERT: Ticket 66 — --goal (JSON, Datei oder Inline) und --goal-prompt (Text, Datei oder Inline)
+    # GEÄNDERT: --goal (JSON, Datei oder Inline) und --goal-prompt (Text, Datei oder Inline)
     if f.get("goal"):
         body["goal_json"] = json.loads(_read_file_or_inline(f["goal"]))
     if f.get("goal-prompt"):
@@ -2342,7 +2340,7 @@ def iteration_create(args: list) -> int:
 
 
 def iteration_log_add(args: list) -> int:
-    """Log-Eintrag an einer Iteration anlegen (append-only, Ticket 67)."""
+    """Log-Eintrag an einer Iteration anlegen (append-only)."""
     f = _parse_flags(args)
     iid = int(_require(f, "id", "iteration-log-add"))
     log_text = _require(f, "text", "iteration-log-add")
@@ -2355,7 +2353,7 @@ def iteration_log_add(args: list) -> int:
 
 
 def iteration_log_list(args: list) -> int:
-    """Log-Einträge einer Iteration chronologisch auflisten (Ticket 67)."""
+    """Log-Einträge einer Iteration chronologisch auflisten."""
     f = _parse_flags(args)
     iid = int(_require(f, "id", "iteration-log-list"))
     items = fetch(f"/api/strategy/iterations/{iid}/logs")["data"]["items"]
@@ -2370,7 +2368,7 @@ def iteration_log_list(args: list) -> int:
 
 
 def _print_befund(d: dict) -> None:
-    """Druckt einen Befund (Ticket 56) vollständig als Markdown.
+    """Druckt einen Befund vollständig als Markdown.
 
     Kontext + Soll, dann die fünf Ist-Gruppen (falls der Befund schon geschlossen
     ist), zuletzt die Deutung — ausdrücklich als Interpretation gekennzeichnet und
@@ -2417,7 +2415,7 @@ def _print_befund(d: dict) -> None:
         )
         n_eff = scope.get("n_eff")
         print(f"- N_eff: {n_eff if n_eff is not None else 'leer — ' + str(scope.get('n_eff_reason'))}")
-        # GEÄNDERT: Ticket 92 — Sondierungs-Zähler des Konzepts neben der Rastergröße.
+        # GEÄNDERT: Sondierungs-Zähler des Konzepts neben der Rastergröße.
         # Reiner Ausweis: nicht in combos_total enthalten, nicht in N/DSR verrechnet.
         # Ältere Befunde tragen das Feld nicht — dann bleibt die Zeile weg (kein
         # Rückwirken, keine erfundene 0).
@@ -2533,8 +2531,8 @@ def _print_befund(d: dict) -> None:
 
 
 def befund_read(args: list) -> int:
-    """Befund eines Testset-Laufs (Ticket 56): ein Befund per --id, jüngster Befund
-    eines Testset-Laufs per --testset-run (Ticket 77/A), Historie per --iteration.
+    """Befund eines Testset-Laufs: ein Befund per --id, jüngster Befund
+    eines Testset-Laufs per --testset-run, Historie per --iteration.
 
     --id ist die Befund-ID (NICHT die Testset-Lauf-Nummer, die testset-run-start
     zurückgibt) — der direkte Anschluss an testset-run-start/run-wait ist
@@ -2726,7 +2724,7 @@ def testset_create(args: list) -> int:
 # ---------------------------------------------------------------------------
 
 def _metrics_body_value(f: dict):
-    """Wandelt --metrics in den JSON-Wert für den Request-Body (Ticket 68).
+    """Wandelt --metrics in den JSON-Wert für den Request-Body.
 
     Stdlib-only wie der Rest der Toolbox: kennt keine Gruppen-Keys, prüft nichts —
     die Stufen kern/voll/auto laufen als Zeichenkette durch, alles andere wird an
@@ -2771,7 +2769,7 @@ def testset_run_start(args: list) -> int:
         "testset_id": int(_require(f, "testset", "testset-run-start")),
         "iteration_id": int(_require(f, "iteration", "testset-run-start")),
     }
-    # GEÄNDERT: Ticket 102 — Raster wahlweise als Config-ID oder inline aus Datei.
+    # GEÄNDERT: Raster wahlweise als Config-ID oder inline aus Datei.
     body.update(_indicators_source_body(f, "testset-run-start"))
     metrics = _metrics_body_value(f)
     if metrics is not None:
@@ -2785,10 +2783,10 @@ def testset_run_start(args: list) -> int:
     return 0
 
 
-# GEÄNDERT: Ticket 60 (Anforderung 5) — Preflight: billiger Vorlauf auf EINER
+# GEÄNDERT: Preflight: billiger Vorlauf auf EINER
 # Kombination, adressiert über gespeicherte Objekte statt Playground-Request.
 def preflight_run(args: list) -> int:
-    """Preflight vor dem teuren Multiparameter-Lauf (Ticket 60, Anforderung 5).
+    """Preflight vor dem teuren Multiparameter-Lauf (Anforderung 5).
 
     Aufruf: preflight --iteration N --backtest-config K
             (--indicator-config M | --indicators <datei>)
@@ -2804,13 +2802,13 @@ def preflight_run(args: list) -> int:
         "iteration_id": int(_require(f, "iteration", "preflight")),
         "backtest_config_id": int(_require(f, "backtest-config", "preflight")),
     }
-    # GEÄNDERT: Ticket 102 — Raster wahlweise als Config-ID oder inline aus Datei.
+    # GEÄNDERT: Raster wahlweise als Config-ID oder inline aus Datei.
     body.update(_indicators_source_body(f, "preflight"))
     # GEÄNDERT: längerer Timeout — die Route baut Indikatoren und rechnet eine
     # echte Kombination, das dauert länger als ein reiner DB-Read.
     d = post("/api/chart-playground/preflight", body, timeout=120)["data"]
 
-    # GEÄNDERT: Ticket 102 — ohne gespeicherte Config meldet der Server hier None.
+    # GEÄNDERT: ohne gespeicherte Config meldet der Server hier None.
     raster = (f"indicator-config:{d['indicator_config_id']}"
               if d.get("indicator_config_id") is not None else "Raster inline")
     print(f"## Preflight — iteration:{d['iteration_id']} · {raster} "
@@ -2843,10 +2841,10 @@ def preflight_run(args: list) -> int:
     return 0
 
 
-# GEÄNDERT: Ticket 60 (Anforderung 6) — aktives Warten auf das Lauf-Ende, rein
+# GEÄNDERT: aktives Warten auf das Lauf-Ende, rein
 # clientseitig (keine Server-Änderung): pollt die bestehende Runs-Liste.
 def run_wait(args: list) -> int:
-    """Wartet aktiv auf das Ende eines oder mehrerer Runs (Ticket 60, Anforderung 6).
+    """Wartet aktiv auf das Ende eines oder mehrerer Runs (Anforderung 6).
 
     Aufruf: run-wait --run N [--timeout M]
             run-wait --testset-run N [--timeout M]
@@ -2861,7 +2859,7 @@ def run_wait(args: list) -> int:
     timeout = int(f.get("timeout", 1800))
     poll_interval = 5
 
-    # GEÄNDERT: Ticket 70/C — --run pollt jetzt über den Einzel-GET, nicht mehr
+    # GEÄNDERT: --run pollt jetzt über den Einzel-GET, nicht mehr
     # über die Liste (löst die RUN_LIST_LIMIT-Grenze für den Einzelfall auf).
     # --testset-run bleibt auf der Liste: der Server filtert dort bereits über
     # testset_run_id, die Runmenge ist von Natur aus klein.
@@ -2939,7 +2937,7 @@ def run_wait(args: list) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Signifikanztest je Kandidat (Ticket 79). Zwei Methoden, ein Datensatz-Typ:
+# Signifikanztest je Kandidat. Zwei Methoden, ein Datensatz-Typ:
 # permutation (Nullmodell, liefert p-Werte) und bootstrap (Unsicherheitsband der
 # eigenen Trades, KEIN p-Wert). Harte Ausgabe-Regel: ein p-Wert erscheint nie ohne
 # die Kennwerte seiner Null-Verteilung — sinngemäß dieselbe Regel wie „DSR nie ohne
@@ -3017,7 +3015,7 @@ def _print_significance(d: dict) -> None:
 
 
 def significance_start(args: list) -> int:
-    """Startet einen Signifikanztest für einen Kandidaten (Ticket 79).
+    """Startet einen Signifikanztest für einen Kandidaten.
 
     Aufruf: signifikanz-start --result N [--method permutation|bootstrap]
                               [--n 300] [--seed 42] [--wait [--timeout M]]
@@ -3068,7 +3066,7 @@ def significance_start(args: list) -> int:
 
 
 def significance_read(args: list) -> int:
-    """Liest einen Signifikanztest per --id (Ticket 79).
+    """Liest einen Signifikanztest per --id.
 
     Ausgabe je Metrik: echter Wert, Kennwerte der Null-Verteilung und p-Wert
     nebeneinander — ein p-Wert erscheint hier nie ohne seine Null-Verteilung.
@@ -3099,14 +3097,14 @@ def significance_list(args: list) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Walk-Forward-Fold-Kette (Ticket 82). Die Kette läuft client-getrieben über die
+# Walk-Forward-Fold-Kette. Die Kette läuft client-getrieben über die
 # vorhandenen Bausteine: Kette anlegen -> je Fold IS-Lauf, run-wait, Siegerwahl,
 # OOS-Lauf, run-wait, Recompute -> Fold anhängen -> schließen. Bricht etwas ab,
 # wird die Kette mit 'failed' und Grund geschlossen; sie bleibt nie offen hängen.
 #
 # Die Aggregation rechnet ausschließlich der Server (POST /close). Hier wird sie
 # nur abgerufen und dargestellt — eine zweite Rechnung in der Toolbox würde
-# unbemerkt auseinanderlaufen (Drift-Warnung aus den Ticket-56-Notizen).
+# unbemerkt auseinanderlaufen (Drift-Warnung).
 #
 # Ausgabe-Regeln: das Aggregat erscheint nie ohne die Fold-Tabelle, aus der es
 # entstanden ist, und je Fold steht der IS-Wert neben dem OOS-Wert (die
@@ -3353,7 +3351,7 @@ def _wf_close_chain(chain_id: int, error_message: str = None) -> dict:
 
 
 def walk_forward_chain_start(args: list) -> int:
-    """Fährt eine komplette Walk-Forward-Fold-Kette im Vordergrund (Ticket 82).
+    """Fährt eine komplette Walk-Forward-Fold-Kette im Vordergrund.
 
     Aufruf: walk-forward-chain-start --run <anker-run-id> --folds N --oos-monate M
             [--is-monate K] --selection-metric <metrik> [--selection-direction max|min]
@@ -3487,7 +3485,7 @@ def walk_forward_chain_start(args: list) -> int:
 
 
 def walk_forward_chain_read(args: list) -> int:
-    """Liest eine Walk-Forward-Kette per --id (Ticket 82).
+    """Liest eine Walk-Forward-Kette per --id.
 
     Ausgabe: Plan mit Kriterium, Fold-Tabelle mit IS-Wert neben OOS-Wert,
     Sieger-Kopien, Gesamtblock und Methodenhinweis — das Aggregat erscheint nie
@@ -3503,7 +3501,7 @@ def walk_forward_chain_read(args: list) -> int:
 
 
 def walk_forward_chain_list(args: list) -> int:
-    """Ketten-Historie, chronologisch (Ticket 82).
+    """Ketten-Historie, chronologisch.
 
     Bewusst ohne Kennzahlen: das Aggregat wird nur zusammen mit der Fold-Tabelle
     ausgegeben (`walk-forward-chain --id <id>`), damit aus der Historie keine
@@ -3671,7 +3669,7 @@ def _run_table_verb(verb: str, spec: tuple, args: list, body_extra: dict = None)
       - use_query: True -> übrige --flags werden als Query-String angehängt
 
     body_extra ergänzt den Body um Felder, die nicht aus der --file-Datei kommen
-    (Ticket 92: --concept <id> beim Lite-Lauf). Es überschreibt gleichnamige
+    (--concept <id> beim Lite-Lauf). Es überschreibt gleichnamige
     Felder der Datei, damit das Flag am Aufruf gewinnt und nicht still verpufft.
 
     Bei GET-Verben stehen zusätzlich --out [datei] und --full zur Verfügung (gleiche
@@ -3679,13 +3677,13 @@ def _run_table_verb(verb: str, spec: tuple, args: list, body_extra: dict = None)
     NIE in den Query-String ein, auch nicht bei use_query=True. Für Nicht-GET-Verben
     (Schreiben/Löschen/Aktionen) gibt es keine gekappte Ausgabe, die --out/--full
     aufheben könnte — hier wird ein Fehler geworfen statt die Flags still zu schlucken.
-    GEÄNDERT: Ticket 91 — Ausnahme WRITE_VERBS_ALLOW_OUT: schreibfreie POST-Verben wie
+    GEÄNDERT: Ausnahme WRITE_VERBS_ALLOW_OUT: schreibfreie POST-Verben wie
     playground-run-backtest-lite persistieren serverseitig nichts, ihre Antwort darf
     trotzdem wie bei GET lang werden und über --out/--full ungekürzt rausgehen.
 
     --timeout <s> überschreibt den Timeout für diesen einen Aufruf (Default: der
-    Verb-spezifische Wert aus VERB_TIMEOUT_OVERRIDES, sonst der globale TIMEOUT;
-    Ticket 91). Läuft der Aufruf für einen Verb mit Override in den Timeout, weist
+    Verb-spezifische Wert aus VERB_TIMEOUT_OVERRIDES, sonst der globale TIMEOUT).
+    Läuft der Aufruf für einen Verb mit Override in den Timeout, weist
     die Fehlermeldung auf die wahrscheinliche Ursache (Numba-Warmup) hin.
     """
     method, path_tmpl, n_path, body_mode, use_query = spec
@@ -3775,7 +3773,7 @@ def api_call(args: list) -> int:
 
 
 def playground_run_backtest_lite(args: list) -> int:
-    """Lite-Sondierung mit optionaler Zuordnung zum Konzept (Ticket 92).
+    """Lite-Sondierung mit optionaler Zuordnung zum Konzept.
 
     Zusätzlich zum generischen Verhalten (siehe `_run_table_verb` und die
     Verb-Beschreibung im Modul-Docstring) nimmt das Verb `--concept <id>`: die ID
@@ -3832,7 +3830,7 @@ def run_remarks_set(args: list) -> int:
 
 
 def _data_jobs_wait(created: list, timeout: int) -> int:
-    """Wartet auf das Ende angelegter OHLC-Jobs und druckt die Bilanz (Ticket 97).
+    """Wartet auf das Ende angelegter OHLC-Jobs und druckt die Bilanz.
 
     Geteilte Wartelogik für data-update UND data-download: pollt den Job-Status im
     5s-Abstand (wie run_wait/significance_start), bis alle Jobs 'completed' oder
@@ -3889,7 +3887,7 @@ def _data_jobs_wait(created: list, timeout: int) -> int:
 
 
 def data_update(args: list) -> int:
-    """Legt je Symbol der Datei einen Update-Job an; optional --wait auf die Bilanz (Ticket 97)."""
+    """Legt je Symbol der Datei einen Update-Job an; optional --wait auf die Bilanz."""
     f = _parse_flags(args)
     body = {"exchange": f.get("exchange", "binance"), "timeframe": _require(f, "timeframe", "data-update")}
     d = post("/api/config/data/update", body)["data"]
@@ -3901,7 +3899,7 @@ def data_update(args: list) -> int:
 
 
 def data_download(args: list) -> int:
-    """Legt Download-Jobs per --file an; optional --wait auf die Bilanz (Ticket 97).
+    """Legt Download-Jobs per --file an; optional --wait auf die Bilanz.
 
     Eigener Handler statt des generischen TABLE_VERBS-Executors, weil --wait/--timeout
     zusätzliche, nicht body-relevante Flags sind (wie bei playground-run-backtest-lite).
@@ -3929,13 +3927,13 @@ def data_delete_symbol(args: list) -> int:
 
 
 def result_delete_all(args: list) -> int:
-    """Löscht Results außer Favoriten — global oder eingegrenzt (Ticket 77/B).
+    """Löscht Results außer Favoriten — global oder eingegrenzt.
 
     Ohne Flag: unverändertes globales Verhalten (Hintergrund-Job über die komplette
     Tabelle, HTTP 202). Mit --run <id> ODER --testset-run <id> (schließen sich aus):
     synchrone, auf die Menge eingegrenzte Löschung — Favoriten (gelb und rot) sowie
     fremde Objekte bleiben unberührt; die Antwort benennt deleted_results/
-    deleted_runs/deleted_run_ids (Ticket-75-Scope-Regel: kein globaler Orphan-Sweep).
+    deleted_runs/deleted_run_ids (Scope-Regel: kein globaler Orphan-Sweep).
     """
     f = _parse_flags(args)
     if f.get("run") and f.get("testset-run"):
@@ -3954,7 +3952,7 @@ def result_delete_all(args: list) -> int:
 
 
 def analyse_screenshot(args: list) -> int:
-    """Analyse-Screenshot einer Run-Ansicht (Ticket 100): ruft nur die Screenshot-Route
+    """Analyse-Screenshot einer Run-Ansicht: ruft nur die Screenshot-Route
     und schreibt das gelieferte PNG an den in --out genannten Pfad.
 
     analyse-screenshot --run <id> --x <param> --y <param> [--metric <kennzahl>]
@@ -4078,7 +4076,7 @@ def concept_set(args: list) -> int:
     f = _parse_flags(args)
     cid = _require_id(f, "concept-set")
     body = {k: f[k] for k in ("name", "slug", "category", "description", "status") if k in f and f[k] is not True}
-    # GEÄNDERT: Ticket 66 — --goal (JSON, Datei oder Inline) und --goal-prompt (Text, Datei oder Inline)
+    # GEÄNDERT: --goal (JSON, Datei oder Inline) und --goal-prompt (Text, Datei oder Inline)
     if f.get("goal") and f["goal"] is not True:
         body["goal_json"] = json.loads(_read_file_or_inline(f["goal"]))
     if f.get("goal-prompt") and f["goal-prompt"] is not True:
@@ -4109,7 +4107,7 @@ def iteration_set(args: list) -> int:
 
 
 # Editierbare Felder der BacktestConfig (Voll-Replace-PUT -> GET, mergen, zurueck).
-# GEÄNDERT: Ticket 59 — slippage/stop_exit_price/stop_order_type analog fees ergänzt.
+# GEÄNDERT: slippage/stop_exit_price/stop_order_type analog fees ergänzt.
 _BACKTEST_FIELDS = (
     "name", "description", "symbol", "exchange", "timeframe", "start", "end",
     "ohlc_start", "ohlc_end", "size", "size_type", "init_cash", "fees",
@@ -4407,7 +4405,7 @@ TABLE_VERBS = {
     "run-bulk-delete": ("POST", "/api/backtest/runs/bulk-delete", 0, "ids", False),
     "playground-setup-bulk-delete": ("POST", "/api/chart-playground/setups/bulk-delete", 0, "ids", False),
     # Aktionen / Toggles (POST, kein Body)
-    # GEÄNDERT: Ticket 89 — iteration-favorite/iteration-doc-favorite/result-favorite/
+    # GEÄNDERT: iteration-favorite/iteration-doc-favorite/result-favorite/
     # result-doc-favorite sind keine TABLE_VERBS-Toggles mehr, sondern eigene, idempotent
     # setzende SINGLE_VERBS (siehe _favorite_set weiter oben). Die zugrundeliegenden
     # Toggle-Routen bleiben unveraendert fuer den manuellen Frontend-Stern.
@@ -4421,14 +4419,14 @@ TABLE_VERBS = {
     "run-analyse-reset": ("POST", "/api/backtest/runs/{}/analyse/reset", 1, None, False),
     # Anlegen (POST, voller Body per --file)
     "strategy-config-create": ("POST", "/api/config/strategy", 0, "file", False),
-    # GEÄNDERT: Ticket 97 — Route-Spec bleibt hier (Dokumentation), ausgeführt wird
+    # GEÄNDERT: Route-Spec bleibt hier (Dokumentation), ausgeführt wird
     # das Verb aber über den eigenen Handler in SINGLE_VERBS, weil --wait/--timeout
     # zusätzliche Flags sind, die der generische --file-Executor nicht kennt.
     "data-download": ("POST", "/api/config/data/download", 0, "file", False),
     "playground-setup-create": ("POST", "/api/chart-playground/setups", 0, "file", False),
     "playground-compute": ("POST", "/api/chart-playground/compute", 0, "file", False),
     "playground-run-backtest": ("POST", "/api/chart-playground/run-backtest", 0, "file", False),
-    # GEÄNDERT: Ticket 92 — Route-Spec bleibt hier, ausgeführt wird das Verb aber über
+    # GEÄNDERT: Route-Spec bleibt hier, ausgeführt wird das Verb aber über
     # den eigenen Handler in SINGLE_VERBS (playground_run_backtest_lite), weil --concept
     # ein zusätzliches Body-Feld erzeugt. SINGLE_VERBS wird zuerst geprüft.
     "playground-run-backtest-lite": ("POST", "/api/chart-playground/run-backtest-lite", 0, "file", False),
@@ -4463,7 +4461,7 @@ TABLE_VERBS = {
 SINGLE_VERBS = {
     "api": api_call,
     "out-clean": out_clean,
-    # GEÄNDERT: Ticket 92 — eigener Handler wegen --concept (Body-Feld concept_id)
+    # GEÄNDERT: eigener Handler wegen --concept (Body-Feld concept_id)
     "playground-run-backtest-lite": playground_run_backtest_lite,
     "walk-forward-start": walk_forward_start,
     "run-remarks": run_remarks_set,
@@ -4607,7 +4605,7 @@ def main() -> int:
     else:
         print(f"# Briefing (Quelle: {BASE})\n")
 
-    # GEÄNDERT: Ticket 70/D — optionales --k <n> für knowledge:-Aufrufe (Trefferzahl,
+    # GEÄNDERT: optionales --k <n> für knowledge:-Aufrufe (Trefferzahl,
     # Default 5). Vorab aus den Positions-Argumenten herausgezogen, weil die
     # Flag-Syntax nicht ins <bereich>:<wert>-Muster der Briefing-Schleife passt.
     knowledge_k = 5

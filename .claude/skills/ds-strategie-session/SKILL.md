@@ -46,7 +46,7 @@ VAULT_ROOT=$(wslpath -u "$(grep -E '^OBSIDIAN_VAULT_HOST_PATH=' .env | cut -d= -
 ```
 
 Alle Vault-Pfade sind relativ dazu, Konvention
-`$VAULT_ROOT/30_Trading/vbt/strategies/<slug>/` (identisch zur App-Pfadlogik in
+`$VAULT_ROOT/30_Trading/strategies/<slug>/vbt/` (identisch zur App-Pfadlogik in
 `services/api/utils/obsidian_paths.py`). Fehlt `.env` oder die Variable, ist der Vault nicht
 konfiguriert — dann ohne Vault weiterarbeiten und das im Bericht ausweisen.
 
@@ -228,7 +228,7 @@ Erst wenn ein Kandidat das Soll im kleinen Raster erreicht:
 - **Regel: Zeit schlägt Symbol.** Vier Symbole sind rund zwei unabhängige Tests —
   `symbol-correlation <exchange> <timeframe> --symbols A,B,C` weist `N_eff` aus. Ein weiteres
   Symbol ersetzt keinen weiteren Zeitraum.
-- **Signifikanztest je Kandidat** (Ticket 79) — der Test **berichtet, er filtert nicht**:
+- **Signifikanztest je Kandidat** — der Test **berichtet, er filtert nicht**:
   - `signifikanz-start --result <id> --n 99 --wait` rechnet den Monte-Carlo-Permutationstest:
     die Strategie läuft auf N synthetischen Preisreihen (Bar-Permutation — Randverteilung der
     Bar-Renditen erhalten, zeitliche Struktur zerstört). Der p-Wert sagt, wie oft ein so gutes
@@ -251,7 +251,7 @@ Erst wenn ein Kandidat das Soll im kleinen Raster erreicht:
     bleibt unsichtbar. Und ein einzelner kleiner p-Wert ist ein **Hinweis, kein Beweis**: Ein
     Kandidat ohne Reihenfolge-Vorteil landet per Konstruktion in 5 Prozent der Fälle bei
     p ≤ 0,05. Wer über mehrere Kandidaten testet, sagt das dazu.
-- **Walk-Forward-Fold-Kette** (Ticket 82) — N-mal „auf einem Zeitfenster optimieren → Sieger
+- **Walk-Forward-Fold-Kette** — N-mal „auf einem Zeitfenster optimieren → Sieger
   einfrieren → auf dem nächsten, ungesehenen Zeitfenster testen":
   - `walk-forward-chain-start --run <anker-run-id> --folds 3 --oos-monate 3
     --selection-metric sharpe_ratio --trade-floor <t> [--is-monate <k>] [--timeout <s>]`
@@ -269,15 +269,15 @@ Erst wenn ein Kandidat das Soll im kleinen Raster erreicht:
   - Ein Fold ohne Sieger (kein Kandidat über dem Trade-Floor) wird ausgewiesen, nicht
     verschluckt; er gehört genauso in die Deutung wie ein Fold mit Sieger.
   - **Einordnung: Messwerkzeug, kein Ertragsbringer.** Die Kette misst, ob ein Ergebnis über
-    ungesehene Fenster trägt — sie erzeugt keinen Ertrag. Re-Fitting je Fenster hat im
-    VWMA-Offline-Harness Rausch-Anpassung produziert (Profitfaktor 1,05, dokumentierter Kill).
+    ungesehene Fenster trägt — sie erzeugt keinen Ertrag. Re-Fitting je Fenster hat in
+    früheren Messungen reine Rausch-Anpassung produziert.
     Wer die Kette startet, erwartet also **keine** bessere Strategie, sondern eine ehrliche
     Zahl über die vorhandene.
 - **Holdout — versiegelte Finalmessung** (Testsets „R11 HOLDOUT (versiegelt)"): Diese
   Testsets werden während Entwicklung, Optimierung und Auswahl **nie** verwendet — kein Lauf,
   kein Hinsehen. Erst wenn der Kandidat feststeht und die übrige Härtung gelaufen ist:
   `data-update --timeframe <tf> --wait` ausführen und die Bilanz prüfen — das Zielsymbol
-  muss darin als erfolgreich ausgewiesen sein (Ticket 97; sonst rechnet der Testset-Lauf
+  muss darin als erfolgreich ausgewiesen sein (sonst rechnet der Testset-Lauf
   gegen veraltete oder fehlende Candles, ohne dass es auffällt). Erst danach `end`/`ohlc_end`
   der Holdout-Configs auf den neuen Datenstand ziehen, dann **genau ein** Testset-Lauf. Danach
   ist der Zeitraum für diesen Auftrag verbraucht — wer nach der Messung weiter optimiert, hat
@@ -303,7 +303,7 @@ Erst wenn ein Kandidat das Soll im kleinen Raster erreicht:
    auch in einem frischen Kontext lesbar. Die Bilder sind ein Werkzeug für den Menschen.
    Verlangt der Auftrag oder der User sie, gilt: **dann zeitkritisch** — vor dem Purge, weil
    Heatmaps und Verteilung danach unwiederbringlich weg sind. Verfahren (Toolbox-Verb
-   `analyse-screenshot`, Ticket 100) in
+   `analyse-screenshot`) in
    [`references/screenshot-standard.md`](references/screenshot-standard.md).
 4. **Abschlussbericht Ist-gegen-Soll** mit **allen** Vorbehalten (Rastergröße, `N_eff`,
    Holdout-Berührungen) — als Deutung zum Befund und als Log-Eintrag an der Iteration. Liegt
@@ -313,7 +313,7 @@ Erst wenn ein Kandidat das Soll im kleinen Raster erreicht:
    zitiert; liegt keine vor, ist das ein Vorbehalt. Verweise auf Sieger-Setup (`?setupid=N`) und
    finalen Analyse-Lauf (`/backtest/runs/N/analyse`) **als volle URL** in die Deutung schreiben —
    die Konzept-Detailseite (`/config/strategy-concepts/{id}`) rendert sie dann klickbar
-   (Auto-Linking, Ticket 85).
+   (Auto-Linking).
 
 ## Phase 9 — Aufräumen
 
@@ -328,7 +328,7 @@ falsch und musste vom User nachgeräumt werden.)
 - Rechenspuren löschen, die weder im Befund noch in der Doku referenziert sind:
   `result-delete-all --testset-run <id>` (bzw. `--run <id>` für einen einzelnen Run) räumt
   in einem Aufruf alle Nicht-Favoriten der Menge weg, Favoriten und fremde Objekte bleiben
-  unberührt (Ticket 77/B) — bevorzugt gegenüber händischem ID-Diffing. Für Einzelfälle:
+  unberührt — bevorzugt gegenüber händischem ID-Diffing. Für Einzelfälle:
   `run-delete <id>`, `run-bulk-delete --ids 1,2,3`, `result-delete <id>`,
   `result-bulk-delete --ids …`.
 - **Im Auftrag angelegte IndicatorConfigs zurückbauen:** `indicator-config-delete <id>`.
@@ -561,8 +561,7 @@ User-Auftrag, folgt er **direkt** auf den zugehörigen Lauf bzw.
 `run-bestwerte`-Durchgang: pro Run zwei
 Vollseiten-PNG im Standard-Zustand (Referenzschuss auf Total Return plus Schuss auf die
 Zielkennzahl des Auftrags), abgelegt im Vault beim Iterations-Ordner
-(`iterations/<version>/img/`). Hauptweg ist das Toolbox-Verb `analyse-screenshot`
-(Ticket 100) — ein Aufruf pro Bild, das PNG landet direkt am Zielpfad, kein Browser-Werkzeug
+(`iterations/<version>/img/`). Hauptweg ist das Toolbox-Verb `analyse-screenshot` — ein Aufruf pro Bild, das PNG landet direkt am Zielpfad, kein Browser-Werkzeug
 mehr nötig. Details, Sollwerte und Namensschema in
 [`references/screenshot-standard.md`](references/screenshot-standard.md). In der Iter-Note
 werden die Bilder relativ eingebettet (`![](img/run-<id>-….png)`).
@@ -577,7 +576,7 @@ volle Result-Sätze längst gelöscht sind. Einzel-Läufe ohne Testset bleiben b
 Nach jedem neuen Testset-Lauf (nach `run-bestwerte`) neu generieren:
 
 ```bash
-toolbox.py vergleichstabelle --strategy <slug> --save "$VAULT_ROOT/30_Trading/vbt/strategies/<slug>/iterationen-vergleich.md"
+toolbox.py vergleichstabelle --strategy <slug> --save "$VAULT_ROOT/30_Trading/strategies/<slug>/vbt/iterationen-vergleich.md"
 ```
 
 Läufe ohne markierte Bestwerte weist die Ausgabe explizit aus (erst `run-bestwerte`
