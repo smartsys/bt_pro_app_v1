@@ -23,12 +23,12 @@ from user_data.utils.database.repository_testsets import (
     create_testset_run,
     get_testset,
 )
-# GEÄNDERT: Ticket 68 — Metrik-Auswahl beim Run-Start
+# GEÄNDERT: Metrik-Auswahl beim Run-Start
 from user_data.utils.metrics.metric_sets import validate_metrics_selection
-# GEÄNDERT: Ticket 56/72 — Befund Phase 1 (Kontext + Soll) beim Start anlegen; einzige
-# Implementierung, auch vom Leaderboard-Rerun genutzt (Ticket 72)
+# GEÄNDERT: — Befund Phase 1 (Kontext + Soll) beim Start anlegen; einzige
+# Implementierung, auch vom Leaderboard-Rerun genutzt
 from services.api.utils.finding_aggregation import open_finding_for_testset_run
-# GEÄNDERT: Ticket 102 — Genau-eines-Regel für die Raster-Quelle (Config-ID oder inline)
+# GEÄNDERT: Genau-eines-Regel für die Raster-Quelle (Config-ID oder inline)
 from services.api.utils.indicator_source import require_exactly_one_indicator_source
 
 logger = logging.getLogger(__name__)
@@ -46,13 +46,13 @@ class TestSetRunIn(BaseModel):
     """
     testset_id: int
     iteration_id: int
-    # GEÄNDERT: Ticket 102 — das Raster kommt wahlweise aus einer gespeicherten
+    # GEÄNDERT: das Raster kommt wahlweise aus einer gespeicherten
     # IndicatorConfig (indicator_config_id) oder inline (indicators, Inhalt von
     # config_json inklusive '_stops'). Genau eines von beiden ist Pflicht; die Prüfung
     # macht die Route, damit der Grund im Klartext in der Antwort steht.
     indicator_config_id: Optional[int] = None
     indicators: Optional[dict] = None
-    # GEÄNDERT: Ticket 68 — optionale Metrik-Auswahl, gilt für alle N erzeugten Runs.
+    # GEÄNDERT: optionale Metrik-Auswahl, gilt für alle N erzeugten Runs.
     # "kern" | "voll" | "auto" (Default) | Liste zusätzlich gewünschter Gruppen-Keys.
     metrics: Optional[Union[str, list[str]]] = None
 
@@ -71,7 +71,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     Body: { testset_id, iteration_id, indicator_config_id | indicators, metrics? }
     Response: { data: { testset_run_id, run_ids }, error: null }
     """
-    # GEÄNDERT: Ticket 68 — Metrik-Auswahl syntaktisch prüfen, BEVOR irgendein Datensatz
+    # GEÄNDERT: Metrik-Auswahl syntaktisch prüfen, BEVOR irgendein Datensatz
     # (TestSetRun oder BacktestRun) angelegt wird. Die 'auto'-Auflösung selbst (braucht
     # n_combinations je BacktestConfig) passiert erst in create_backtest_run.
     try:
@@ -79,7 +79,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     except ValueError as exc:
         return JSONResponse({'error': str(exc)}, status_code=400)
 
-    # GEÄNDERT: Ticket 102 — Raster-Quelle prüfen, ebenfalls vor jedem Datensatz.
+    # GEÄNDERT: Raster-Quelle prüfen, ebenfalls vor jedem Datensatz.
     try:
         require_exactly_one_indicator_source(payload.indicator_config_id, payload.indicators)
     except ValueError as exc:
@@ -133,7 +133,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             strat_import_path = SPEC_RUNNER_IMPORT_PATH
 
         # Indikator-Raster auflösen — gespeicherte IndicatorConfig oder inline
-        # GEÄNDERT: Ticket 102 — bei inline entfällt der Lookup vollständig; das Dict
+        # GEÄNDERT: bei inline entfällt der Lookup vollständig; das Dict
         # geht unverändert weiter und es entsteht keine IndicatorConfig-Zeile.
         if payload.indicator_config_id is not None:
             ind_config = (
@@ -165,7 +165,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             )
 
         iteration_id_int: int = iteration.id
-        # GEÄNDERT: Ticket 56 — Soll-Schnappschuss aus dem Konzept ziehen, solange die
+        # GEÄNDERT: Soll-Schnappschuss aus dem Konzept ziehen, solange die
         # Session offen ist. Das Kopieren selbst passiert im Repository (deepcopy), damit
         # eine spätere Änderung von goal_json bestehende Befunde nicht mehr berührt.
         concept_id_int: int = concept.id
@@ -185,7 +185,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             strategy_family=strat_family,
             strategy_name=strat_name,
             n_runs_total=n_total,
-            # GEÄNDERT: Ticket 15 — indicators_config_json direkt (kein indicator_config_id mehr)
+            # GEÄNDERT: indicators_config_json direkt (kein indicator_config_id mehr)
             indicators_config_json=indicators_json,
             status='queued',
         )
@@ -197,14 +197,14 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
     # rq lazy importieren — nicht verfügbar im Test-Kontext
     from rq import Queue
     from services.api.redis_conn import get_redis_connection, BACKTEST_QUEUE_NAME, BACKTEST_JOB_TIMEOUT
-    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
     from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
 
-    # GEÄNDERT: Ticket 56/72 — Befund Phase 1: Kontext + Soll stehen fest, bevor
+    # GEÄNDERT: — Befund Phase 1: Kontext + Soll stehen fest, bevor
     # gerechnet wird. Das Soll stammt ausschließlich aus concept.goal_json
     # (Schnappschuss), es gibt bewusst keine manuelle Soll-Eingabe im Payload — genau
     # die wäre der Drift-Kanal. Anlage über die einzige Phase-1-Implementierung
-    # (auch vom Leaderboard-Rerun genutzt, Ticket 72).
+    # (auch vom Leaderboard-Rerun genutzt).
     session = get_session()
     try:
         open_finding_for_testset_run(
@@ -231,7 +231,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
             'strategy_family': strat_family,
             'strategy_name': strat_name,
             'import_path': strat_import_path,
-            # GEÄNDERT: backtest_config_id für deterministisches Aggregat-Mapping (Ticket 06)
+            # GEÄNDERT: backtest_config_id für deterministisches Aggregat-Mapping
             'backtest_config_id': config_id,
             'symbols': [bt.symbol],
             'start': bt.start,
@@ -245,7 +245,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
                 'size_type': bt.size_type,
                 'init_cash': bt.init_cash,
                 'fees': bt.fees,
-                # GEÄNDERT: Ticket 59 — slippage und die zwei Stop-Ausführungsfelder
+                # GEÄNDERT: slippage und die zwei Stop-Ausführungsfelder
                 # aus der BacktestConfig durchreichen (analog echter Einzel-Run).
                 'slippage': bt.slippage,
                 'stop_exit_price': bt.stop_exit_price,
@@ -255,7 +255,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
                 # aus indicators_json['_stops'] (IndicatorConfig).
             },
         }
-        # GEÄNDERT: Ticket 68 — Metrik-Auswahl gilt für alle N Runs des TestSet-Laufs.
+        # GEÄNDERT: Metrik-Auswahl gilt für alle N Runs des TestSet-Laufs.
         if metrics_selection is not None:
             backtest_config_json['metrics'] = metrics_selection
 
@@ -264,7 +264,7 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
         # Kopie bleibt, damit pro Run-Eintrag ein unabhängiges dict entsteht.
         run_indicators_json = dict(indicators_json)
 
-        # GEÄNDERT: testset_run_id setzen (Ticket 05)
+        # GEÄNDERT: testset_run_id setzen
         # iteration_id explizit weiterreichen — kein Lookup-Umweg nötig
         run_id = create_backtest_run(
             backtest_config=backtest_config_json,

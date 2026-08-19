@@ -24,7 +24,7 @@
 {% endblock %}
 
 {% block content %}
-<!-- GEÄNDERT: Ticket 99 — sichtbare Meldung fuer ungueltige URL-Query-Parameter
+<!-- GEÄNDERT: sichtbare Meldung fuer ungueltige URL-Query-Parameter
      (Achsenname/Metrik) statt stillem Zurueckfallen auf die Voreinstellung. -->
 <div id="analyse-url-error" class="alert alert-danger d-none mb-3" role="alert"></div>
 
@@ -38,8 +38,8 @@
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Sharpe > 1</div><div class="fw-bold" id="sum-sharpe-gt1">—</div></div></div></div>
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Best Sharpe</div><div class="fw-bold val-pos" id="sum-max-sharpe">—</div></div></div></div>
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Sharpe</div><div class="fw-bold" id="sum-avg-sharpe">—</div></div></div></div>
-  <!-- GEÄNDERT: Ticket 64 — durchschnittliche Trefferquote samt ihrem Nenner. Die Quote
-       rechnet seit Ticket 58 über geschlossene Trades, die Trade-Zahl zählt eine am
+  <!-- GEÄNDERT: durchschnittliche Trefferquote samt ihrem Nenner. Die Quote
+       rechnet seit der Umstellung über geschlossene Trades, die Trade-Zahl zählt eine am
        Fensterende offene Position mit; ohne den Zusatz stünde ein Durchschnitt da,
        dessen Grundgesamtheit niemand sieht. -->
   <div class="col-auto"><div class="card card-sm mb-0"><div class="card-body py-2 px-3 text-center"><div class="text-muted" style="font-size:0.7rem">Avg Win Rate</div><div class="fw-bold" id="sum-avg-winrate">—</div><div class="text-muted" style="font-size:0.65rem" id="sum-open-positions">—</div></div></div></div>
@@ -307,7 +307,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var currentMetric = 'total_return_pct';
   var paramCharts = {};  // ECharts Instanzen
   var paramNames = [];   // Verfügbare Parameter-Namen
-  var hasFatalError = false;  // GEÄNDERT: Ticket 99 — blockiert das Fertig-Signal dauerhaft nach einem endgültigen Fehler
+  var hasFatalError = false;  // GEÄNDERT: blockiert das Fertig-Signal dauerhaft nach einem endgültigen Fehler
 
   // GEAENDERT: JSON-Fetch mit Retry gegen transiente Verbindungsabbrueche.
   // Ein einzelnes "Failed to fetch" (z.B. uvicorn-Reload-Neustart oder Docker-
@@ -328,9 +328,9 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   // ========================================================================
-  // URL-Zustand und Fertig-Signal (Ticket 99)
+  // URL-Zustand und Fertig-Signal
   // ========================================================================
-  // GEÄNDERT: Ticket-99-Nachbesserung — Canvas-PRÄSENZ allein reicht nicht als
+  // GEÄNDERT: Nachbesserung — Canvas-PRÄSENZ allein reicht nicht als
   // Fertig-Kriterium: loadHeatmapInstance() disposed die ECharts-Instanz im
   // Erfolgsfall nie (nur beim Platzhalter-Zweig "zwei verschiedene Parameter"),
   // sondern befuellt denselben Canvas per setOption neu — der ALTE Canvas staende
@@ -461,7 +461,7 @@ document.addEventListener("DOMContentLoaded", function() {
       document.getElementById('sum-avg-dd').textContent = d.avg_drawdown != null ? d.avg_drawdown.toFixed(2) + '%' : '—';
       document.getElementById('sum-max-return').textContent = d.max_return != null ? d.max_return.toFixed(2) + '%' : '—';
       document.getElementById('sum-max-sharpe').textContent = d.max_sharpe != null ? d.max_sharpe.toFixed(2) : '—';
-      // GEÄNDERT: Ticket 64 — durchschnittliche Trefferquote samt „N von M Kombinationen
+      // GEÄNDERT: durchschnittliche Trefferquote samt „N von M Kombinationen
       // mit offener Position" (Nenner der Quote sichtbar machen).
       document.getElementById('sum-avg-winrate').textContent = d.avg_winrate != null ? d.avg_winrate.toFixed(2) + '%' : '—';
       var openCount = d.with_open_position_count != null ? d.with_open_position_count : 0;
@@ -503,7 +503,7 @@ document.addEventListener("DOMContentLoaded", function() {
         sel2Y.value = paramNames[1];
       }
 
-      // GEÄNDERT: Ticket 99 — URL-Zustand greift hier: nach der Automatik-Vorbelegung,
+      // GEÄNDERT: URL-Zustand greift hier: nach der Automatik-Vorbelegung,
       // vor dem ersten Zeichnen. Ueberstimmt damit gezielt die Automatik oben.
       applyUrlState();
 
@@ -535,7 +535,7 @@ document.addEventListener("DOMContentLoaded", function() {
     })
     .catch(function(e) {
       // GEAENDERT: Nach erschoepften Retries den Fehler sichtbar machen statt still leer zu lassen.
-      // Ticket-99-Nachbesserung: ohne showAnalyseError() bliebe __analyseError ungesetzt
+      // Nachbesserung: ohne showAnalyseError() bliebe __analyseError ungesetzt
       // und ein Wartender liefe ohne sichtbaren Grund in seinen Timeout — die Selects
       // bleiben leer, loadHeatmap()/loadHeatmap2() laufen danach gar nicht erst an.
       console.error('[ANALYSE] Summary konnte nicht geladen werden — Heatmaps bleiben leer:', e);
@@ -580,7 +580,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (v === null || v === undefined) return '—';
     return parseFloat(v).toFixed(2);
   }
-  // GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+  // GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
   // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
   // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
   function fmtTrades(total, open) {
@@ -665,7 +665,7 @@ document.addEventListener("DOMContentLoaded", function() {
         markViewReady('distribution');
       })
       .catch(function(e) {
-        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // GEÄNDERT: endgueltiger Ladevorgang-Fehler sichtbar machen statt
         // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
         console.error('[ANALYSE] Verteilung konnte nicht geladen werden:', e);
         showAnalyseError('Verteilung konnte nicht geladen werden.');
@@ -788,7 +788,7 @@ document.addEventListener("DOMContentLoaded", function() {
         markViewReady('equity');
       })
       .catch(function(e) {
-        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // GEÄNDERT: endgueltiger Ladevorgang-Fehler sichtbar machen statt
         // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
         console.error('[ANALYSE] Equity-Uebersicht konnte nicht geladen werden:', e);
         showAnalyseError('Equity-Übersicht konnte nicht geladen werden.');
@@ -995,14 +995,14 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       }]
     });
-    // GEÄNDERT: Ticket-99-Nachbesserung — prefix ist hier 'heatmap' bzw. 'heatmap2' und
+    // GEÄNDERT: Nachbesserung — prefix ist hier 'heatmap' bzw. 'heatmap2' und
     // markiert damit gezielt NUR die Ansicht als frisch, die soeben tatsaechlich neu
     // gezeichnet wurde (nicht mehr die blosse Canvas-Praesenz der jeweils anderen).
     markViewReady(prefix);
   }
 
   function loadHeatmapInstance(prefix) {
-    // GEÄNDERT: Ticket-99-Nachbesserung — nur das Frisch-Flag DIESER Ansicht faellt
+    // GEÄNDERT: Nachbesserung — nur das Frisch-Flag DIESER Ansicht faellt
     // zurueck; die jeweils andere Heatmap sowie Equity-Uebersicht/Verteilung bleiben
     // gueltig, solange sie nicht selbst neu geladen werden. Verhindert, dass Ready waehrend
     // eines Metrik-/Achsenwechsels kurz true wird, weil der ALTE Canvas der jeweils anderen
@@ -1016,7 +1016,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // GEÄNDERT: laufende Anfrage dieser Instanz abbrechen, bevor eine neue gestartet
     // wird — sonst kann die Antwort einer überholten Anfrage später eintreffen und
-    // die inzwischen aktuelle Achsenwahl im Chart überschreiben (Ticket 76).
+    // die inzwischen aktuelle Achsenwahl im Chart überschreiben.
     if (inst.abortController) { inst.abortController.abort(); }
 
     if (!paramX || !paramY || paramX === paramY) {
@@ -1096,7 +1096,7 @@ document.addEventListener("DOMContentLoaded", function() {
         console.error('[ANALYSE] Heatmap-Laden fehlgeschlagen:', e);
         var el = document.getElementById(prefix + '-chart');
         el.innerHTML = '<div class="text-muted d-flex align-items-center justify-content-center h-100">Fehler beim Laden</div>';
-        // GEÄNDERT: Ticket 99 — endgueltiger Ladevorgang-Fehler sichtbar machen statt
+        // GEÄNDERT: endgueltiger Ladevorgang-Fehler sichtbar machen statt
         // still zu verschlucken; das Fertig-Signal bleibt dadurch dauerhaft aus.
         showAnalyseError('Heatmap (' + prefix + ') konnte nicht geladen werden.');
       })
@@ -1121,7 +1121,7 @@ document.addEventListener("DOMContentLoaded", function() {
   function loadVolume() {
     // GEÄNDERT: laufende Anfrage abbrechen, bevor eine neue gestartet wird — sonst kann
     // die Antwort einer überholten Anfrage später eintreffen und die inzwischen aktuelle
-    // Achsenwahl im Chart überschreiben (Ticket 78, analog Ticket 76 bei der Heatmap).
+    // Achsenwahl im Chart überschreiben (analog zum Vorgehen bei der Heatmap).
     if (volumeAbortController) { volumeAbortController.abort(); }
     volumeAbortController = null;
 
@@ -1220,7 +1220,7 @@ document.addEventListener("DOMContentLoaded", function() {
           html += '<td>' + fmtVal(r.win_rate_pct) + '</td>';
           html += '<td>' + fmtColor(r.profit_factor) + '</td>';
           html += '<td>' + fmtTrades(r.total_trades, r.open_trades) + '</td>';
-          // GEÄNDERT: Ticket 42 — Playground-Button (flüchtig, kein Setup)
+          // GEÄNDERT: Playground-Button (flüchtig, kein Setup)
           html += '<td><a href="/backtest/results/' + r.id + '/chart" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-1">Chart</a>'
                + ' <a href="/chart-playground?resultid=' + r.id + '" target="_blank" class="btn btn-sm btn-outline-success py-0 px-1" title="Im Playground öffnen (flüchtig)">PG</a></td>';
           html += '<td>'
@@ -1454,7 +1454,7 @@ document.addEventListener("DOMContentLoaded", function() {
   // nicht mehr an einem festen setTimeout(500). Das feste Timing traf bei langsamem
   // Summary-Fetch die noch leeren Dropdowns und liess die Heatmap dauerhaft leer.
 
-  /* Speichern-Aktionen aus Result in Top-Results-Tabelle (Ticket 43) */
+  /* Speichern-Aktionen aus Result in Top-Results-Tabelle */
   function _saveFromResult(endpoint, label, id) {
     fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
       .then(function(r) { return r.json(); })

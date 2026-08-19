@@ -7,7 +7,7 @@ bewusste No-op — exakt derselbe Mechanismus wie schon einmal bei
 ``0006_seed_baseline_data`` (siehe dortiger Docstring), nur eine Kettenstufe
 weiter.
 
-Grund (Ticket 59): ``0020_bc_portfolio_params`` fügt
+Grund: ``0020_bc_portfolio_params`` fügt
 ``backtest_configs.slippage/stop_exit_price/stop_order_type`` hinzu - eine
 weitere Schema-Änderung an einer Baseline-Tabelle nach dieser Migration. Der
 Load muss am ECHTEN Ende der Schema-Kette laufen, damit das per pg_dump

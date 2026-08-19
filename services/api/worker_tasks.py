@@ -4,7 +4,7 @@ Worker-Tasks — RQ-Aufgaben für Hintergrund-Jobs
 Jede Task-Funktion wird vom RQ-Worker aufgerufen.
 - run_recompute_job: Equity-Recompute für einzelne Results
 - run_backtest_job: Kompletten Backtest starten (Strategie ausführen + DB speichern)
-- run_significance_permutation_job: Permutationstest eines Kandidaten (Ticket 79),
+- run_significance_permutation_job: Permutationstest eines Kandidaten,
   save-frei — schreibt ausschließlich den eigenen significance_tests-Datensatz
 """
 
@@ -93,10 +93,10 @@ def run_backtest_job(run_id: int) -> bool:
     )
     from user_data.utils.database.models import BacktestRun
     from user_data.utils.ohlc.loader import load_ohlc_data
-    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung beim Run-Start (einzige Rechenstelle,
+    # GEÄNDERT: Vorlauf-Prüfung beim Run-Start (einzige Rechenstelle,
     # dieselbe Funktion nutzt der Preflight)
     from user_data.strategies.generic.warmup import check_warmup
-    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
     from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
     from sqlalchemy import text
 
@@ -107,16 +107,16 @@ def run_backtest_job(run_id: int) -> bool:
         if not run:
             logger.error(f"[BACKTEST] Run #{run_id} nicht gefunden")
             return False
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json = dict(run.backtest_config_json)
         indicators_json = dict(run.indicators_config_json)
-        # testset_run_id für Increment-Logik merken (Ticket 05)
+        # testset_run_id für Increment-Logik merken
         testset_run_id = run.testset_run_id
-        # GEÄNDERT: Ticket 71 — Fortsetzungspunkt. Bei einem frischen oder neu
+        # GEÄNDERT: Fortsetzungspunkt. Bei einem frischen oder neu
         # gestarteten Lauf 0, bei einem fortgesetzten die Zahl der bereits
         # gespeicherten Chunks.
         completed_chunks = run.completed_chunks or 0
-        # GEÄNDERT: Ticket 21 — _rules-Fallback entfernt. Rules kommen ausschließlich aus iteration.spec_json.
+        # GEÄNDERT: _rules-Fallback entfernt. Rules kommen ausschließlich aus iteration.spec_json.
         if run.iteration_id is None or run.iteration is None:
             raise ValueError(
                 f"[BACKTEST] Run #{run_id}: iteration_id fehlt. "
@@ -137,7 +137,7 @@ def run_backtest_job(run_id: int) -> bool:
     logger.info(f"[BACKTEST] Start: {backtest_config_json['symbols'][0]} "
                 f"{backtest_config_json['exchange']} {backtest_config_json['timeframe']} (Run #{run_id})")
 
-    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung. Berichtet, blockiert nicht: der Lauf startet
+    # GEÄNDERT: Vorlauf-Prüfung. Berichtet, blockiert nicht: der Lauf startet
     # auch bei zu kurzem Vorlauf, die Meldung hängt aber am Run und steht im Log.
     warmup = check_warmup(backtest_config_json, indicators_json)
     update_backtest_run_warmup(run_id, warmup)
@@ -152,7 +152,7 @@ def run_backtest_job(run_id: int) -> bool:
         ohlc_data = load_ohlc_data(backtest_config_json)
 
         # Strategie-Funktion dynamisch laden und ausführen
-        # GEÄNDERT: Ticket 12 — rules_json explizit übergeben (kein _rules-Key mehr)
+        # GEÄNDERT: rules_json explizit übergeben (kein _rules-Key mehr)
         # GEÄNDERT: rules_json nur übergeben, wenn die Funktion es akzeptiert
         # (handgeschriebene Strategien haben keinen rules_json-Parameter)
         strategy_fn = load_strategy_function(backtest_config_json['import_path'])
@@ -172,7 +172,7 @@ def run_backtest_job(run_id: int) -> bool:
                     run_id, current_chunk, total_chunks
                 )
             )
-        # GEÄNDERT: Ticket 71 — Chunk-Senke injizieren. Jeder fertig gerechnete Chunk
+        # GEÄNDERT: Chunk-Senke injizieren. Jeder fertig gerechnete Chunk
         # geht sofort in die Datenbank, statt bis zum Ende im Speicher zu warten; ein
         # hart beendeter Lauf behält damit die Arbeit der abgeschlossenen Chunks und
         # ist über completed_chunks fortsetzbar. Kein try/except: scheitert das
@@ -202,8 +202,8 @@ def run_backtest_job(run_id: int) -> bool:
         strategy_results = strategy_fn(ohlc_data, **strategy_kwargs)
 
         # Ergebnisse in DB speichern
-        # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
-        # GEÄNDERT: Ticket 41 — rules und backtest_config für vollständigen Snapshot durchreichen
+        # GEÄNDERT: Spec-Runner-Version mitschreiben
+        # GEÄNDERT: rules und backtest_config für vollständigen Snapshot durchreichen
         n_results = save_strategy_results(
             run_id=run_id,
             strategy_results=strategy_results,
@@ -215,9 +215,9 @@ def run_backtest_job(run_id: int) -> bool:
         logger.info(f"[BACKTEST] Fertig: {n_results} Kombinationen gespeichert (Run #{run_id})")
         run_status = 'completed'
 
-        # GEÄNDERT: Ticket 60 — Selbstauskunft: hat der Lauf überhaupt Substanz?
+        # GEÄNDERT: Selbstauskunft: hat der Lauf überhaupt Substanz?
         # Reine Kennzeichnung am Run, die Results bleiben unangetastet.
-        # GEÄNDERT: Ticket 68 — 'metrics_auto_note' kommt aus create_backtest_run
+        # GEÄNDERT: 'metrics_auto_note' kommt aus create_backtest_run
         # (nur gesetzt, wenn 'auto' den Lauf tatsächlich gekürzt hat) und wird an die
         # Verwertbarkeits-Note angehängt, statt sie zu ersetzen.
         verdict = assess_run_usability(
@@ -235,7 +235,7 @@ def run_backtest_job(run_id: int) -> bool:
         update_backtest_run_status(run_id, status='failed', error_message=str(e))
         logger.error(f"[BACKTEST] Run #{run_id} fehlgeschlagen: {e}", exc_info=True)
 
-    # GEÄNDERT: Atomares Increment für TestSet-Runs (Ticket 05)
+    # GEÄNDERT: Atomares Increment für TestSet-Runs
     if testset_run_id is not None:
         _increment_testset_run(testset_run_id, run_status)
 
@@ -405,7 +405,7 @@ def run_ohlc_download_job(job_id: int) -> bool:
         if job_type == 'update':
             if not os.path.exists(datafile):
                 raise FileNotFoundError(f'Datei nicht gefunden: {datafile}')
-            # GEÄNDERT: Ticket 97 — auch lesender Zugriff steht unter der Datei-Sperre.
+            # GEÄNDERT: auch lesender Zugriff steht unter der Datei-Sperre.
             # HDF5 verweigert einem Leser das Öffnen, solange ein anderer Worker
             # gerade schreibt (dasselbe errno 11 wie bei zwei Schreibern); ohne die
             # Sperre hier bliebe die Planungsphase eine Fehlerquelle.
@@ -464,7 +464,7 @@ def run_ohlc_download_job(job_id: int) -> bool:
             })
             try:
                 if job_type == 'update':
-                    # GEÄNDERT: Ticket 97 — Datei-Sperre je Timeframe-Datei. Mehrere
+                    # GEÄNDERT: Datei-Sperre je Timeframe-Datei. Mehrere
                     # parallele Symbol-Jobs auf dieselbe Datei würden ohne Sperre in
                     # errno 11 laufen — sowohl beim Schreiben als auch beim Lesen
                     # (HDF5 verweigert das Öffnen, solange ein anderer Worker
@@ -561,7 +561,7 @@ def _delete_all_non_favorites() -> dict:
     beide Stern-Markierungen (is_favorite=0 UND is_doc_favorite=0) und meldet den
     Fortschritt ins RQ-Job-Meta (vom delete-status-Endpoint gelesen).
 
-    GEÄNDERT: Ticket 61 — Testset-Läufe, die durch die Run-Löschung leer werden,
+    GEÄNDERT: Testset-Läufe, die durch die Run-Löschung leer werden,
     werden mitgeräumt (nur die betroffenen, kein globaler Aufräumlauf).
 
     Returns:
@@ -571,7 +571,7 @@ def _delete_all_non_favorites() -> dict:
     from rq import get_current_job
     from sqlalchemy import text
 
-    # GEÄNDERT: Ticket 61 — Waisen-Schutz für die mitgelöschten Testset-Läufe
+    # GEÄNDERT: Waisen-Schutz für die mitgelöschten Testset-Läufe
     from user_data.utils.database.repository_testsets import purge_empty_testset_runs
 
     rq_job = get_current_job()
@@ -596,7 +596,7 @@ def _delete_all_non_favorites() -> dict:
     try:
         total_before = session.execute(text("SELECT count(*) FROM backtest_results")).scalar() or 0
         runs_before = session.execute(text("SELECT count(*) FROM backtest_runs")).scalar() or 0
-        # GEÄNDERT: Ticket 61 — betroffene Testset-Läufe vor dem Löschen merken
+        # GEÄNDERT: betroffene Testset-Läufe vor dem Löschen merken
         affected_testset_run_ids = [
             row[0] for row in session.execute(text(
                 "SELECT DISTINCT testset_run_id FROM backtest_runs WHERE testset_run_id IS NOT NULL"
@@ -700,7 +700,7 @@ def delete_all_runs_job() -> dict:
 def run_significance_permutation_job(
     test_id: int, metrics: list | None = None,
 ) -> bool:
-    """Rechnet den Permutationstest eines Kandidaten (Ticket 79).
+    """Rechnet den Permutationstest eines Kandidaten.
 
     Dünner Job-Mantel um `significance_runner.run_permutation_test` — dieselbe
     Arbeitsteilung wie `run_recompute_job` / `recompute_single_result`. Der Job
@@ -754,7 +754,7 @@ def _increment_testset_run(testset_run_id: int, run_status: str) -> None:
     """
     from user_data.utils.database.db import get_engine
     from sqlalchemy import text
-    # GEÄNDERT: Ticket 56 — Befund Phase 2 beim Abschluss des Testset-Laufs
+    # GEÄNDERT: Befund Phase 2 beim Abschluss des Testset-Laufs
     from services.api.utils.finding_aggregation import close_finding_for_testset_run
 
     engine = get_engine()
@@ -804,9 +804,9 @@ def _increment_testset_run(testset_run_id: int, run_status: str) -> None:
                     '[TESTSET-RUN] TestSetRun #%d abgeschlossen (%d/%d Runs)',
                     testset_run_id, row.n_runs_completed, row.n_runs_total,
                 )
-                # GEÄNDERT: Aggregat-Trigger (Ticket 06) — direkter Aufruf im Worker-Prozess
+                # GEÄNDERT: Aggregat-Trigger — direkter Aufruf im Worker-Prozess
                 _trigger_leaderboard_aggregation(testset_run_id)
-                # GEÄNDERT: Ticket 56 — Befund Phase 2. Dies ist der einzige Punkt, an
+                # GEÄNDERT: Befund Phase 2. Dies ist der einzige Punkt, an
                 # dem zuverlässig feststeht, dass alle Runs des Laufs fertig sind.
                 # Fehler reißen den Abschluss nicht ab (die Funktion protokolliert sie).
                 close_finding_for_testset_run(testset_run_id)
@@ -855,8 +855,7 @@ def reindex_vault_chunk_job(
     """Führt einen inkrementellen Vault-Reindex aus und schreibt Chunks in vault_chunks.
 
     Wird periodisch alle 5 Minuten vom scheduler-Container eingereiht sowie manuell
-    per API-Endpoint (Ticket 26) triggerbar. Protokolliert Lifecycle in vault_reindex_runs
-    (Ticket 28).
+    per API-Endpoint triggerbar. Protokolliert Lifecycle in vault_reindex_runs.
 
     Args:
         target_path: Relativer Pfad ab vault_root, z.B. 'strategies/teststrategie/status.md'.
@@ -875,7 +874,7 @@ def reindex_vault_chunk_job(
     from services.vbt.knowledge.indexer import reindex
     from user_data.utils.database.models import VaultReindexRun
 
-    # GEÄNDERT: Ticket 28 — Job-ID aus rq-Kontext ermitteln
+    # GEÄNDERT: Job-ID aus rq-Kontext ermitteln
     _job_id: str | None = None
     try:
         from rq import get_current_job as _get_current_job  # noqa: PLC0415
@@ -887,7 +886,7 @@ def reindex_vault_chunk_job(
 
     scope = 'single-file' if target_path else 'full'
 
-    # GEÄNDERT: Ticket 28 — Run-Eintrag auf 'running' setzen
+    # GEÄNDERT: Run-Eintrag auf 'running' setzen
     session = get_session()
     try:
         run_entry: VaultReindexRun | None = None
@@ -930,7 +929,7 @@ def reindex_vault_chunk_job(
         result = reindex(vault_root=vault_root, target_path=target)
         logger.info("[VAULT-JOB] Reindex-Ergebnis: %s", result)
     except Exception as exc:
-        # GEÄNDERT: Ticket 28 — Fehler in DB schreiben, dann Exception weiterwerfen
+        # GEÄNDERT: Fehler in DB schreiben, dann Exception weiterwerfen
         if run_db_id is not None:
             session = get_session()
             try:
@@ -950,7 +949,7 @@ def reindex_vault_chunk_job(
                 session.close()
         raise
 
-    # GEÄNDERT: Ticket 28 — Erfolg in DB schreiben
+    # GEÄNDERT: Erfolg in DB schreiben
     if run_db_id is not None:
         session = get_session()
         try:
@@ -968,7 +967,7 @@ def reindex_vault_chunk_job(
                 run_entry.files_reindexed = result.get('files_reindexed')
                 run_entry.files_deleted = result.get('files_deleted')
                 run_entry.chunks_written = result.get('chunks_written')
-                # GEÄNDERT: Ticket 34 — reindexierte und gelöschte Pfade als JSONB speichern
+                # GEÄNDERT: reindexierte und gelöschte Pfade als JSONB speichern
                 run_entry.files_changed = {
                     'reindexed': result.get('reindexed_paths', []),
                     'deleted': result.get('deleted_paths', []),

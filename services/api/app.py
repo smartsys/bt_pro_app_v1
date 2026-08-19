@@ -46,29 +46,29 @@ from fastapi.templating import Jinja2Templates
 from services.api.routes.api_backtest import router as api_router
 from services.api.routes.api_config import router as api_config_router
 from services.api.routes.api_chart_playground import router as api_chart_playground_router
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf api_testsets / views_testsets
+# GEÄNDERT: Naming-Cleanup auf api_testsets / views_testsets
 from services.api.routes.api_testsets import router as testsets_router
-# GEÄNDERT: TestSet-Runs API-Router (Ticket 05)
+# GEÄNDERT: TestSet-Runs API-Router
 from services.api.routes.api_testset_runs import router as api_testset_runs_router
-# GEÄNDERT: Ticket 56 — Befund-Lese-Router (ein Befund + Historie je Iteration)
+# GEÄNDERT: Befund-Lese-Router (ein Befund + Historie je Iteration)
 from services.api.routes.api_testset_run_findings import router as api_testset_run_findings_router
-# GEÄNDERT: Ticket 79 — Signifikanztest je Kandidat (Permutationstest + Bootstrap)
+# GEÄNDERT: Signifikanztest je Kandidat (Permutationstest + Bootstrap)
 from services.api.routes.api_significance import router as api_significance_router
-# GEÄNDERT: Ticket 82 — Walk-Forward als Fold-Kette (eigenes immutables Artefakt)
+# GEÄNDERT: Walk-Forward als Fold-Kette (eigenes immutables Artefakt)
 from services.api.routes.api_walk_forward_chains import router as api_walk_forward_chains_router
 from services.api.routes.api_walk_forward_chain_runs import router as api_walk_forward_chain_runs_router
 from services.api.routes.views_backtest import router as views_router
 from services.api.routes.views_config import router as views_config_router
 from services.api.routes.views_chart_playground import router as views_chart_playground_router
 from services.api.routes.views_testsets import router as views_testsets_router
-# GEÄNDERT: Leaderboard-Router (Ticket 07)
+# GEÄNDERT: Leaderboard-Router
 from services.api.routes.api_leaderboard import router as api_leaderboard_router
 from services.api.routes.views_leaderboard import router as views_leaderboard_router
-# GEÄNDERT: Strategie-Konzepte und Iterationen (Ticket 09)
+# GEÄNDERT: Strategie-Konzepte und Iterationen
 from services.api.routes.api_strategy import router as api_strategy_router
-# GEÄNDERT: Ticket 26 — Vault-Wissenssuche und Reindex-Endpoints
+# GEÄNDERT: Vault-Wissenssuche und Reindex-Endpoints
 from services.api.routes.api_knowledge import router as api_knowledge_router
-# GEÄNDERT: Ticket 29 — Knowledge-Frontend-Views
+# GEÄNDERT: Knowledge-Frontend-Views
 from services.api.routes.views_knowledge import router as views_knowledge_router
 # Onboarding-/Installations-Seite (/install)
 from services.api.routes.views_install import router as views_install_router
@@ -77,7 +77,7 @@ from services.api.routes.api_monitor import router as api_monitor_router
 from services.api.routes.views_monitor import router as views_monitor_router
 # Seed-Export/-Import über die GUI
 from services.api.routes.views_seed import router as views_seed_router
-# GEÄNDERT: Ticket 100 — Analyse-Screenshot über den Renderer-Dienst
+# GEÄNDERT: Analyse-Screenshot über den Renderer-Dienst
 from services.api.routes.api_analyse_screenshot import router as api_analyse_screenshot_router
 
 app = FastAPI(title="BT Pro App", version="1.0.0", debug=True)
@@ -90,7 +90,7 @@ app.mount('/static', StaticFiles(directory=str(FRONTEND_DIR / 'static')), name='
 templates = Jinja2Templates(directory=str(FRONTEND_DIR / 'templates'))
 templates.env.globals['APP_VERSION'] = os.getenv('APP_VERSION', '0.0.0')
 templates.env.globals['STATIC_TS'] = str(int(__import__('time').time()))
-# GEÄNDERT: Ticket 85 — Auto-Linking von URLs/Pfaden in Befund-Deutungstexten
+# GEÄNDERT: Auto-Linking von URLs/Pfaden in Befund-Deutungstexten
 from services.api.utils.autolink import autolink_html
 templates.env.filters['autolink'] = autolink_html
 app.state.templates = templates
@@ -99,30 +99,30 @@ app.state.templates = templates
 app.include_router(api_router)
 app.include_router(api_config_router)
 app.include_router(api_chart_playground_router)
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf testsets_router
+# GEÄNDERT: Naming-Cleanup auf testsets_router
 app.include_router(testsets_router)
-# GEÄNDERT: TestSet-Runs Router einbinden (Ticket 05)
+# GEÄNDERT: TestSet-Runs Router einbinden
 app.include_router(api_testset_runs_router)
-# GEÄNDERT: Ticket 56 — Befund-Lese-Router einbinden
+# GEÄNDERT: Befund-Lese-Router einbinden
 app.include_router(api_testset_run_findings_router)
-# GEÄNDERT: Ticket 79 — Signifikanztest-Router einbinden
+# GEÄNDERT: Signifikanztest-Router einbinden
 app.include_router(api_significance_router)
-# GEÄNDERT: Ticket 82 — Walk-Forward-Ketten-Router einbinden
+# GEÄNDERT: Walk-Forward-Ketten-Router einbinden
 app.include_router(api_walk_forward_chains_router)
 app.include_router(api_walk_forward_chain_runs_router)
 app.include_router(views_router)
 app.include_router(views_config_router)
 app.include_router(views_chart_playground_router)
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf views_testsets_router
+# GEÄNDERT: Naming-Cleanup auf views_testsets_router
 app.include_router(views_testsets_router)
-# GEÄNDERT: Leaderboard-Router einbinden (Ticket 07)
+# GEÄNDERT: Leaderboard-Router einbinden
 app.include_router(api_leaderboard_router)
 app.include_router(views_leaderboard_router)
-# GEÄNDERT: Strategie-Router einbinden (Ticket 09)
+# GEÄNDERT: Strategie-Router einbinden
 app.include_router(api_strategy_router)
-# GEÄNDERT: Ticket 26 — Knowledge-Router einbinden
+# GEÄNDERT: Knowledge-Router einbinden
 app.include_router(api_knowledge_router)
-# GEÄNDERT: Ticket 29 — Knowledge-Views-Router einbinden
+# GEÄNDERT: Knowledge-Views-Router einbinden
 app.include_router(views_knowledge_router)
 # Onboarding-/Installations-Seite einbinden
 app.include_router(views_install_router)
@@ -131,7 +131,7 @@ app.include_router(api_monitor_router)
 app.include_router(views_monitor_router)
 # Seed-Export/-Import einbinden
 app.include_router(views_seed_router)
-# GEÄNDERT: Ticket 100 — Analyse-Screenshot-Router einbinden
+# GEÄNDERT: Analyse-Screenshot-Router einbinden
 app.include_router(api_analyse_screenshot_router)
 
 

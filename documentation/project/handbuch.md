@@ -77,14 +77,14 @@ entscheidend, *was*:
 Bezugsfall: ein **Multiparameter-Lauf**. Pro Kombination existiert eine Zeile in
 `backtest_results`.
 
-**Die Kennzahlen sind vollständig, bevor die Analyse startet.** Seit Ticket 64 entstehen
+**Die Kennzahlen sind vollständig, bevor die Analyse startet.** Seit der Umstellung entstehen
 sie in genau einer Funktion, die für jeden Lauf denselben Satz liefert — egal ob der Lauf
 eine Kombination hatte oder dreitausend. Die früheren Berechnungsstufen (`partial`,
 `chart`, `full`), das Feld `metrics_level` und der Knopf „Vollanalyse starten" gibt es
 nicht mehr. Die Frage „welchen Rechenpfad ist dieses Result gelaufen?" ist damit nicht
 mehr stellbar.
 
-> **Bruch mit dem Altbestand — bewusst und ohne Umrechnung:** Results, die vor Ticket 64
+> **Bruch mit dem Altbestand — bewusst und ohne Umrechnung:** Results, die vor der Umstellung
 > entstanden sind, tragen weiterhin nur die Felder ihrer damaligen Stufe; bei ihnen sind
 > unter anderem `sqn`, `edge_ratio`, `tail_ratio` oder die Trade-Detail-Felder leer, und
 > `skew`/`kurtosis` fehlen ganz. Sie werden **nicht** nachgerechnet. Alte und neue Results
@@ -114,7 +114,7 @@ mehr stellbar.
 > liegt bei rund 3, nicht bei 0.
 
 > **`deflated_sharpe_ratio` entsteht als Nachlauf über den ganzen Lauf** und wird von der
-> Analyse nicht mehr angefasst (seit Ticket 54). Sie misst, ob der beste Kandidat nur der
+> Analyse nicht mehr angefasst (seit der Umstellung). Sie misst, ob der beste Kandidat nur der
 > Gewinner einer Zufallsauswahl ist, und rechnet dafür über **alle** Kombinationen des
 > Rasters — ein einzeln nachgerechnetes Result sieht nur sich selbst und könnte sie gar
 > nicht bestimmen. Bis dahin überschrieb jede gestartete Analyse den vorhandenen Wert mit
@@ -270,16 +270,16 @@ Eintrag bleibt in jedem Fall unverändert.
 | Werkzeug | macht |
 |---|---|
 | `concept:<id>` | Liest ein Strategie-Konzept aus und gibt Name, Slug und Kerndaten zurück. |
-| `iteration:<id>` | Liest eine Iteration aus und zeigt Indikatoren und Regeln aus dem spec_json, dazu die Anzahl der Log-Einträge und die letzten 3 (Text auf 200 Zeichen gekürzt, Ticket 67) — für den vollen Verlauf `iteration-log-list`. |
+| `iteration:<id>` | Liest eine Iteration aus und zeigt Indikatoren und Regeln aus dem spec_json, dazu die Anzahl der Log-Einträge und die letzten 3 (Text auf 200 Zeichen gekürzt) — für den vollen Verlauf `iteration-log-list`. |
 | `indicator-config:<id>` | Liest eine Indicator-Config aus und listet jeden Indikator mit seinen Parametern. |
 | `backtest-config:<id>` | Liest eine Backtest-Config aus (Symbol, Zeitraum, Portfolio-Einstellungen). |
 | `strategy-config:<id>` | Liest eine Strategy-Config aus (Legacy, hardcoded/generic). |
 | `result:<id>` | Liest ein einzelnes Result mit seinen Kennzahlen aus. |
-| `run:<id>` | Liest einen Run über den Einzel-GET aus (Ticket 70/C — unabhängig von den letzten N Runs). |
+| `run:<id>` | Liest einen Run über den Einzel-GET aus (unabhängig von den letzten N Runs). |
 | `testset:<id>` | Liest ein Testset mit seinen zugeordneten Configs aus. |
 | `leaderboard:<id>` | Liest einen Leaderboard-Eintrag im Drilldown aus. |
 | `playground-setup:<id>` | Liest ein Chart-Playground-Setup aus. |
-| `knowledge:"..." [--k <n>]` | Semantische Vektorsuche im Vault-Index, gibt die Top-Treffer zurück (Default 5, Ticket 70/D). |
+| `knowledge:"..." [--k <n>]` | Semantische Vektorsuche im Vault-Index, gibt die Top-Treffer zurück (Default 5). |
 | `vault:<pfad>` | Listet indizierte Vault-Dateien nach Pfad-Substring. |
 
 ### Listen — mehrere Objekte auf einmal
@@ -288,7 +288,7 @@ Eintrag bleibt in jedem Fall unverändert.
 |---|---|
 | `concept-list` | Listet alle Strategie-Konzepte. |
 | `iteration-list [concept_id]` | Listet alle Iterationen, optional auf ein Konzept gefiltert. |
-| `iteration-log-list --id <iteration_id>` | Listet alle Log-Einträge einer Iteration chronologisch aufsteigend mit Zeitstempel, Run-Bezug (falls gesetzt) und Text (Ticket 67). `--json` liefert die rohen Items. |
+| `iteration-log-list --id <iteration_id>` | Listet alle Log-Einträge einer Iteration chronologisch aufsteigend mit Zeitstempel, Run-Bezug (falls gesetzt) und Text. `--json` liefert die rohen Items. |
 | `backtest-config-list` | Listet alle Backtest-Configs. |
 | `indicator-config-list [concept_id] [iteration_id]` | Listet alle Indicator-Configs, optional auf Konzept/Iteration gefiltert. |
 | `result-list --run <id>` | Listet die Results eines Runs, optional nach Symbol/Timeframe gefiltert. |
@@ -322,11 +322,11 @@ Eintrag bleibt in jedem Fall unverändert.
 | `kreuztest --from-run <A> --to-run <B> [--user] [--tolerance <t> \| --tolerance-steps <N>]` | Schlägt die roten Doku-Favoriten (Bestwerte) aus Run A in Run B nach und gibt eine Vergleichstabelle der Metriken aus (`--user` nimmt gelbe Sterne dazu). Toleranz-Flags wie bei `result-lookup` (schließen sich aus). |
 | `kreuztest --from-testset-run <A> --to-testset-run <B> [--user] [--tolerance <t> \| --tolerance-steps <N>]` | Kreuz-Test über ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (BTC-Run zu BTC-Run usw.), je Paar eine Vergleichstabelle; Runs ohne Gegenstück werden ausgewiesen. **Achtung:** Bei mehreren Runs mit gleichem Symbol+Timeframe (z.B. eine Fold-Kette über Zeitfenster) trägt die Paarung nicht — je Schlüssel überlebt nur ein Paar, der Rest wird „OHNE PAAR" gemeldet (belegt 14.08.2026; Fold-Ketten-Auslesung kommt mit Roadmap Paket 7). |
 | `combo-trace --params "k=w,…" --testset-run <id> [--tolerance <t>] [--limit <n>]` | Verfolgt eine Parameterkombination über eine Run-Menge (1:N) und listet je Run den Treffer mit Symbol/Timeframe und Kennzahlen; Runs ohne Treffer werden ausgewiesen. Selektoren wie `run-bestwerte` (`--run` \| `--strategy [--version]` \| `--iteration` \| `--testset-run`). |
-| `befund --testset-run <testset_run_id>` | Liefert den jüngsten Befund dieses Testset-Laufs plus Gesamtzahl aller Befunde dieses Laufs (Ticket 77/A) — der direkte Anschluss an `testset-run-start`/`run-wait`, ohne den Umweg über `--iteration` und Ablesen der Befund-Nummer. |
-| `befund --id <befund_id>` | Liefert einen einzelnen Befund per **Befund-ID** (NICHT die Testset-Lauf-Nummer): Kontext + Soll, fünf Ist-Gruppen, Deutung getrennt gekennzeichnet, leere Felder mit Grund (Ticket 56). `--id` und `--testset-run` schließen sich aus. |
+| `befund --testset-run <testset_run_id>` | Liefert den jüngsten Befund dieses Testset-Laufs plus Gesamtzahl aller Befunde dieses Laufs — der direkte Anschluss an `testset-run-start`/`run-wait`, ohne den Umweg über `--iteration` und Ablesen der Befund-Nummer. |
+| `befund --id <befund_id>` | Liefert einen einzelnen Befund per **Befund-ID** (NICHT die Testset-Lauf-Nummer): Kontext + Soll, fünf Ist-Gruppen, Deutung getrennt gekennzeichnet, leere Felder mit Grund. `--id` und `--testset-run` schließen sich aus. |
 | `befund --iteration <id>` | Befund-Historie einer Iteration, chronologisch (kein Sortieren/Filtern, kein Verdict). |
 
-Die Lese-Werkzeuge `result-list`, `symbol-correlation`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest`, `combo-trace`, `iteration-log-list` und `befund` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen. Seit Ticket 77/C kombinierbar mit **`--out [datei]`**/**`--full`** (schließen sich aus, gleiche Semantik wie beim `api`-Verb): `--out` schreibt das vollständige JSON in eine Datei unter `<TEMP>/bt-toolbox-out/` statt auf stdout (Konsole nur Pfad + Zeichenzahl); ohne `--out`/`--full` bleibt die Konsolen-Ausgabe unverändert vollständig (kein 4000-Zeichen-Limit wie bei den GET-Werkzeugen unten — die `--json`-Ausgabe ist als maschinenlesbares, direkt parsebares JSON gedacht).
+Die Lese-Werkzeuge `result-list`, `symbol-correlation`, `run-top-results`, `run-best`, `run-favorites-list`, `vergleichstabelle`, `result-lookup`, `result-query`, `kreuztest`, `combo-trace`, `iteration-log-list` und `befund` kennen zusätzlich das Flag **`--json`**: Ausgabe der rohen Items als JSON statt formatiertem Markdown — für Folge-Analysen, ohne Zahlen aus Text zurückzuparsen. Seit der Umstellung kombinierbar mit **`--out [datei]`**/**`--full`** (schließen sich aus, gleiche Semantik wie beim `api`-Verb): `--out` schreibt das vollständige JSON in eine Datei unter `<TEMP>/bt-toolbox-out/` statt auf stdout (Konsole nur Pfad + Zeichenzahl); ohne `--out`/`--full` bleibt die Konsolen-Ausgabe unverändert vollständig (kein 4000-Zeichen-Limit wie bei den GET-Werkzeugen unten — die `--json`-Ausgabe ist als maschinenlesbares, direkt parsebares JSON gedacht).
 
 Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--full`** gegen die 4000-Zeichen-Kappung (gleiche Semantik wie beim `api`-Verb, siehe „Generisch" unten; schließen sich gegenseitig aus):
 
@@ -362,7 +362,7 @@ Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--fu
 | `copy iteration:<id>` | Kopiert eine Iteration, das Original bleibt unverändert. |
 | `copy backtest-config:<id>` | Kopiert eine Backtest-Config. |
 | `copy indicator-config:<id>` | Kopiert eine Indicator-Config. |
-| `iteration-log-add --id <iteration_id> --text "..." [--run <run_id>]` | Hängt einen Freitext-Eintrag ans append-only Denkprotokoll einer Iteration (Ticket 67) — warum ein Versuch unternommen wurde, was aus dem Ergebnis geschlossen wird. Kein Update-/Delete-Verb, Einträge sind unveränderlich. `--run` ist eine optionale lose Referenz (kein FK). |
+| `iteration-log-add --id <iteration_id> --text "..." [--run <run_id>]` | Hängt einen Freitext-Eintrag ans append-only Denkprotokoll einer Iteration — warum ein Versuch unternommen wurde, was aus dem Ergebnis geschlossen wird. Kein Update-/Delete-Verb, Einträge sind unveränderlich. `--run` ist eine optionale lose Referenz (kein FK). |
 
 ### Starten — einen Lauf auslösen
 
@@ -375,7 +375,7 @@ Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--fu
 | `playground-setup-run-backtest` | Startet einen vollen Backtest aus einem Playground-Setup. |
 | `playground-run-backtest-lite` | Startet einen schnellen Lite-Backtest aus einem Playground-Setup (ohne DB). |
 
-### Prüfen vor dem Start / Warten aufs Ende (Ticket 60)
+### Prüfen vor dem Start / Warten aufs Ende
 
 | Werkzeug | macht |
 |---|---|
@@ -383,7 +383,7 @@ Die folgenden rohen GET-Werkzeuge kennen zusätzlich **`--out [datei]`**/**`--fu
 | `run-wait --run <id> [--timeout <s>]` | Pollt aktiv bis der Run `completed`/`failed` ist (Default-Timeout 1800s), dann Dauer, Result-Zahl, ggf. Fehlermeldung. Timeout meldet sich als Timeout, nicht als Fehlschlag. |
 | `run-wait --testset-run <id> [--timeout <s>]` | Dasselbe für alle Runs eines Testset-Laufs. |
 
-### Signifikanztest je Kandidat (Ticket 79)
+### Signifikanztest je Kandidat
 
 Berichtet, filtert nicht: es gibt kein Bestanden-Feld und keine Sortierung nach p-Wert.
 
@@ -393,7 +393,7 @@ Berichtet, filtert nicht: es gibt kein Bestanden-Feld und keine Sortierung nach 
 | `signifikanz --id <id>` | Ein Test: Methode, N, Seed und je Metrik echter Wert **plus** Null-Verteilungs-Kennwerte **plus** p-Wert nebeneinander — ein p-Wert erscheint nie ohne seine Null-Verteilung. `--json` für die rohen Daten. |
 | `signifikanz-list --result <id>` | Test-Historie eines Results, chronologisch. |
 
-### Walk-Forward-Fold-Kette (Ticket 82)
+### Walk-Forward-Fold-Kette
 
 N-mal „auf einem Zeitfenster optimieren → Sieger einfrieren → auf dem nächsten, ungesehenen
 Zeitfenster testen". Fold-Zahl, Fensterlängen und Auswahlkriterium stehen beim Start fest
@@ -408,7 +408,7 @@ Güte-Sortierung — und das Aggregat wird nie ohne seine Fold-Tabelle zitiert. 
 | `walk-forward-chain --id <id>` | Liest eine Kette: Plan mit Kriterium, Fold-Tabelle mit IS-Wert **neben** OOS-Wert (die Degradation ist die Aussage), Sieger-Kopien, Gesamtblock und Methodenhinweis. Das Aggregat erscheint nie ohne die Fold-Tabelle. `--json` für die rohen Daten. |
 | `walk-forward-chain-list [--iteration <id>]` | Ketten-Historie, chronologisch. Bewusst ohne Kennzahlen — die stehen nur zusammen mit ihrer Fold-Tabelle im Einzel-Read. |
 
-### Analyse-Screenshot (Ticket 100)
+### Analyse-Screenshot
 
 | Werkzeug | macht |
 |---|---|
@@ -452,7 +452,7 @@ Güte-Sortierung — und das Aggregat wird nie ohne seine Fold-Tabelle zitiert. 
 |---|---|
 | `<bereich>-delete <id>` | Löscht ein Objekt (concept/iteration zusätzlich mit `--force --delete_vault`). |
 | `<bereich>-bulk-delete --ids 1,2,3` | Löscht mehrere Objekte auf einmal (indicator-config/result/run/playground-setup). |
-| `result-delete-all [--run <id> \| --testset-run <id>]` | Löscht Results außer den geschützten Favoriten. Ohne Flag global (asynchroner Hintergrund-Job). Mit `--run`/`--testset-run` (schließen sich aus, Ticket 77/B) synchron auf die Menge eingegrenzt — Favoriten und fremde Objekte bleiben unberührt; die Antwort benennt `deleted_results`/`deleted_runs`/`deleted_run_ids` (kein globaler Orphan-Sweep, Ticket-75-Scope-Regel). |
+| `result-delete-all [--run <id> \| --testset-run <id>]` | Löscht Results außer den geschützten Favoriten. Ohne Flag global (asynchroner Hintergrund-Job). Mit `--run`/`--testset-run` (schließen sich aus) synchron auf die Menge eingegrenzt — Favoriten und fremde Objekte bleiben unberührt; die Antwort benennt `deleted_results`/`deleted_runs`/`deleted_run_ids` (kein globaler Orphan-Sweep, Scope-Regel). |
 | `run-delete-all` | Löscht alle Runs außer den geschützten Favoriten (ausschließlich global). |
 | `knowledge-reset` | Setzt die Wissens-Datenbank zurück (leert den Index). |
 

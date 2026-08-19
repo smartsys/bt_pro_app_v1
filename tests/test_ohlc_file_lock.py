@@ -1,4 +1,4 @@
-"""Tests für die Schreibsperre je OHLC-Timeframe-Datei (Ticket 97).
+"""Tests für die Schreibsperre je OHLC-Timeframe-Datei.
 
 Prüft `services/api/ohlc_file_lock.py` ohne echte Redis-Verbindung: die Sperre
 nimmt eine Connection per Dependency Injection (`connection=...`), dafür genügt

@@ -322,7 +322,7 @@ def test_across_runs_step_mode_uses_per_run_steps(db_engine, session):
 
 
 # ============================================================================
-# Ticket 60 — Long/Short-Aufteilung in den Lookup-Ergebnissen
+# Long/Short-Aufteilung in den Lookup-Ergebnissen
 # ============================================================================
 
 def test_lookup_includes_long_short_trade_split(db_engine, session):
@@ -341,7 +341,7 @@ def test_lookup_includes_long_short_trade_split(db_engine, session):
     assert items[0]['short_trades'] == 3
 
 
-def test_lookup_long_short_none_for_pre_ticket60_results(db_engine, session):
+def test_lookup_long_short_none_for_legacy_results(db_engine, session):
     """Alt-Results ohne long_trades/short_trades (NULL) liefern die Felder als None, kein Fehler."""
     run = _make_run(session)
     _add_result(session, run, {'length': 10.0}, 50.0)

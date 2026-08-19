@@ -1,4 +1,4 @@
-"""Tests für den Einzel-Run-Endpunkt GET /api/backtest/runs/{run_id} (Ticket 70/C).
+"""Tests für den Einzel-Run-Endpunkt GET /api/backtest/runs/{run_id}.
 
 Prüft: der Einzel-Endpunkt liefert exakt dieselbe Feldform wie ein Element der
 Runs-Liste (beide nutzen _serialize_runs), eine unbekannte ID liefert 404 im

@@ -1,4 +1,4 @@
-"""Tests für Sentinel-Row-Logik im Vault-Indexer (Ticket 33, Teil A).
+"""Tests für Sentinel-Row-Logik im Vault-Indexer (Teil A).
 
 Prüft, dass Stub-Dateien (0 Chunks) eine Sentinel-Row in vault_chunks
 erhalten und beim nächsten Lauf korrekt als unverändert erkannt werden.

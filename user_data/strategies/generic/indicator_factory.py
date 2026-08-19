@@ -196,7 +196,7 @@ def stops_from_portfolio(portfolio_cfg: dict) -> dict:
 
 
 # Param-Alias-Map: Spec-Feldname -> Factory-Param-Name pro Indikator-Typ.
-# Aktuell leer — dwsFastSMA nutzt seit Ticket 19 direkt 'multiplier'.
+# Aktuell leer — dwsFastSMA nutzt seit der Umstellung direkt 'multiplier'.
 _PARAM_ALIASES: dict[str, dict[str, str]] = {}
 
 
@@ -242,7 +242,7 @@ def run_indicator_nan_safe(factory: Any, *args: Any, **run_kwargs: Any) -> Any:
     return factory.run(*args, skipna=True, split_columns=True, **run_kwargs)
 
 
-# GEÄNDERT: Ticket 53 — Getragene Ketten-Param-Level id-benennen (7x-Blowup-Fix).
+# GEÄNDERT: Getragene Ketten-Param-Level id-benennen (7x-Blowup-Fix).
 # Ein Indikator, der einen anderen als Chain-Input traegt, fuehrte dessen Param-Level
 # bisher unter dem Factory-Namen (z.B. 'dwsfastsma_length') statt dem Spec-ID-Namen
 # ('fast_sma_length') mit. Wird derselbe Indikator zugleich direkt referenziert (dort
@@ -378,7 +378,7 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
             inst = run_indicator_nan_safe(
                 factory, **inputs_kwargs, **params_kwargs, param_product=True
             )
-            # GEÄNDERT: Ticket 53 — Param-Level auf den ID-Namen umbenennen, BEVOR die
+            # GEÄNDERT: Param-Level auf den ID-Namen umbenennen, BEVOR die
             # Instanz als Chain-Input oder Direkt-Referenz konsumiert wird (Instanz
             # ersetzen, nicht mutieren — VBT-Instanzen sind immutable).
             results[ind_id] = _rename_indicator_instance(inst, ind_id)
@@ -392,7 +392,7 @@ def build_indicators(indicators_json: dict, ohlc_data: Any,
         )
         inst = run_indicator_nan_safe(factory, **inputs_kwargs, **params_kwargs, param_product=True)
 
-        # GEÄNDERT: Ticket 53 — dieselbe ID-Umbenennung fuer den Per-tf-Zweig, plain-pandas
+        # GEÄNDERT: dieselbe ID-Umbenennung fuer den Per-tf-Zweig, plain-pandas
         # auf den realignten DataFrames (die innere Instanz bleibt unveraendert, siehe
         # _rename_realigned_output-Docstring).
         short_name = getattr(inst, 'short_name', None)
@@ -743,7 +743,7 @@ def count_total_combos(indicators_json: dict) -> int:
     return describe_combos(indicators_json)['total']
 
 
-# GEÄNDERT: Ticket 44 — Combo-Batching: indicators_json in kartesische Sub-Grids aufteilen
+# GEÄNDERT: Combo-Batching: indicators_json in kartesische Sub-Grids aufteilen
 def split_indicators_json_chunks(
     indicators_json: dict,
     chunk_size: int = 5000,

@@ -7,12 +7,12 @@ GET /config/backtest/{id}         — Backtest-Config bearbeiten
 GET /config/indicator             — Indicator-Configs Übersicht
 GET /config/indicator/new         — Neue Indicator-Config anlegen
 GET /config/indicator/{id}        — Indicator-Config bearbeiten
-GET /config/strategy-concepts     — Strategie-Konzepte Übersicht (Ticket 11)
+GET /config/strategy-concepts     — Strategie-Konzepte Übersicht
 GET /backtest/start               — Backtest starten (Config + Indicator auswahelen)
 GET /config/strategy-concepts/{concept_id}/iterations/{iteration_id}/log — Iterations-Log,
-                                     read-only (Ticket 67)
+                                     read-only
 GET /config/strategy-concepts/{concept_id} — Konzept-Detailseite: Ziel neben
-                                     Befund-Historie, read-only (Ticket 85)
+                                     Befund-Historie, read-only
 """
 
 import os
@@ -180,7 +180,7 @@ def backtest_config_edit_page(request: Request, config_id: int) -> HTMLResponse:
             'size_type': config.size_type,
             'init_cash': config.init_cash,
             'fees': config.fees,
-            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter analog fees an den Formular-Kontext
+            # GEÄNDERT: drei Portfolio-Parameter analog fees an den Formular-Kontext
             'slippage': config.slippage,
             'stop_exit_price': config.stop_exit_price,
             'stop_order_type': config.stop_order_type,
@@ -244,7 +244,7 @@ def indicator_config_edit_page(request: Request, config_id: int) -> HTMLResponse
             'description': config.description,
             'config_json': config.config_json,
             'is_default': config.is_default,
-            # GEÄNDERT: Ticket 22 — Concept/Iteration-Verknüpfung an Template übergeben
+            # GEÄNDERT: Concept/Iteration-Verknüpfung an Template übergeben
             'strategy_concept_id': config.strategy_concept_id,
             'strategy_iteration_id': config.strategy_iteration_id,
         }
@@ -335,7 +335,7 @@ def playground_setup_edit_page(request: Request, setup_id: int) -> HTMLResponse:
 
 
 # ============================================================================
-# Strategie-Konzepte (GEÄNDERT: Ticket 11 — zweistufige Ansicht Concepts -> Iterations)
+# Strategie-Konzepte (GEÄNDERT: zweistufige Ansicht Concepts -> Iterations)
 # ============================================================================
 
 @router.get('/strategy-concepts', response_class=HTMLResponse)
@@ -395,7 +395,7 @@ def strategy_iteration_edit_page(request: Request, concept_id: int, iteration_id
         if not concept or not iteration:
             return HTMLResponse('<h1>Nicht gefunden</h1>', status_code=404)
         concept_data = {'id': concept.id, 'slug': concept.slug, 'name': concept.name}
-        # GEÄNDERT: Ticket 16 — obsidian_path entfernt; vault_exists live aus Filesystem
+        # GEÄNDERT: obsidian_path entfernt; vault_exists live aus Filesystem
         iteration_data = {
             'id': iteration.id,
             'concept_id': iteration.concept_id,
@@ -434,7 +434,7 @@ def strategy_iteration_edit_page(request: Request, concept_id: int, iteration_id
     )
 
 
-# GEÄNDERT: Ticket 67 — read-only Ansicht des Iterations-Logs (append-only Denkprotokoll)
+# GEÄNDERT: read-only Ansicht des Iterations-Logs (append-only Denkprotokoll)
 @router.get('/strategy-concepts/{concept_id}/iterations/{iteration_id}/log', response_class=HTMLResponse)
 def strategy_iteration_log_page(request: Request, concept_id: int, iteration_id: int) -> HTMLResponse:
     """Iterations-Log lesen — chronologische, read-only Liste der Log-Einträge.
@@ -491,7 +491,7 @@ def strategy_iteration_log_page(request: Request, concept_id: int, iteration_id:
 
 
 def _build_finding_display(finding: dict, iteration, testset_name) -> dict:
-    """Bereitet einen einzelnen Befund für die Konzept-Detailseite auf (Ticket 85).
+    """Bereitet einen einzelnen Befund für die Konzept-Detailseite auf.
 
     Löst verschachtelte JSON-Blöcke einmalig auf sichere Defaults auf (leeres
     Dict/Liste statt None bei offenen Befunden), damit das Template ohne
@@ -540,7 +540,7 @@ def _build_finding_display(finding: dict, iteration, testset_name) -> dict:
     }
 
 
-# GEÄNDERT: Ticket 85 — Konzept-Detailseite: Ziel im Wortlaut neben der chronologischen
+# GEÄNDERT: Konzept-Detailseite: Ziel im Wortlaut neben der chronologischen
 # Befund-Historie. Kein Verdict, keine Güte-Sortierung (dieselbe Regel wie am Befund selbst).
 @router.get('/strategy-concepts/{concept_id}', response_class=HTMLResponse)
 def strategy_concept_detail_page(request: Request, concept_id: int) -> HTMLResponse:
@@ -549,7 +549,7 @@ def strategy_concept_detail_page(request: Request, concept_id: int) -> HTMLRespo
     Zeigt den Kopf des Konzepts, das Ziel (`goal_prompt` im Wortlaut + lesbar
     formatiertes `goal_json`) sowie die vollständige Befund-Historie
     (chronologisch, `GET /api/testset-run-findings/by-concept`). Bearbeitet wird
-    weiterhin ausschließlich in der Übersicht (Ticket 66).
+    weiterhin ausschließlich in der Übersicht.
     """
     session = get_session()
     try:

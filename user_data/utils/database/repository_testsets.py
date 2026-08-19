@@ -2,9 +2,9 @@
 Repository-Funktionen für TestSets, TestSetRuns und LeaderboardEntries
 
 Isolierter Themenbereich für TestSet-Verwaltung (Tickets 02-07).
-Enthält CRUD-Operationen für TestSets (Ticket 02) sowie
-TestSetRun- und LeaderboardEntry-Operationen (Ticket 03) sowie
-Aggregat-Berechnung (Ticket 06).
+Enthält CRUD-Operationen für TestSets sowie
+TestSetRun- und LeaderboardEntry-Operationen sowie
+Aggregat-Berechnung.
 """
 
 import logging
@@ -27,7 +27,7 @@ from user_data.utils.database.models import (
 logger = logging.getLogger(__name__)
 
 
-# GEÄNDERT: Ticket 61 — eigener Fehlertyp für den Lösch-Konflikt am TestSet.
+# GEÄNDERT: eigener Fehlertyp für den Lösch-Konflikt am TestSet.
 # GEÄNDERT: Der Fehler ist keine endgültige Ablehnung mehr, sondern der Anlass für
 # eine Rückfrage: Er meldet, was am TestSet noch dranhängt, damit die Oberfläche
 # den Löschwunsch bestätigen lassen kann (Löschen dann mit force=True).
@@ -74,7 +74,7 @@ def _validate_backtest_config_ids(session: Session, backtest_config_ids: List[in
         )
 
 
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf testset-Funktionsnamen
+# GEÄNDERT: Naming-Cleanup auf testset-Funktionsnamen
 
 def create_testset(
     session: Session,
@@ -104,7 +104,7 @@ def create_testset(
     testset = TestSet(
         name=name,
         description=description,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=backtest_config_ids,
         leaderboard_enabled=leaderboard_enabled,
         created_by=created_by,
@@ -194,7 +194,7 @@ def update_testset(
 
     if backtest_config_ids is not None:
         _validate_backtest_config_ids(session, backtest_config_ids)
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         testset.backtest_config_ids_json = backtest_config_ids
 
     if name is not None:
@@ -215,9 +215,9 @@ def update_testset(
 def delete_testset(session: Session, testset_id: int, force: bool = False) -> Optional[bool]:
     """Löscht ausschließlich das TestSet selbst — alles Nachgelagerte bleibt stehen.
 
-    GEÄNDERT: Ticket 61 — fing eine Fremdschlüsselverletzung ab (roher HTTP-500),
+    GEÄNDERT: fing eine Fremdschlüsselverletzung ab (roher HTTP-500),
     weil testset_runs.testset_id damals per Fremdschlüssel auf testsets.id zeigte.
-    GEÄNDERT: Ticket 62 — der Fremdschlüssel wurde per Migration entfernt
+    GEÄNDERT: der Fremdschlüssel wurde per Migration entfernt
     (0019_drop_testset_runs_fk); testset_runs.testset_id ist seitdem auch in der
     Datenbank eine lose Referenz. Die Prüfung blieb dabei als harte Ablehnung stehen.
     GEÄNDERT: Aus der Ablehnung wird eine Rückfrage. Ein TestSet ist nur die
@@ -265,7 +265,7 @@ def delete_testset(session: Session, testset_id: int, force: bool = False) -> Op
     return True
 
 
-# GEÄNDERT: Ticket 61 — Waisen-Schutz beim Löschen von Backtest-Runs.
+# GEÄNDERT: Waisen-Schutz beim Löschen von Backtest-Runs.
 def purge_empty_testset_runs(session: Session, testset_run_ids: Iterable[Optional[int]]) -> int:
     """Entfernt die Testset-Läufe aus der Liste, auf die kein Backtest-Run mehr zeigt.
 
@@ -303,7 +303,7 @@ def purge_empty_testset_runs(session: Session, testset_run_ids: Iterable[Optiona
 
 
 # ============================================================================
-# TestSetRun (Ticket 03)
+# TestSetRun
 # ============================================================================
 
 def create_testset_run(
@@ -319,11 +319,11 @@ def create_testset_run(
 ) -> TestSetRun:
     """Legt einen neuen TestSetRun an.
 
-    GEÄNDERT: Ticket 15 — indicators_config_json direkt (kein indicator_config_id FK mehr).
+    GEÄNDERT: indicators_config_json direkt (kein indicator_config_id FK mehr).
 
     Args:
         session: Aktive SQLAlchemy-Session.
-        testset_id: Lose Referenz auf testsets.id (kein FK, siehe Ticket 62).
+        testset_id: Lose Referenz auf testsets.id (kein FK).
         strategy_family: Strategie-Familie (z.B. "teststrategie").
         strategy_name: Strategie-Name (z.B. "teststrategie_v1").
         n_runs_total: Gesamtanzahl der geplanten Runs.
@@ -340,7 +340,7 @@ def create_testset_run(
         strategy_family=strategy_family,
         strategy_name=strategy_name,
         n_runs_total=n_runs_total,
-        # GEÄNDERT: Ticket 15 — JSON inline statt FK
+        # GEÄNDERT: JSON inline statt FK
         indicators_config_json=indicators_config_json or {},
         triggered_by=triggered_by,
         created_by=created_by,
@@ -402,7 +402,7 @@ def update_testset_run_status(
 
 
 # ============================================================================
-# LeaderboardEntry (Ticket 03)
+# LeaderboardEntry
 # ============================================================================
 
 def create_leaderboard_entry(
@@ -425,7 +425,7 @@ def create_leaderboard_entry(
     """Legt einen neuen LeaderboardEntry mit Snapshots an.
 
     Aggregate (total_return_avg, max_drawdown_avg etc.) sind nullable und
-    werden in Ticket 06 befüllt. configs_passed und filter_breached sind
+    werden befüllt. configs_passed und filter_breached sind
     ebenfalls nullable, solange kein Goal-Filter definiert ist.
 
     Args:
@@ -456,7 +456,7 @@ def create_leaderboard_entry(
         indicator_config_id=indicator_config_id,
         spec_runner_version=spec_runner_version,
         configs_total=configs_total,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         testset_snapshot_json=testset_snapshot,
         indicator_config_snapshot_json=indicator_config_snapshot,
         strategy_snapshot_json=strategy_snapshot,
@@ -542,7 +542,7 @@ def list_leaderboard_entries_with_triggered_by(
 
 
 # ============================================================================
-# Aggregat-Berechnung (Ticket 06)
+# Aggregat-Berechnung
 # ============================================================================
 
 def build_leaderboard_entry_for_testset_run(
@@ -653,7 +653,7 @@ def _build_leaderboard_entry_in_session(
     if testset is not None:
         testset_name: Optional[str] = testset.name
         testset_description: Optional[str] = testset.description
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         config_ids: List[int] = list(testset.backtest_config_ids_json or [])
         leaderboard_enabled = bool(testset.leaderboard_enabled)
         snapshot_configs: Dict[int, Dict[str, Any]] = {}
@@ -686,7 +686,7 @@ def _build_leaderboard_entry_in_session(
         rows = session.query(BacktestConfig).filter(BacktestConfig.id.in_(config_ids)).all()
         configs_by_id = {c.id: c for c in rows}
 
-    # GEÄNDERT: Ticket 15 — indicators_config_json direkt aus testset_run lesen (kein FK mehr)
+    # GEÄNDERT: indicators_config_json direkt aus testset_run lesen (kein FK mehr)
     indicators_config_json_snapshot: Optional[Dict[str, Any]] = testset_run.indicators_config_json or None
 
     # --- BacktestRuns für diesen TestSetRun in Reihenfolge der config_ids ermitteln ---
@@ -708,7 +708,7 @@ def _build_leaderboard_entry_in_session(
 
     # Mapping: backtest_config_id -> BacktestRun
     # Die BacktestConfig-ID liegt im JSON-Feld backtest_config_json['backtest_config_id']
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     runs_by_config_id: Dict[int, BacktestRun] = {}
     for run in all_runs:
         bc_json = run.backtest_config_json or {}
@@ -778,7 +778,7 @@ def _build_leaderboard_entry_in_session(
     # --- Snapshots bauen ---
 
     # testset_snapshot_json: TestSet-Zeile + referenzierte BacktestConfig-Inhalte
-    # GEÄNDERT: Ticket 15 — _json-Suffix im Snapshot-Key
+    # GEÄNDERT: _json-Suffix im Snapshot-Key
     # GEÄNDERT: Fehlt eine BacktestConfig in der Datenbank, wird ihr Eintrag aus dem
     # vorherigen Snapshot übernommen (nur im Fallback-Fall belegt) — sonst verlöre der
     # Rerun mit jedem Durchlauf mehr Config-Inhalte.
@@ -801,7 +801,7 @@ def _build_leaderboard_entry_in_session(
             'size_type': c.size_type,
             'init_cash': c.init_cash,
             'fees': c.fees,
-            # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter mit einfrieren.
+            # GEÄNDERT: die drei Portfolio-Parameter mit einfrieren.
             # Dieser Snapshot ist die Quelle des Leaderboard-Reruns: fehlt ein Feld
             # hier, liefert der Rerun dauerhaft None, egal was der Recompute-Code tut.
             'slippage': c.slippage,
@@ -824,14 +824,14 @@ def _build_leaderboard_entry_in_session(
     }
 
     # indicator_config_snapshot_json: Snapshot der Indikator-Config
-    # GEÄNDERT: Ticket 15 — direkt aus testset_run.indicators_config_json (kein FK mehr)
+    # GEÄNDERT: direkt aus testset_run.indicators_config_json (kein FK mehr)
     indicator_config_snapshot: Optional[Dict[str, Any]] = None
     if indicators_config_json_snapshot:
         indicator_config_snapshot = {
             'config_json': indicators_config_json_snapshot,
         }
 
-    # GEÄNDERT: Ticket 40 — spec_json aus StrategyIteration via einzigen Lookup einbetten
+    # GEÄNDERT: spec_json aus StrategyIteration via einzigen Lookup einbetten
     # Alle BacktestRuns eines TestSetRuns teilen dieselbe iteration_id (gesetzt in api_testset_runs.py).
     # Kein FK gesetzt — lose/löschfest, konsistent mit indicator_config_id.
     iteration_spec_json: Optional[Dict[str, Any]] = None
@@ -849,7 +849,7 @@ def _build_leaderboard_entry_in_session(
             iteration_spec_json = dict(iteration_row.spec_json)
 
     # strategy_snapshot_json: Grunddaten + eingebettetes spec_json für Reproduzierbarkeit
-    # GEÄNDERT: Ticket 15 — _json-Suffix im Snapshot-Key
+    # GEÄNDERT: _json-Suffix im Snapshot-Key
     strategy_snapshot: Dict[str, Any] = {
         'strategy_family': testset_run.strategy_family,
         'strategy_name': testset_run.strategy_name,
@@ -857,7 +857,7 @@ def _build_leaderboard_entry_in_session(
     }
     if iteration_spec_json is not None:
         strategy_snapshot['spec_json'] = iteration_spec_json
-    # GEÄNDERT: Ticket 101 — iteration_id mit einfrieren, damit der Rerun-Befund sie
+    # GEÄNDERT: iteration_id mit einfrieren, damit der Rerun-Befund sie
     # direkt aus dem Schnappschuss lesen kann statt über die IndicatorConfig zu gehen.
     # Bewusst als Schnappschuss-Key, keine neue Spalte (siehe Ticket-Anforderung 1).
     if source_iteration_id is not None:
@@ -893,7 +893,7 @@ def _build_leaderboard_entry_in_session(
         sharpe_avg=sharpe_avg,
         configs_passed=None,
         filter_breached=None,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         testset_snapshot_json=testset_snapshot,
         indicator_config_snapshot_json=indicator_config_snapshot,
         strategy_snapshot_json=strategy_snapshot,

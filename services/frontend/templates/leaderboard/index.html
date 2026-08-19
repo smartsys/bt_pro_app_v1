@@ -143,7 +143,7 @@
   </div>
 </div>
 
-<!-- Modal: Rerun-Bestätigung + Ergebnis (Ticket 63/85) -->
+<!-- Modal: Rerun-Bestätigung + Ergebnis -->
 <div class="modal modal-blur fade" id="modal-rerun" tabindex="-1" role="dialog" aria-hidden="true">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
@@ -561,7 +561,7 @@ document.addEventListener("DOMContentLoaded", function() {
     openDrilldown(rowData);
   });
 
-  // --- Leaderboard-Rerun (Ticket 63/85): Bestätigungsdialog + Ergebnisanzeige ---
+  // --- Leaderboard-Rerun: Bestätigungsdialog + Ergebnisanzeige ---
   var rerunModalEl = document.getElementById('modal-rerun');
   var rerunModal = null;
   var rerunTargetId = null;
@@ -720,7 +720,7 @@ document.addEventListener("DOMContentLoaded", function() {
         {
           data: 'n_trades',
           className: 'text-end',
-          // GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner:
+          // GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner:
           // die Quote rechnet über die geschlossenen Trades (n_trades - open_trades). Die
           // offenen Positionen stehen deshalb direkt in der Trades-Zelle.
           render: function(d, type, row) {

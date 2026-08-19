@@ -1,4 +1,4 @@
-"""Tests für files_changed JSONB-Spalte in vault_reindex_runs (Ticket 34).
+"""Tests für files_changed JSONB-Spalte in vault_reindex_runs.
 
 Prüft:
 - Reindex mit zwei Dateien: files_changed enthält beide Pfade unter 'reindexed'.

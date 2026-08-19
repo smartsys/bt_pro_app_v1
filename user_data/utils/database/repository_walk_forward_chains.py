@@ -1,4 +1,4 @@
-"""Repository-Funktionen der Walk-Forward-Fold-Kette (Ticket 82).
+"""Repository-Funktionen der Walk-Forward-Fold-Kette.
 
 Der Datensatz entsteht beim Start mit dem vollständigen Plan (Vorregistrierung),
 wächst danach ausschließlich um angehängte Fold-Blöcke und wird genau einmal

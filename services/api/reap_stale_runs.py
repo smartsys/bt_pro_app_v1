@@ -1,4 +1,4 @@
-"""Run-Reaper — Standalone-Script für den Scheduler-Container (Ticket 69).
+"""Run-Reaper — Standalone-Script für den Scheduler-Container.
 
 Wird periodisch von cron im scheduler-Container aufgerufen und gleicht
 backtest_runs mit status='running' gegen den echten RQ-Zustand ab. Ein

@@ -236,7 +236,7 @@ function fmtNum(val, dec) {
   if (val === null || val === undefined) return '<span class="text-muted">-</span>';
   return parseFloat(val).toFixed(dec || 2);
 }
-// GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+// GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
 // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
 // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
 function fmtTrades(total, open) {
@@ -850,7 +850,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* Speichern-Aktionen aus Result (Ticket 43) */
+  /* Speichern-Aktionen aus Result */
   function _saveFromResult(endpoint, label, id) {
     fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
       .then(function(r) { return r.json(); })

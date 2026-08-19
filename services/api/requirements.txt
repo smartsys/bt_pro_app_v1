@@ -13,6 +13,6 @@ pydantic-settings
 tables
 # Für Datei-Uploads der FastAPI-Endpunkte (Strategie-/Config-Import)
 python-multipart==0.0.22
-# GEÄNDERT (Ticket 100): HTTP-Client für die Analyse-Screenshot-Route, die den
+# GEÄNDERT: HTTP-Client für die Analyse-Screenshot-Route, die den
 # Renderer-Dienst ruft. Gleiche Version wie in requirements-test.txt (fastapi.testclient).
 httpx==0.28.1

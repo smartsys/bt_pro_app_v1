@@ -1,4 +1,4 @@
-"""Tests für das Preflight-Verb der Objekt-Toolbox (Ticket 60, Anforderung 5).
+"""Tests für das Preflight-Verb der Objekt-Toolbox (Anforderung 5).
 
 Prüft die reine Funktion `preflight_run` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff
@@ -85,7 +85,7 @@ def test_preflight_gibt_kombinationszahl_und_signale_aus(toolbox, capsys):
 
 
 def test_preflight_warnt_bei_null_entry_signalen(toolbox, capsys):
-    """Null Entry-Signale lösen die explizite Warnung aus (der teuerste Fehler, Ticket 60)."""
+    """Null Entry-Signale lösen die explizite Warnung aus (der teuerste Fehler)."""
     resp = {**_SAMPLE_RESPONSE, "data": {**_SAMPLE_RESPONSE["data"],
             "entry_signals": {"count": 0, "first_time": None, "last_time": None, "note": None}}}
     with patch.object(toolbox, "post", return_value=resp):

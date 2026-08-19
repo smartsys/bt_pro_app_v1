@@ -1,4 +1,4 @@
-"""Tests für die Run-Start-Validierung der Rastergröße (Ticket 58, Anforderung 3).
+"""Tests für die Run-Start-Validierung der Rastergröße (Anforderung 3).
 
 Stellt sicher, dass run_spec_strategy abbricht, wenn ein aktivierter (`enabled`)
 Indikator eine variierende Sweep-Achse trägt, die über keine Erreichbarkeits-

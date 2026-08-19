@@ -1,15 +1,15 @@
 """Tests für TestSetRun- und LeaderboardEntry-Repository-Funktionen.
 
-Ticket 03: Stellt sicher, dass TestSetRun- und LeaderboardEntry-CRUD korrekt
+Stellt sicher, dass TestSetRun- und LeaderboardEntry-CRUD korrekt
 funktioniert, Snapshots vollständig persistiert und gelesen werden und der
 UNIQUE-Constraint auf testset_run_id greift.
 
 Hinweis: JSONB (PostgreSQL-spezifisch) wird im Model verwendet. Tests laufen
 daher gegen die echte PostgreSQL-Test-DB (VBT_TEST_DATABASE_URL, Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 from datetime import datetime
@@ -59,7 +59,7 @@ def test_set(session, backtest_config):
     """TestSet als FK-Voraussetzung für TestSetRun."""
     ts = TestSet(
         name='Leaderboard-TestSet',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=[backtest_config.id],
         created_by='test-user',
     )
@@ -116,7 +116,7 @@ def example_testset_snapshot(test_set, backtest_config):
 
 @pytest.fixture
 def example_strategy_snapshot():
-    """Minimaler strategy_snapshot gemäß Ticket 03 MVP-Definition."""
+    """Minimaler strategy_snapshot MVP-Definition."""
     return {
         'strategy_family': 'teststrategie',
         'strategy_name': 'teststrategie_v1',
@@ -159,7 +159,7 @@ def test_create_testset_run(session, test_set):
 
 def test_create_testset_run_with_indicator_config(session, test_set, indicator_config):
     """Anlegen eines TestSetRun mit optionalem Indicator-Config-JSON."""
-    # GEÄNDERT: Ticket 15 — indicator_config_id → indicators_config_json
+    # GEÄNDERT: indicator_config_id → indicators_config_json
     run = create_testset_run(
         session=session,
         testset_id=test_set.id,
@@ -300,7 +300,7 @@ def test_create_leaderboard_entry_snapshot_content(
     fetched = get_leaderboard_entry(session, entry.id)
     assert fetched is not None
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix für alle Snapshot-Felder
+    # GEÄNDERT: _json-Suffix für alle Snapshot-Felder
     # testset_snapshot prüfen
     assert fetched.testset_snapshot_json['name'] == example_testset_snapshot['name']
     assert fetched.testset_snapshot_json['backtest_config_ids'] == example_testset_snapshot['backtest_config_ids']
@@ -335,7 +335,7 @@ def test_create_leaderboard_entry_without_indicator_snapshot(
         strategy_snapshot=example_strategy_snapshot,
         winning_result_ids=[1, 2],
     )
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert entry.indicator_config_snapshot_json is None
     fetched = get_leaderboard_entry(session, entry.id)
     assert fetched.indicator_config_snapshot_json is None

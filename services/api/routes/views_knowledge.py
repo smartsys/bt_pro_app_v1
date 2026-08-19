@@ -1,6 +1,6 @@
-"""HTML-Seiten für Vault-Wissens-Index (Ticket 29, Ticket 30)
+"""HTML-Seiten für Vault-Wissens-Index
 
-GET /knowledge               — Dashboard: Index- und Lauf-Statistiken (Ticket 30)
+GET /knowledge               — Dashboard: Index- und Lauf-Statistiken
 GET /knowledge/runs          — Reindex-Verlauf Übersicht
 GET /knowledge/runs/{id}     — Reindex-Run Detail
 GET /knowledge/files         — Indizierte Dateien
@@ -15,7 +15,7 @@ from user_data.utils.database.models import VaultReindexRun
 router = APIRouter(prefix='/knowledge', tags=['knowledge-views'])
 
 
-# GEÄNDERT: Ticket 30 — Dashboard-Seite als Einstiegspunkt
+# GEÄNDERT: Dashboard-Seite als Einstiegspunkt
 @router.get('', response_class=HTMLResponse)
 def knowledge_dashboard_page(request: Request) -> HTMLResponse:
     """Wissens-Index Dashboard (Übersicht über Index und Lauf-Statistiken)."""

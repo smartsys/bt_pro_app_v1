@@ -1,13 +1,13 @@
 """Tests für den TestSet-Runs API-Endpunkt und die Worker-Increment-Logik.
 
-Ticket 05: Stellt sicher, dass POST /api/testset-runs korrekt funktioniert und
+Stellt sicher, dass POST /api/testset-runs korrekt funktioniert und
 die atomare Increment-Logik im Worker den TestSetRun-Status sauber verwaltet.
 
 Tests laufen gegen die echte PostgreSQL-Test-DB (VBT_TEST_DATABASE_URL, Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 from datetime import datetime
@@ -23,7 +23,7 @@ from user_data.utils.database.models import (
     TestSet,
     TestSetRun,
 )
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf testsets / testset_id
+# GEÄNDERT: Naming-Cleanup auf testsets / testset_id
 
 _BACKTEST_CONFIG = {
     'strategy_family': 'test_family',
@@ -85,7 +85,7 @@ def test_set(session, bt_config, bt_config2) -> TestSet:
     """TestSet mit 2 BacktestConfigs."""
     ts = TestSet(
         name='T05-TestSet',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=[bt_config.id, bt_config2.id],
     )
     session.add(ts)
@@ -135,7 +135,7 @@ def _make_backtest_run(session, testset_run_id: int, bt_cfg: BacktestConfig) -> 
         timeframe=bt_cfg.timeframe,
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 12, 31),
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json=_BACKTEST_CONFIG,
         indicators_config_json=_INDICATORS,
         n_combinations=1,
@@ -180,7 +180,7 @@ def test_testset_run_record_and_backtest_runs_created(db_engine):
             " '2024-01-01', '2024-12-31', '2023-12-01', '2025-01-01') RETURNING id"
         )).scalar()
         ts_id = conn.execute(text(
-            # GEÄNDERT: Ticket 15 — _json-Suffix
+            # GEÄNDERT: _json-Suffix
             "INSERT INTO testsets (name, backtest_config_ids_json)"
             " VALUES ('T05-api-ts', :ids) RETURNING id"
         ), {'ids': f'[{bc1_id}, {bc2_id}]'}).scalar()
@@ -410,7 +410,7 @@ def test_einzelstart_increment_not_called(session, test_set):
         timeframe='4h',
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 12, 31),
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json=_BACKTEST_CONFIG,
         indicators_config_json=_INDICATORS,
         n_combinations=1,

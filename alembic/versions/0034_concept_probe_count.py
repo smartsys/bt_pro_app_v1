@@ -1,4 +1,4 @@
-"""strategy_concepts.probe_count — Zähler der Lite-Sondierungen (Ticket 92)
+"""strategy_concepts.probe_count — Zähler der Lite-Sondierungen
 
 Der Befund weist mit ``N`` nur die Rastergröße der gespeicherten Läufe aus. Die
 Lite-Sondierungen (``POST /api/chart-playground/run-backtest-lite``) schreiben

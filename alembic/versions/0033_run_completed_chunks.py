@@ -1,6 +1,6 @@
 """backtest_runs.completed_chunks — Fortsetzungspunkt eines gechunkten Laufs
 
-Ticket 71: Ein gechunkter Multiparameterlauf schreibt seine Ergebnisse ab sofort
+Ein gechunkter Multiparameterlauf schreibt seine Ergebnisse ab sofort
 nach jedem Chunk in die Datenbank, statt sie bis zum Schluss im Speicher zu
 halten. Damit ein hart abgebrochener Lauf fortgesetzt werden kann, muss am Lauf
 stehen, wie viele der (deterministisch gebildeten) Chunks bereits vollständig

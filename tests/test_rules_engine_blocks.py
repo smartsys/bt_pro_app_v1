@@ -115,7 +115,7 @@ class TestBlockInternalAnd:
 
     def test_single_block_two_conditions_is_and(self, ohlc_data, ohlc_df):
         rules = {'entry': {'blocks': [{'conditions': [_COND_A, _COND_B]}]}}
-        # GEÄNDERT: Ticket 46 — SignalMasks statt (entries, exits)-Tupel
+        # GEÄNDERT: SignalMasks statt (entries, exits)-Tupel
         masks = evaluate_rules(rules, ohlc_data, {})
         expected = _mask_A(ohlc_df) & _mask_B(ohlc_df)
         _assert_mask_equal(masks.long_entries, expected, "Block intern muss UND sein")

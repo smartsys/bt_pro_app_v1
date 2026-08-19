@@ -1,4 +1,4 @@
-"""Tests für build_leaderboard_entry_for_testset_run (Ticket 06).
+"""Tests für build_leaderboard_entry_for_testset_run.
 
 Prüft:
 - Happy Path: N=3 Runs mit je 2 Results -> korrekter Eintrag mit Aggregaten
@@ -6,10 +6,10 @@ Prüft:
 - Idempotenz: Zweiter Aufruf gibt None zurück, kein zweiter DB-Eintrag
 
 Tests laufen gegen die echte PostgreSQL-Test-DB (VBT_TEST_DATABASE_URL, Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 from decimal import Decimal
@@ -61,7 +61,7 @@ def test_set(session, three_backtest_configs):
     config_ids = [c.id for c in three_backtest_configs]
     ts = TestSet(
         name=f'Aggregat-Test-TestSet-{config_ids[0]}',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=config_ids,
         # Opt-in-Schalter aktiv — dieser Test prüft den Leaderboard-Build-Pfad
         leaderboard_enabled=True,
@@ -96,7 +96,7 @@ def testset_run(session, test_set, indicator_config):
         n_runs_total=3,
         n_runs_completed=3,
         status='completed',
-        # GEÄNDERT: Ticket 15 — indicator_config_id → indicators_config_json
+        # GEÄNDERT: indicator_config_id → indicators_config_json
         indicators_config_json=indicator_config.config_json,
         created_by='test-aggregat',
     )
@@ -121,7 +121,7 @@ def _make_backtest_run(
         timeframe='4h',
         start_date='2024-01-01',
         end_date='2024-12-31',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={
             'strategy_family': 'teststrategie',
             'strategy_name': 'teststrategie_v1',
@@ -153,7 +153,7 @@ def _make_backtest_result(
     result = BacktestResult(
         run_id=run_id,
         params_hash=f'hash_{run_id}_{total_return_pct}',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'teststrategie_period': 20},
         total_return_pct=total_return_pct,
         max_drawdown_pct=max_drawdown_pct,
@@ -207,7 +207,7 @@ def test_happy_path_drei_runs(session, testset_run, three_backtest_configs):
     assert entry.hint is None
 
     # winning_result_ids in Reihenfolge der config_ids
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert len(entry.winning_result_ids_json) == 3
     assert entry.winning_result_ids_json[0] == r0_winner.id
     assert entry.winning_result_ids_json[1] == r1_winner.id
@@ -223,7 +223,7 @@ def test_happy_path_drei_runs(session, testset_run, three_backtest_configs):
     # sharpe_avg = (1.2 + 1.8 + 2.1) / 3 = 1.7
     assert abs(float(entry.sharpe_avg) - (1.2 + 1.8 + 2.1) / 3) < 0.01
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix für Snapshot-Felder
+    # GEÄNDERT: _json-Suffix für Snapshot-Felder
     assert entry.testset_snapshot_json is not None
     assert entry.strategy_snapshot_json is not None
     assert entry.indicator_config_snapshot_json is not None
@@ -253,7 +253,7 @@ def test_leerer_run_null_an_position(session, testset_run, three_backtest_config
     assert entry is not None
     assert entry.configs_total == 3
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert len(entry.winning_result_ids_json) == 3
     assert entry.winning_result_ids_json[0] == r0_winner.id
     assert entry.winning_result_ids_json[1] is None

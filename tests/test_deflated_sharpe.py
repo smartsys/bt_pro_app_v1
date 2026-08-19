@@ -1,4 +1,4 @@
-"""Tests für die eigene, korrigierte Deflated-Sharpe-Ratio-Rechnung (Ticket 54).
+"""Tests für die eigene, korrigierte Deflated-Sharpe-Ratio-Rechnung.
 
 Geprüft wird:
 - Eine feste, von Hand (mit scipy.stats.norm direkt, nicht über die getestete Funktion)
@@ -51,7 +51,7 @@ def test_matches_hand_calculated_formula_for_fixed_input():
 
 def test_denominator_uses_raw_kurtosis_not_excess():
     """Bei Schiefe=0 und roher Wölbung=3 (Normalverteilung) muss der Nenner
-    `sqrt(1 + 0,5*SR^2)` ergeben — das ist Defekt 2 aus Ticket 54: VBT setzt dort
+    `sqrt(1 + 0,5*SR^2)` ergeben — das ist Defekt 2 aus VBT setzt dort
     fälschlich die Excess-Wölbung ein (Normalverteilung dort = 0 statt 3), was den
     Nenner strukturell verfälscht bzw. für realistische Eingaben negativ werden lassen
     kann. Der Test prüft das indirekt über den Endwert: würde die Funktion Excess-

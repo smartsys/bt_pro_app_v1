@@ -1,4 +1,4 @@
-"""Tests für das Auto-Linking von URLs/Pfaden in Befund-Deutungstexten (Ticket 85).
+"""Tests für das Auto-Linking von URLs/Pfaden in Befund-Deutungstexten.
 
 Reine Unit-Tests ohne DB — `autolink_html` ist eine pure Funktion.
 """

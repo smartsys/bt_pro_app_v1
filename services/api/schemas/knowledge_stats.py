@@ -1,4 +1,4 @@
-"""Pydantic-Schemas für GET /api/knowledge/stats Endpoint (Ticket 30).
+"""Pydantic-Schemas für GET /api/knowledge/stats Endpoint.
 
 Response-Struktur:
   - index: Aggregat-Werte aus vault_chunks (Anzahl, Größe, Zeitstempel)

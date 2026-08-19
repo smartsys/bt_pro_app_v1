@@ -1,4 +1,4 @@
-"""Regressionstests für den eingegrenzten Orphan-Sweep in bulk_delete_results (Ticket 75).
+"""Regressionstests für den eingegrenzten Orphan-Sweep in bulk_delete_results.
 
 Fundfall: der Orphan-Sweep in POST /results/bulk-delete lief bisher global über die
 gesamte backtest_runs-Tabelle (`DELETE ... WHERE id NOT IN (SELECT DISTINCT run_id

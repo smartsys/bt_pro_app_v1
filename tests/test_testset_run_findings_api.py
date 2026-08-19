@@ -1,4 +1,4 @@
-"""Tests für die Lese-Routen des Befunds (Ticket 56, Teilaufgabe 3).
+"""Tests für die Lese-Routen des Befunds (Teilaufgabe 3).
 
 Geprüft wird, was die drei neuen Endpunkte leisten:
   - GET /api/testset-run-findings/{id}: ein Befund samt Kontext, Soll und (falls
@@ -146,7 +146,7 @@ def test_no_verdict_field_in_schema():
 
 
 # ============================================================================
-# GET /api/testset-run-findings/by-testset-run/{testset_run_id} (Ticket 77/A)
+# GET /api/testset-run-findings/by-testset-run/{testset_run_id}
 # ============================================================================
 
 def test_by_testset_run_returns_newest_finding_and_total(session):

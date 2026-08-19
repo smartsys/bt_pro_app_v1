@@ -4,12 +4,12 @@
 
 ## Status
 
-Ab Ticket 12 leben Specs autoritativ in `strategy_iterations.spec_json` (Datenbank).
+Seit der Umstellung leben Specs autoritativ in `strategy_iterations.spec_json` (Datenbank).
 Spec-Files hier werden nicht mehr als Quelle für aktive Runs genutzt.
 
 ## Migration
 
-Das Skript `scripts/sync_specs_to_iterations.py` hat die Specs einmalig in die DB
+Ein Einmal-Skript (inzwischen entfernt) hat die Specs in die DB
 übertragen. Idempotent bei erneutem Lauf.
 
 ## Löschung

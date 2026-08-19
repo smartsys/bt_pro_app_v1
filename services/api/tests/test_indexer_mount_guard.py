@@ -1,4 +1,4 @@
-"""Tests für den Mount-Guard im Vault-Indexer (Ticket 31).
+"""Tests für den Mount-Guard im Vault-Indexer.
 
 Prüft, dass reindex() bei nicht erreichbarem vault_root oder leerer
 Dateiliste einen RuntimeError wirft — ohne die DB anzutasten.

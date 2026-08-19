@@ -1,10 +1,10 @@
-"""Tests für Short-Positionen im Masken-Pfad der Rules-Engine (Ticket 46 + 47).
+"""Tests für Short-Positionen im Masken-Pfad der Rules-Engine (+ 47).
 
 Prüft:
   a. test_long_short_signals: Gemischte Long- und Short-Blöcke → richtige Partitionierung
   b. test_long_only_regression: Nur Long-Blöcke (kein is_short) → Rückwärtskompatibilität
   c. test_short_only: Nur Short-Blöcke → long_entries/exits all-False, short_entries hat Signale
-  d. TestGuardShortWithStateExit: Short+State-Ref — Guard entfernt (Ticket 47); State-Ref-Fehler
+  d. TestGuardShortWithStateExit: Short+State-Ref — Guard entfernt; State-Ref-Fehler
      kommt weiterhin aus _resolve_ref
   d2. TestGuardShortWithStateExitNativePath: Short im nativen Pfad funktioniert jetzt (kein Guard)
 
@@ -169,7 +169,7 @@ class TestLongShortSignals:
 # ============================================================================
 
 class TestLongOnlyRegression:
-    """Specs ohne is_short=True liefern identisches Ergebnis wie vor Ticket 46."""
+    """Specs ohne is_short=True liefern identisches Ergebnis wie vor der Umstellung."""
 
     def test_long_only_entries_unchanged(self, ohlc_data, ohlc_df):
         """Nur Long-Blöcke (kein is_short) → long_entries wie bisher, short-Masken all-False."""
@@ -260,11 +260,11 @@ class TestShortOnly:
 
 
 # ============================================================================
-# (d) Short-Block + State-Ref: Guard entfernt (Ticket 47) — Fehler kommt aus _resolve_ref
+# (d) Short-Block + State-Ref: Guard entfernt — Fehler kommt aus _resolve_ref
 # ============================================================================
 
 class TestGuardShortWithStateExit:
-    """GEÄNDERT: Ticket 47 — Short-Guard aus evaluate_rules() entfernt.
+    """GEÄNDERT: Short-Guard aus evaluate_rules() entfernt.
 
     State-Refs sind im Masken-Pfad (evaluate_rules) grundsätzlich unzulässig —
     der Fehler kommt weiterhin aus _resolve_ref, unabhängig von Short-Blöcken.
@@ -274,7 +274,7 @@ class TestGuardShortWithStateExit:
     def test_short_entry_with_state_exit_raises_state_ref_error(self, ohlc_data):
         """Short-Entry-Block + since_entry in Exit → ValueError wegen State-Primitiv.
 
-        Ticket 47: Short-Guard entfernt. Aber State-Refs sind im Masken-Pfad
+        Short-Guard entfernt. Aber State-Refs sind im Masken-Pfad
         weiterhin unzulässig — _resolve_ref wirft ValueError("State-Primitiv").
         """
         rules = {
@@ -323,12 +323,12 @@ class TestGuardShortWithStateExit:
 
 
 # ============================================================================
-# (d2) Short im nativen Pfad — GEÄNDERT: Ticket 47 (kein Guard mehr)
+# (d2) Short im nativen Pfad — GEÄNDERT: (kein Guard mehr)
 #      Short-Blöcke + nativer Pfad laufen jetzt korrekt durch.
 # ============================================================================
 
 class TestGuardShortWithStateExitNativePath:
-    """GEÄNDERT: Ticket 47 — Short-Guard im nativen Pfad entfernt.
+    """GEÄNDERT: Short-Guard im nativen Pfad entfernt.
 
     Short-Blöcke + State-Exits laufen jetzt korrekt über evaluate_rules_native.
     Statt ValueError wird ein Portfolio gebaut, das Short-Trades enthält.
@@ -359,7 +359,7 @@ class TestGuardShortWithStateExitNativePath:
         }
 
     def test_short_entry_block_in_native_path_works(self, ohlc_data, ohlc_df):
-        """GEÄNDERT: Ticket 47 — Short-Entry-Block + State-Exit läuft korrekt durch.
+        """GEÄNDERT: Short-Entry-Block + State-Exit läuft korrekt durch.
 
         Vorher: ValueError("Short-Blöcke"). Jetzt: Portfolio mit Short-Trades.
         Nicht-überlappende Entry-Conditions: Long-Entry früh (close < 110),
@@ -390,7 +390,7 @@ class TestGuardShortWithStateExitNativePath:
         assert 1 in directions, f"Keine Short-Trades (direction=1) gefunden. Trades: {directions}"
 
     def test_short_exit_block_in_native_path_works(self, ohlc_data, ohlc_df):
-        """GEÄNDERT: Ticket 47 — Short-Exit-Block + State-Exit läuft korrekt durch."""
+        """GEÄNDERT: Short-Exit-Block + State-Exit läuft korrekt durch."""
         rules = {
             'entry': {'blocks': [{'conditions': [_COND_A]}]},
             'exit': {

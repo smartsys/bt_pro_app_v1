@@ -11,7 +11,7 @@ Test-DB (db_bt_pro_v1_test) zeigt und NICHT auf die Arbeits-DB (db_bt_pro_v1
 bzw. deren Host-Port 5560). Verstoß bricht den gesamten pytest-Lauf mit einem
 harten Fehler ab.
 
-Die Suite läuft ausschließlich im Container (Ticket 88):
+Die Suite läuft ausschließlich im Container:
     docker compose -f docker-compose-local.yml run --rm --build test
 
 Ebenfalls enthalten: SQLite-Fixtures für reine Unit-Tests (test_engine,
@@ -40,7 +40,7 @@ load_dotenv(_ROOT / '.env')
 from user_data.utils.database.models import Base  # noqa: E402
 
 # Hostname der Test-DB im Docker-Netz. Einziges zulässiges Ziel für
-# VBT_TEST_DATABASE_URL (Ticket 88) — siehe _assert_test_db().
+# VBT_TEST_DATABASE_URL — siehe _assert_test_db().
 TEST_DB_HOST = 'db_bt_pro_v1_test'
 
 # Hostname und Host-Port der Arbeits-DB. Rein für die Fehlermeldung, damit ein

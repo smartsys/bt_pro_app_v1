@@ -1,10 +1,9 @@
-"""Tests für die Trade-Anzahl-Anzeige der Objekt-Toolbox (Ticket 60).
+"""Tests für die Trade-Anzahl-Anzeige der Objekt-Toolbox.
 
 Prüft die reine Funktion `trades_str` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff
 und ohne DB, da die Toolbox ein stdlib-only CLI-Skript ist. `trades_str` fasst
-die Long/Short-Aufteilung (Ticket 60) und die am Fensterende offenen Positionen
-(Ticket 58) in einer Textzeile zusammen.
+die Long/Short-Aufteilung und die am Fensterende offenen Positionen in einer Textzeile zusammen.
 """
 
 import importlib.util
@@ -44,7 +43,7 @@ def test_none_total_shows_dash(toolbox):
 
 
 def test_open_trades_appended_when_present(toolbox):
-    """open_trades > 0 wird als 'offen' angehängt (Ticket 58)."""
+    """open_trades > 0 wird als 'offen' angehängt."""
     assert toolbox.trades_str({"total_trades": 53, "open_trades": 1}) == "53 (1 offen)"
 
 
@@ -54,7 +53,7 @@ def test_zero_open_trades_not_appended(toolbox):
 
 
 def test_long_short_split_appended_when_both_present(toolbox):
-    """long_trades/short_trades (Ticket 60) werden als 'NL/MS' angehängt."""
+    """long_trades/short_trades werden als 'NL/MS' angehängt."""
     result = toolbox.trades_str({"total_trades": 53, "long_trades": 21, "short_trades": 32})
     assert result == "53 (21L/32S)"
 

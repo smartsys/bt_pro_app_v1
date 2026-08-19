@@ -1,11 +1,11 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# GEÄNDERT (Ticket 81): python3 mit -B aufrufen. Der Scheduler läuft als root (cron
+# GEÄNDERT: python3 mit -B aufrufen. Der Scheduler läuft als root (cron
 # verlangt das) und teilt sich /app/services mit App und Worker, die als uid 1000
 # laufen. Ohne -B legt er dort root-eigene __pycache__-Ordner an, die die anderen
 # Container nicht mehr beschreiben können.
-# GEÄNDERT (Ticket 86): cron vererbt die Container-Umgebung (POSTGRES_SERVER und die
+# GEÄNDERT: cron vererbt die Container-Umgebung (POSTGRES_SERVER und die
 # übrigen DB-/Redis-Zugänge) nicht an die Jobs weiter. Deshalb wird vor jedem Aufruf
 # /etc/cron_env.sh gesourced — die Datei erzeugt der Entrypoint beim Container-Start
 # aus der echten Prozessumgebung (siehe services/scheduler/entrypoint.sh). Die

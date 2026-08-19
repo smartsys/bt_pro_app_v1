@@ -1,4 +1,4 @@
-"""Tests für Ticket 16 — Obsidian-Pfad-Konvention deterministisch + vault-create Endpoints.
+"""Obsidian-Pfad-Konvention deterministisch + vault-create Endpoints.
 
 Abdeckung:
 - obsidian_paths.py: normalize_slug, normalize_version, alle Pfad-Funktionen
@@ -233,7 +233,7 @@ class TestConceptVaultCreate:
         content = md_path.read_text(encoding='utf-8')
         assert 'type: strategy-concept' in content
         assert 'slug: test-slug-16' in content
-        # GEÄNDERT: Ticket 57 — concept_id ist im neuen Frontmatter-Schema (seit Vault-Pfad-Migration,
+        # GEÄNDERT: concept_id ist im neuen Frontmatter-Schema (seit Vault-Pfad-Migration,
         # siehe build_concept_note in services/api/utils/obsidian_notes.py) bewusst nicht mehr enthalten;
         # der Name steht nur noch als Überschrift im Body, nicht mehr als Frontmatter-Feld.
         assert '# Test Strategie 16' in content

@@ -1,4 +1,4 @@
-"""testset_run_findings — Befund je Testset-Lauf (Ticket 56)
+"""testset_run_findings — Befund je Testset-Lauf
 
 Legt die neue Tabelle ``testset_run_findings`` an: je Testset-Lauf ein
 unveränderlicher Datensatz, der beim Start Kontext und Soll aufnimmt und beim

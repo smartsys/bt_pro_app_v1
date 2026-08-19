@@ -26,7 +26,7 @@ class KnowledgeRunSchema(BaseModel):
     files_deleted: Optional[int]
     chunks_written: Optional[int]
     error_message: Optional[str]
-    # GEÄNDERT: Ticket 34 — reindexierte und gelöschte Pfade
+    # GEÄNDERT: reindexierte und gelöschte Pfade
     files_changed: Optional[dict] = None
     created_at: datetime
 

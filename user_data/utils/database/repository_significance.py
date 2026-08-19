@@ -1,4 +1,4 @@
-"""Repository-Funktionen für den Signifikanztest je Kandidat (Ticket 79).
+"""Repository-Funktionen für den Signifikanztest je Kandidat.
 
 Der Datensatz entsteht beim Start (Kontext, Methode, N, Seed) und wird genau
 einmal abgeschlossen — mit Ergebnis (``completed``) oder mit Fehlermeldung

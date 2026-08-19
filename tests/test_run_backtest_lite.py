@@ -7,7 +7,7 @@ Prüft:
 - DB-Isolations-Pflicht: backtest_runs, backtest_trades, backtest_orders,
   backtest_positions, backtest_equity, strategy_iterations bleiben unverändert.
 
-GEÄNDERT (Ticket 94): Kein 'integration'-Marker mehr — die Datei rechnet nicht
+GEÄNDERT: Kein 'integration'-Marker mehr — die Datei rechnet nicht
 schwer und hat keine externe Abhängigkeit: `run_spec_strategy` und
 `load_ohlc_data` sind gemockt, der einzige echte Nachbar ist die lokale
 Test-DB über die 'db_engine'/'session'-Fixtures — genau wie in
@@ -30,9 +30,9 @@ import pytest
 # GEÄNDERT: Payload auf das echte Wire-Format gebracht (buildBacktestPayload):
 # Flat-Spec (Inputs direkt am Top-Level, kein 'inputs'-Wrapper), Rules im
 # Block-Format (DNF), Stops im Sonderschlüssel '_stops' statt im Portfolio.
-# GEÄNDERT (Ticket 94): Eingabefeld 'source' statt 'src' — dwsFastSMA ist mit
+# GEÄNDERT: Eingabefeld 'source' statt 'src' — dwsFastSMA ist mit
 # input_names=['source'] gebaut (user_data/utils/indicators/custom.py); 'src'
-# war schlicht falsch und führte als Vorlage in die Irre (Fund aus Ticket 91).
+# war schlicht falsch und führte als Vorlage in die Irre (Fund).
 _SAMPLE_INDICATORS = {
     'fast_sma': {
         'indicator': 'dwsFastSMA',
@@ -94,7 +94,7 @@ def _make_fake_pf(
 ) -> MagicMock:
     """Erzeugt ein Mock-Portfolio auf dem Stand der echten Route.
 
-    GEÄNDERT (Ticket 94): Der Zeitindex ist ein echter, zeitzonenbewusster
+    GEÄNDERT: Der Zeitindex ist ein echter, zeitzonenbewusster
     DatetimeIndex — die Route schneidet das Portfolio über
     `slice_to_trading_window` auf das Handelsfenster (start/end aus
     _SAMPLE_DATA) zu, das dort tz-aware Zeitstempel vergleicht; ein reiner
@@ -136,7 +136,7 @@ def test_lite_endpoint_happy_path():
 
     Prüft korrekte Felder und Typen im Response-Dict — inklusive der mit den
     Tickets 90 und 92 hinzugekommenen Felder sharpe_ratio,
-    position_coverage_pct und concept_probe_count (Ticket 94). Das
+    position_coverage_pct und concept_probe_count. Das
     Konzept-Zähler-Feld selbst — Erhöhung, Isolation je Konzept, 404 bei
     unbekannter ID — ist bereits vollständig in
     tests/test_concept_probe_counter.py abgedeckt; hier wird nur geprüft, dass
@@ -173,7 +173,7 @@ def test_lite_endpoint_happy_path():
         f"Unerwarteter position_coverage_pct: {d['position_coverage_pct']}"
     )
     # Ohne concept_id im Payload zählt der Aufruf nicht mit — die Route
-    # unterscheidet bewusst None (kein Konzept-Bezug) von 0 (Fund Ticket 92).
+    # unterscheidet bewusst None (kein Konzept-Bezug) von 0.
     assert d['concept_probe_count'] is None, (
         f"concept_probe_count soll ohne concept_id None sein, ist {d['concept_probe_count']}"
     )

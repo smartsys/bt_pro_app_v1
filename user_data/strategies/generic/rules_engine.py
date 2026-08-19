@@ -52,7 +52,7 @@ import vectorbtpro as vbt
 from numba import njit
 
 
-# GEÄNDERT: Ticket 46 — Vier-Masken-Rückgabe für Long/Short-Unterstützung im Masken-Pfad
+# GEÄNDERT: Vier-Masken-Rückgabe für Long/Short-Unterstützung im Masken-Pfad
 class SignalMasks(NamedTuple):
     """Bündelt die vier Signal-Masken des Masken-Pfades.
 
@@ -114,7 +114,7 @@ def _describe_operand(obj: Any) -> str:
     return f"{type(obj).__name__}: {obj!r}"
 
 
-# GEÄNDERT: Ticket 51 — Kreuz-Logik aus _combine_broadcast extrahiert, damit
+# GEÄNDERT: Kreuz-Logik aus _combine_broadcast extrahiert, damit
 # evaluate_rules_native dieselbe Mechanik für die Entry-/Exit-Achsen nutzen kann.
 def _pairwise_alignable_names(name_sets: list) -> bool:
     """Prüft, ob alle Level-Namen-Mengen paarweise in Teilmengen-Beziehung stehen.
@@ -140,8 +140,7 @@ def _cross_target_from_indexes(col_indexes: list) -> Any:
     Carrier-Level (Level-Namen, die ALLE Indizes teilen — typisch `symbol`)
     bleiben aligned und werden nie gekreuzt; ihre privaten Werte werden je
     Index dedupliziert. Indizes ohne eigenes privates Level tragen keine
-    Kreuz-Achse bei. Mechanik identisch zum Kreuz-Pfad von _combine_broadcast
-    (Ticket 49).
+    Kreuz-Achse bei. Mechanik identisch zum Kreuz-Pfad von _combine_broadcast.
 
     Args:
         col_indexes: Spalten-Indizes (pd.Index/MultiIndex) der Combo-Quellen.
@@ -199,7 +198,7 @@ def _combine_broadcast(objs: list) -> tuple:
     verschiedenen Param-Leveln), gibt es keine gemeinsame Spalten-Achse — sie
     müssen gekreuzt (Kartesisches Produkt) statt aligned werden.
 
-    GEÄNDERT: Ticket 49 Bugfix — die Entscheidung "alignen vs. kreuzen" hing bisher
+    GEÄNDERT: Bugfix — die Entscheidung "alignen vs. kreuzen" hing bisher
     davon ab, ob `vbt.broadcast` eine Exception wirft. Das ist bei disjunkten
     Leveln GLEICHER Breite falsch: `vbt.broadcast` richtet zwei gleich breite
     Operanden dann positionsweise aus (Diagonale, z.B. 3x3 -> 3 statt 9) und wirft
@@ -233,7 +232,7 @@ def _combine_broadcast(objs: list) -> tuple:
     # Gate: alignen reicht nur, wenn JEDES Paar von Level-Namen-Mengen in einer
     # Teilmengen-/Gleichheits-Beziehung steht. Sonst immer kreuzen — nicht mehr
     # vom Exception-Zufall von vbt.broadcast abhängig (Kern von Bug 1).
-    # GEÄNDERT: Ticket 51 — Gate und Kreuz-Bau in Helper extrahiert (geteilt mit
+    # GEÄNDERT: Gate und Kreuz-Bau in Helper extrahiert (geteilt mit
     # evaluate_rules_native).
     if _pairwise_alignable_names(name_sets):
         return vbt.broadcast(*objs)
@@ -279,7 +278,7 @@ def evaluate_rules(
 ) -> 'SignalMasks':
     """Wertet Entry- und Exit-Rules aus rules_json zu vier Boolean-Masken aus.
 
-    GEÄNDERT: Ticket 46 — Gibt jetzt ein SignalMasks-NamedTuple mit vier Masken
+    GEÄNDERT: Gibt jetzt ein SignalMasks-NamedTuple mit vier Masken
     zurück: long_entries, long_exits, short_entries, short_exits. Blöcke mit
     is_short=True erzeugen Short-Masken, alle anderen Long-Masken.
 
@@ -305,8 +304,7 @@ def evaluate_rules(
 
             GEÄNDERT 2026-07-12: Der frühere Raises-Eintrag behauptete einen
             short-spezifischen ValueError ("Short-Blöcke sind im nativen Pfad nicht
-            unterstützt"). Beides ist falsch: Der short-spezifische Guard fiel mit
-            Ticket 47 (kein entsprechendes raise im Rumpf), und der native Pfad
+            unterstützt"). Beides ist falsch: Der short-spezifische Guard ist entfallen (kein entsprechendes raise im Rumpf), und der native Pfad
             unterstützt Short vollständig (is_short auf Entry- und Exit-Blöcken,
             Richtungs-Trennung über c.last_pos_info['direction']). Gepinnt in
             tests/test_rules_engine_short.py::TestGuardShortWithStateExit (Fehler kommt
@@ -318,7 +316,7 @@ def evaluate_rules(
     if entry_spec is None:
         raise ValueError("rules_json muss 'entry'-Rules enthalten")
 
-    # GEÄNDERT: Ticket 46 — Blöcke nach is_short partitionieren
+    # GEÄNDERT: Blöcke nach is_short partitionieren
     entry_blocks = entry_spec.get('blocks') or []
     # Guard: Leere Blockliste wird abgewiesen (bestehende Engine-Invariante beibehalten)
     if not entry_blocks:
@@ -552,7 +550,7 @@ def _uniquify_param_levels(obj: Any, inst: Any, ind_id: str) -> Any:
     Carrier-Level wie `symbol` bleiben unberuehrt. Reine Werte/Series (kein
     Param-Level) bleiben unveraendert.
 
-    GEÄNDERT: Ticket 53 — seit `indicator_factory.build_indicators` jede Instanz beim
+    GEÄNDERT: seit `indicator_factory.build_indicators` jede Instanz beim
     Bauen bereits auf `<ind_id>_<param>` umbenennt (getragene Ketten-Level eingeschlossen),
     findet dieser Rename hier in der Praxis keinen `<short_name>_<param>`-Namen mehr vor
     (die Columns sind schon id-benannt) und wird zum No-op. Bleibt als idempotentes
@@ -625,7 +623,7 @@ def _resolve_ref(ref: Any, ohlc_data: Any, indicators: dict):
 
 
 # ============================================================================
-# NATIVER PFAD (Ticket 35) — Hybrid-Split mit signal_func_nb
+# NATIVER PFAD — Hybrid-Split mit signal_func_nb
 # ============================================================================
 #
 # Kodierungsschema für stateful Conditions (Numba-kompatible Integer-Arrays):
@@ -873,7 +871,7 @@ def _eval_exit_blocks_nb(
 @njit(cache=True)
 def _state_exit_signal_func_nb(
     c,
-    # GEÄNDERT: Ticket 47 Bugfix — Combo-Spalten-Mapping für Multi-Combo + Stop-Sweep.
+    # GEÄNDERT: Bugfix — Combo-Spalten-Mapping für Multi-Combo + Stop-Sweep.
     # Das Portfolio hat n_total = n_combo * n_stops Spalten, die Masken aber nur
     # n_combo Spalten (Stop ist die äußere Achse, Indikator-Combo die innere).
     # combo_col_map[c.col] = c.col % n_combo liefert die zugehörige Indikator-Spalte
@@ -936,7 +934,7 @@ def _state_exit_signal_func_nb(
 ) -> tuple:
     """Numba-signal_func_nb für State-basierte Exit-Conditions in DNF.
 
-    GEÄNDERT: Ticket 47 — Short-Unterstützung. Wertet Long- und Short-Exits
+    GEÄNDERT: Short-Unterstützung. Wertet Long- und Short-Exits
     separat anhand der aktuellen Positions-Direction aus c.last_pos_info aus.
 
     Liest den echten Trade-State aus c.last_pos_info und wertet je nach Direction
@@ -956,7 +954,7 @@ def _state_exit_signal_func_nb(
     i = c.i
     col = c.col
 
-    # GEÄNDERT: Ticket 47 Bugfix — Indikator-Combo-Spalte aus dem Portfolio-Spalten-
+    # GEÄNDERT: Bugfix — Indikator-Combo-Spalte aus dem Portfolio-Spalten-
     # Index ableiten. Bei Multi-Combo + Stop-Sweep hat das Portfolio n_combo*n_stops
     # Spalten (Stop außen, Indikator innen), die Masken aber nur n_combo Spalten.
     # combo_col = col % n_combo (vorab in combo_col_map kodiert). State (last_pos_info)
@@ -1181,7 +1179,7 @@ def _build_stateful_condition_spec(
         _encode_side(lhs_ref, lhs_shift, idx, 'lhs')
         _encode_side(rhs_ref, rhs_shift, idx, 'rhs')
 
-    # GEÄNDERT: Ticket 51 — Bundle-Bau in _build_series_bundle extrahiert; die
+    # GEÄNDERT: Bundle-Bau in _build_series_bundle extrahiert; die
     # rohen Slots wandern mit ins Ergebnis, damit evaluate_rules_native das Bundle
     # nach der Achsen-Bestimmung auf die Ziel-Achse (neu) bauen kann.
     series_bundle, n_series_cols_total, spec_n_combo, spec_combo_columns = (
@@ -1215,7 +1213,7 @@ def _build_series_bundle(
 ) -> tuple:
     """Baut das Series-Bundle in COMBO-MAJOR-Layout (ausgelagert aus dem Spec-Bau).
 
-    GEÄNDERT: Ticket 47 Bugfix — Series-Bundle in COMBO-MAJOR-Layout. Pro Combo-
+    GEÄNDERT: Bugfix — Series-Bundle in COMBO-MAJOR-Layout. Pro Combo-
     Spalte stehen alle Slots nebeneinander: [combo0_slot0, combo0_slot1, ...,
     combo1_slot0, ...]. So selektiert die signal_func mit base_col = (col % n_combo)
     * n_slots den Block einer Combo, und lhs/rhs_series_col indexiert den Slot
@@ -1223,7 +1221,7 @@ def _build_series_bundle(
     alle Combos broadcastet. Single-Combo (n_combo==1) fällt darauf zurück: ein
     Block, base_col immer 0, Slot-Index == frühere Slot-Position.
 
-    GEÄNDERT: Ticket 51 — optionale Ziel-Achse: ist target_columns gesetzt, wird
+    GEÄNDERT: optionale Ziel-Achse: ist target_columns gesetzt, wird
     jeder DataFrame-Slot mit Breite > 1, dessen Spalten nicht der Ziel-Achse
     entsprechen, per Broadcast auf sie expandiert (Kreuz disjunkter Entry-/
     Exit-Achsen bzw. Teilmengen-Expansion). 1-spaltige/globale Slots bleiben
@@ -1302,7 +1300,7 @@ def _build_series_col_map(
 ) -> np.ndarray:
     """Baut das Spalten-Mapping der Series-Operanden je Portfolio-Spalte.
 
-    GEÄNDERT: Ticket 47 Bugfix — unterstützt jetzt Multi-Combo + Stop-Sweep. Das
+    GEÄNDERT: Bugfix — unterstützt jetzt Multi-Combo + Stop-Sweep. Das
     Portfolio hat n_total = n_combo * n_stops Spalten (Stop außen, Indikator innen),
     das series_bundle aber nur n_combo Blöcke a n_series_per_col Spalten. Jede
     Portfolio-Spalte wird per `combo_col = col % n_combo` auf ihren Bundle-Offset
@@ -1331,7 +1329,7 @@ def _build_series_col_map(
     return result
 
 
-# GEÄNDERT: Ticket 47 Bugfix — Anzahl der Stop-Sweep-Kombinationen aus den
+# GEÄNDERT: Bugfix — Anzahl der Stop-Sweep-Kombinationen aus den
 # from_signals-Stop-kwargs bestimmen. Unabhängige vbt.Param (Default-Level)
 # multiplizieren sich, gleich-gelevelte Param (gekoppeltes TSL-Paar, level=0)
 # werden gezippt (Länge einmal gezählt). So ergibt sich n_total = n_combo * n_stops.
@@ -1366,7 +1364,7 @@ def _count_stop_combos(pf_kwargs: dict) -> int:
     return total
 
 
-# GEÄNDERT: Ticket 47 Bugfix — natürliche Combo-Breite der statischen Exit-Conditions
+# GEÄNDERT: Bugfix — natürliche Combo-Breite der statischen Exit-Conditions
 # bestimmen. Die Combo-Achse kann ausschließlich in einer statischen Exit-Condition
 # liegen (z.B. close > indicator:sma:real ohne State-Ref), während Entry/close 1-spaltig
 # sind. n_combo muss diese Breite kennen, sonst kollabiert das Portfolio.
@@ -1412,7 +1410,7 @@ def _static_conds_combo_width(
     return max_width, columns, multi_axes
 
 
-# GEÄNDERT: Audit 2026-07-06 Befund 1 / Ticket 51 — Invarianten-Check: Nach der
+# GEÄNDERT: Audit 2026-07-06 Befund 1 / Invarianten-Check: Nach der
 # Achsen-Bestimmung und Expansion (Kreuzprodukt disjunkter Entry-/Exit-Achsen)
 # müssen ALLE mehrspaltigen Quellen die gemeinsame Combo-Achse tragen (n_combo,
 # Spalten-Zugriff per col % n_combo). Feuert der Check, ist eine Quelle nicht
@@ -1420,7 +1418,7 @@ def _static_conds_combo_width(
 # Out-of-bounds-Read der Entry-Maske (Numba ohne Boundscheck), stiller Kollaps
 # einer stateful Exit-Achse oder positionsweise Diagonal-Paarung gleich breiter
 # Achsen. (Der frühere N5-Blanket-Guard hatte solche Konstellationen als Beifang
-# abgefangen und fiel mit Ticket 47.)
+# abgefangen und ist entfallen.)
 def _assert_single_combo_axis(
     n_combo: int,
     combo_columns: Any,
@@ -1433,7 +1431,7 @@ def _assert_single_combo_axis(
     gleiche Spalten-Level-Namen) oder 1-spaltig sein — für sie existiert kein
     Expansions-Mechanismus. subset_sources (statische Exit-Masken) dürfen eine
     Teilmenge der Achsen-Level tragen; _build_static_block_arr expandiert sie
-    per Broadcast auf die volle Achse (Ticket-49-Mechanik).
+    per Broadcast auf die volle Achse (Mechanik).
 
     Args:
         n_combo: Breite der globalen Combo-Achse.
@@ -1457,7 +1455,7 @@ def _assert_single_combo_axis(
             f"Interner Konsistenzfehler der Combo-Achse: {label} trägt "
             f"{_axis_desc(names, width)}, die Combo-Achse des Laufs ist "
             f"{_axis_desc(full_names, n_combo)}. Die Quelle wurde nicht auf die "
-            f"gemeinsame Combo-Achse expandiert (Ticket 51) — vermutlich fehlt ihr "
+            f"gemeinsame Combo-Achse expandiert — vermutlich fehlt ihr "
             f"ein benannter Spalten-Index für das Kreuzprodukt."
         )
 
@@ -1497,7 +1495,7 @@ def _build_static_block_arr(
     all-True. Alle Blöcke werden auf die gemeinsame Spaltenbreite W gebracht
     (1 für Single-Combo, n_cols für Multi-Combo).
 
-    GEÄNDERT: Ticket 49 Bug-2-Fix — eine Block-Maske, deren Achsen eine echte
+    GEÄNDERT: Bug-2-Fix — eine Block-Maske, deren Achsen eine echte
     Teilmenge der `n_cols`-Achsen sind (z.B. Exit `ema_fast < ema_slow`, schmaler
     als der volle Entry-Kreuz-Combo), wurde bisher per `m[:, :width]` blind
     zugeschnitten — das sprengt bei width>1 UND m.shape[1] != width die
@@ -1569,7 +1567,7 @@ def evaluate_rules_native(
 ) -> Any:
     """Nativer Pfad: Portfolio direkt per from_signals(signal_func_nb=...) aufbauen.
 
-    GEÄNDERT: Ticket 47 — Long+Short-Unterstützung. Entry-Blöcke werden nach
+    GEÄNDERT: Long+Short-Unterstützung. Entry-Blöcke werden nach
     is_short partitioniert; Short-Exit-Blöcke werden separat kodiert und an
     _state_exit_signal_func_nb übergeben. Rein statische Specs (flat_stateful leer)
     sind erlaubt — n_blocks > 0 reicht.
@@ -1583,11 +1581,11 @@ def evaluate_rules_native(
     Unterstützt Single-Combo UND Multi-Combo, auch mit Series-Operanden in stateful
     Conditions (z.B. ein dynamischer Zeitstopp `since_entry >= indicator:td_dyn:real`
     über einem Indikator-Parameter-Raster). Die Series-Operanden werden dabei über
-    das series_bundle auf die gemeinsame Combo-Achse expandiert (Ticket 51).
+    das series_bundle auf die gemeinsame Combo-Achse expandiert.
 
     GEÄNDERT 2026-07-12: Docstring korrigiert. Er behauptete bis hier, Multi-Combo mit
-    stateful Series-Ops werde hard-abgewiesen ("N5"). Dieser Blanket-Guard fiel bereits
-    mit Ticket 47 (siehe Kommentar an _assert_single_combo_axis); ein entsprechendes
+    stateful Series-Ops werde hard-abgewiesen ("N5"). Dieser Blanket-Guard ist bereits
+    entfallen (siehe Kommentar an _assert_single_combo_axis); ein entsprechendes
     raise existiert nicht mehr. Verifiziert: below_pct-Raster x k-Raster mit dynamischem
     Zeitstopp läuft und liefert je Spalte korrekte, gegen den Single-Combo-Lauf geprüfte
     Ergebnisse. Auch der zweite früher dokumentierte Guard (Stop-Sweep x Multi-Combo)
@@ -1603,7 +1601,7 @@ def evaluate_rules_native(
         date_end: Optionaler Endzeitpunkt für die Date-Mask auf die Entry-Maske.
         stops_swept: TOTER PARAMETER — wird im Rumpf nicht mehr gelesen. spec_runner
             reicht ihn weiterhin durch. Er stammt aus der Zeit, als Stop-Sweep nur mit
-            Single-Combo zulaessig war; seit Ticket 47 rechnet der native Pfad
+            Single-Combo zulaessig war; seit der Umstellung rechnet der native Pfad
             Multi-Combo x Stop-Sweep korrekt (Bit-Paritaet geprueft in
             tests/test_native_short.py). Nicht entfernt, um den Aufrufer nicht
             anzufassen — vor einer Bereinigung bewusst entscheiden.
@@ -1616,7 +1614,7 @@ def evaluate_rules_native(
 
             GEAENDERT 2026-07-12: Die frueher hier gelisteten Abweisungen "Multi-Combo mit
             stateful Series-Operanden" und "Stop-Sweep kombiniert mit Multi-Combo-Indikatoren"
-            existieren NICHT (mehr). Beide Guards fielen mit Ticket 47; ein entsprechendes
+            existieren NICHT (mehr). Beide Guards sind entfallen; ein entsprechendes
             raise gibt es nicht. Der Docstring wurde nie nachgezogen und hat eine
             Werkzeug-Grenze in die Strategie-Planung getragen, die es nicht gibt.
     """
@@ -1631,16 +1629,16 @@ def evaluate_rules_native(
     if exit_spec:
         _assert_flat_group(exit_spec, 'exit')
 
-    # GEÄNDERT: Ticket 47 — Entry-Blöcke nach is_short partitionieren
-    # GEÄNDERT: Ticket 48 — deaktivierte Blöcke (enabled: false) vor der Partitionierung herausfiltern.
+    # GEÄNDERT: Entry-Blöcke nach is_short partitionieren
+    # GEÄNDERT: deaktivierte Blöcke (enabled: false) vor der Partitionierung herausfiltern.
     # Fehlt 'enabled', gilt True (abwärtskompatibel). Alle aktiven Blöcke laufen unverändert.
     raw_entry_blocks = entry_spec.get('blocks') or []
     active_entry_blocks = [b for b in raw_entry_blocks if b.get('enabled', True)]
     long_entry_blocks = [b for b in active_entry_blocks if not b.get('is_short', False)]
     short_entry_blocks = [b for b in active_entry_blocks if b.get('is_short', False)]
 
-    # GEÄNDERT: Ticket 47 Phase 2 — Exit-Blöcke nach is_short partitionieren.
-    # GEÄNDERT: Ticket 48 — deaktivierte Exit-Blöcke ebenfalls herausfiltern (vor jeder Auswertung).
+    # GEÄNDERT: Phase 2 — Exit-Blöcke nach is_short partitionieren.
+    # GEÄNDERT: deaktivierte Exit-Blöcke ebenfalls herausfiltern (vor jeder Auswertung).
     # Fehlt exit_spec komplett, sind alle Exit-Blöcke leer (Stops übernehmen den Exit).
     raw_exit_blocks = (exit_spec.get('blocks') or []) if exit_spec else []
     active_exit_blocks = [b for b in raw_exit_blocks if b.get('enabled', True)]
@@ -1689,7 +1687,7 @@ def evaluate_rules_native(
         _parse_exit_blocks(short_exit_blocks) if short_exit_blocks else (0, np.array([0], dtype=np.int64), [], [])
     )
 
-    # GEÄNDERT: Ticket 47 Bugfix — N5-Guard (kein Series-Op in stateful Conditions bei
+    # GEÄNDERT: Bugfix — N5-Guard (kein Series-Op in stateful Conditions bei
     # Multi-Combo) und der Stop-Sweep-x-Multi-Combo-ValueError sind entfernt. Beide
     # Fälle laufen jetzt vektorisiert: die signal_func liest über combo_col_map
     # (col % n_combo) die richtige Indikator-Spalte; close wird auf die n_combo
@@ -1700,7 +1698,7 @@ def evaluate_rules_native(
     long_spec = _build_stateful_condition_spec(long_flat_stateful, ohlc_data, indicators)
     short_spec = _build_stateful_condition_spec(short_flat_stateful, ohlc_data, indicators)
 
-    # GEÄNDERT: Ticket 47 Bugfix — n_combo (Anzahl Indikator-Param-Spalten) aus der
+    # GEÄNDERT: Bugfix — n_combo (Anzahl Indikator-Param-Spalten) aus der
     # breitesten Quelle ableiten: Entry-/Short-Entry-Masken, close ODER den stateful
     # Series-Bundles (Combo-Achse kann ausschließlich in einem Exit-Series-Operanden
     # liegen). combo_columns hält den Spalten-MultiIndex dieser Indikator-Achse für
@@ -1732,11 +1730,11 @@ def evaluate_rules_native(
         _consider(_w, _cols)
         static_axis_infos.extend(_multi)
 
-    # GEÄNDERT: Ticket 51 (Audit 2026-07-06 Befund 1) — disjunkte Sweep-Achsen
+    # GEÄNDERT: (Audit 2026-07-06 Befund 1) — disjunkte Sweep-Achsen
     # zwischen Entry- und Exit-Regeln kreuzen: Sind die Level-Namen-Mengen der
     # mehrspaltigen Quellen nicht paarweise alignbar, wird die Combo-Achse als
     # Kreuzprodukt der disjunkten privaten Level gebaut (gleiche Mechanik wie
-    # _combine_broadcast/Ticket 49) und ersetzt das Breiten-Maximum aus _consider.
+    # _combine_broadcast) und ersetzt das Breiten-Maximum aus _consider.
     cross_source_indexes: list = []
     for _mask in (entries, short_entries_raw):
         if isinstance(_mask, pd.DataFrame) and _mask.shape[1] > 1:
@@ -1756,7 +1754,7 @@ def evaluate_rules_native(
     is_multi_combo = n_combo > 1
 
     if is_multi_combo and combo_columns is not None:
-        # GEÄNDERT: Ticket 51 — Entry-Masken auf die Combo-Achse expandieren
+        # GEÄNDERT: Entry-Masken auf die Combo-Achse expandieren
         # (Kreuz-Fall oder Entry-Achse als echte Teilmenge der Exit-Achse).
         def _expand_on_axis(mask: Any) -> Any:
             if (
@@ -1769,7 +1767,7 @@ def evaluate_rules_native(
         entries = _expand_on_axis(entries)
         short_entries_raw = _expand_on_axis(short_entries_raw)
 
-        # GEÄNDERT: Ticket 51 — stateful Bundles neu bauen, wenn ihre Slot-Achse
+        # GEÄNDERT: stateful Bundles neu bauen, wenn ihre Slot-Achse
         # nicht der Combo-Achse entspricht (Expansion der Slots auf die Ziel-Achse).
         for _spec in (long_spec, short_spec):
             if _spec['n_combo'] > 1 and (
@@ -1784,7 +1782,7 @@ def evaluate_rules_native(
                 _spec['n_combo'] = _spec_nc
                 _spec['combo_columns'] = _spec_cols
 
-    # GEÄNDERT: Ticket 51 — der Audit-Guard läuft als Invariante NACH der
+    # GEÄNDERT: der Audit-Guard läuft als Invariante NACH der
     # Expansion: alle mehrspaltigen Quellen müssen jetzt die Combo-Achse tragen.
     # Feuert er, ist das ein interner Konsistenzfehler (z.B. nicht expandierbare
     # Quelle ohne Spalten-Index), kein User-Fehler.
@@ -1815,7 +1813,7 @@ def evaluate_rules_native(
     # Conditions (pandas, voll Multi-Combo-fähig); leere Blöcke -> all True.
     T = len(ohlc_data.get('Close'))
 
-    # GEÄNDERT: Ticket 47 Bugfix — statische Block-Masken auf n_combo Spalten (Indikator-
+    # GEÄNDERT: Bugfix — statische Block-Masken auf n_combo Spalten (Indikator-
     # Achse), nicht auf close-Spalten. Wenn keine Exit-Blöcke: Platzhalter (1 leerer Block).
     if n_long_exit_blocks == 0:
         long_static_block_arr = np.ones((1, T, n_combo), dtype=bool)
@@ -1875,7 +1873,7 @@ def evaluate_rules_native(
     if short_entry_mask_2d.shape[1] == 1 and n_combo > 1:
         short_entry_mask_2d = np.repeat(short_entry_mask_2d, n_combo, axis=1)
 
-    # GEÄNDERT: Ticket 47 Bugfix — n_total = n_combo * n_stops (Portfolio-Spaltenzahl).
+    # GEÄNDERT: Bugfix — n_total = n_combo * n_stops (Portfolio-Spaltenzahl).
     # combo_col_map[col] = col % n_combo mappt jede Portfolio-Spalte auf die Indikator-
     # Spalte der 2D-Masken (Stop außen, Indikator innen). Bei reinem Single-/Multi-Combo
     # ohne Stop-Sweep ist n_stops == 1 und combo_col_map == [0..n_combo-1].
@@ -1883,7 +1881,7 @@ def evaluate_rules_native(
     n_total = n_combo * n_stops
     combo_col_map = np.arange(n_total, dtype=np.int64) % n_combo
 
-    # GEÄNDERT: Ticket 47 Bugfix — close auf die n_combo Indikator-Spalten bringen, damit
+    # GEÄNDERT: Bugfix — close auf die n_combo Indikator-Spalten bringen, damit
     # die Indikator-Param-Achse im Portfolio existiert. Bei Stop-Sweep kreuzt die
     # Stop-vbt.Param-Achse dann mit dieser Indikator-Achse (Stop außen, Indikator innen).
     # Die Spaltenwerte sind alle der reale Close — sie tragen nur die Spalten-Struktur.
@@ -1928,8 +1926,8 @@ def evaluate_rules_native(
     )
 
     # signal_args zusammenbauen (alles als numpy-Arrays für Numba)
-    # GEÄNDERT: Ticket 47 — Short-Entry-Maske + Short-Exit-Kodierung hinzugefügt
-    # GEÄNDERT: Ticket 47 Bugfix — combo_col_map als erstes Arg (Multi-Combo-Mapping)
+    # GEÄNDERT: Short-Entry-Maske + Short-Exit-Kodierung hinzugefügt
+    # GEÄNDERT: Bugfix — combo_col_map als erstes Arg (Multi-Combo-Mapping)
     signal_args = (
         combo_col_map,
         entry_mask_2d,
@@ -1973,7 +1971,7 @@ def evaluate_rules_native(
     )
 
     # Portfolio via from_signals mit signal_func_nb aufbauen (N1: KEIN entries/exits)
-    # GEÄNDERT: Ticket 47 — upon_opposite_entry='Reverse' für Long/Short-Umkehr
+    # GEÄNDERT: upon_opposite_entry='Reverse' für Long/Short-Umkehr
     pf_build_kwargs = {k: v for k, v in pf_kwargs.items() if k != 'close'}
     portfolio = vbt.Portfolio.from_signals(
         close_mc,

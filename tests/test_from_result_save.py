@@ -1,4 +1,4 @@
-"""Ticket 43 — Aus Result speichern (vereinheitlicht auf Snapshot).
+"""Aus Result speichern (vereinheitlicht auf Snapshot).
 
 Verifiziert:
 - create_backtest_config_from_result: legt BacktestConfig aus Snapshot an

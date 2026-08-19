@@ -1,4 +1,4 @@
-"""Unit-Tests für Phase 2 des Befunds am Testset-Lauf (Ticket 56).
+"""Unit-Tests für Phase 2 des Befunds am Testset-Lauf.
 
 Geprüft wird, was der Abschluss leistet:
   - Die fünf Ist-Gruppen werden aus dem gebaut, was die Läufe geschrieben haben
@@ -497,7 +497,7 @@ def test_trade_floor_warning_reaches_the_finding(aggregated):
 
 
 def test_deselected_metric_group_leaves_reason_instead_of_zero(session, db_engine):
-    """Abgewählte Metrik-Gruppen: betroffene Felder bleiben leer mit Grund (Ticket 68)."""
+    """Abgewählte Metrik-Gruppen: betroffene Felder bleiben leer mit Grund."""
     testset_run = TestSetRun(
         testset_id=7, strategy_family='teststrategie', strategy_name='1',
         n_runs_total=1, indicators_config_json={}, status='completed',

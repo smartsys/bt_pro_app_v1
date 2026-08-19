@@ -1,4 +1,4 @@
-"""Tests für Ticket 47: Short-Unterstützung im nativen Pfad (evaluate_rules_native).
+"""Tests für Short-Unterstützung im nativen Pfad (evaluate_rules_native).
 
 Prüft:
   1. Long+Short im nativen Pfad mit State-Exits → Short-Trades entstehen
@@ -504,7 +504,7 @@ class TestBitParityNativeVsMask:
 
 
 # ============================================================================
-# 6. Multi-Combo Bit-Parity: Indikator-Param-Achse x Stop-Sweep (Ticket 47 Bugfix)
+# 6. Multi-Combo Bit-Parity: Indikator-Param-Achse x Stop-Sweep (Bugfix)
 # ============================================================================
 
 class TestMultiComboBitParity:

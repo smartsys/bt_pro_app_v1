@@ -1,4 +1,4 @@
-"""Tests für reap_stale_runs.py (Ticket 69).
+"""Tests für reap_stale_runs.py.
 
 Prüft, dass main() 'running'-BacktestRuns ohne lebenden RQ-Job auf 'failed'
 setzt, mit lesbarer Begründung in error_message, während Runs mit lebendem
@@ -24,7 +24,7 @@ sys.path.insert(0, str(_ROOT))
 
 # rq via sys.modules mocken bevor reap_stale_runs importiert wird
 # (rq ist nur im Docker/WSL-venv verfügbar, nicht im Windows-venv).
-# GEÄNDERT: Ticket 69 — bewusst überschreiben statt setdefault, siehe
+# GEÄNDERT: bewusst überschreiben statt setdefault, siehe
 # test_recovery_oneshot.py: andere Testdateien legen beim Import einen
 # minimalen rq-Stub in sys.modules ab; wird der zuerst gesetzt, übernimmt
 # setdefault ihn und die Registry-Klassen fehlen — je nach Collect-Reihenfolge

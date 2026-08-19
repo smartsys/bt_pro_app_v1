@@ -6,7 +6,7 @@ geöffnet wird und keine Equity-Daten vorhanden sind.
 Führt die Strategie mit den exakten Parametern nochmal aus und speichert
 alle Detail-Daten (Equity, Trades, Orders, Positions, Indikatoren). Die
 Kennzahlen entstehen dabei über dieselbe Funktion wie im Lauf
-(`_extract_metrics` mit N=1, Ticket 64) — dieses Modul rechnet keine eigenen.
+(`_extract_metrics` mit N=1) — dieses Modul rechnet keine eigenen.
 """
 
 import os
@@ -18,7 +18,7 @@ from user_data.utils.database.models import (
     BacktestRun, BacktestResult, BacktestTrade, BacktestOrder,
     BacktestPosition, BacktestEquity, BacktestIndicator
 )
-# GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+# GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version
 from user_data.utils.database.repository import (
     _extract_metrics, _safe_float, _safe_datetime, _safe_int,
@@ -98,7 +98,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
             logger.error(f"[RECOMPUTE] Run {result.run_id} nicht gefunden")
             return False
 
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params = result.actual_params_json
         strategy_name = run.strategy_name
         backtest_config = dict(run.backtest_config_json)
@@ -107,7 +107,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
         exchange = run.exchange
         timeframe = run.timeframe
         # GEÄNDERT: rules_json aus iteration.spec_json laden (analog worker_tasks).
-        # Seit Ticket 12 ist rules_json für den Spec-Runner Pflicht — ohne diese
+        # Seit der Umstellung ist rules_json für den Spec-Runner Pflicht — ohne diese
         # Übergabe scheiterte der Recompute/Full-Metrics eines Multi-Combo-Results
         # mit 'rules_json fehlt' (Chart blieb ohne Equity/Indikatoren).
         if run.iteration_id is not None and run.iteration is not None:
@@ -138,7 +138,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
     })
     print(f"  [RECOMPUTE] OHLCV geladen ({_time.time() - _t0:.1f}s)")
 
-    # GEÄNDERT: Ticket 18 — _build_resolved_config statt hartcodierter Mapping-Funktion
+    # GEÄNDERT: _build_resolved_config statt hartcodierter Mapping-Funktion
     single_indicators = _build_resolved_config(indicators_config, actual_params)
     # GEÄNDERT: Schritt 3b — '_stops' stammt jetzt aus dem Run-Snapshot (3a-Backfill in
     # indicators_config_json), nicht mehr aus dem portfolio-Block. _build_resolved_config
@@ -166,12 +166,12 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
 
     # Kennzahlen extrahieren und Result aktualisieren
     _t0 = _time.time()
-    # GEÄNDERT: Ticket 64 — der Recompute rechnet nichts Eigenes mehr. Er ruft dieselbe
+    # GEÄNDERT: der Recompute rechnet nichts Eigenes mehr. Er ruft dieselbe
     # Funktion auf wie der Lauf, mit N=1 (die Strategie läuft hier mit den exakten
     # Einzel-Parametern und _disable_chunked=True, das Portfolio hat also genau eine
     # Spalte). Die Gleichheit zwischen Einzel- und Multiparameterlauf ist damit keine
     # Vereinbarung mehr, die jemand einhalten muss — es gibt nur noch einen Weg.
-    # GEÄNDERT: Ticket 58 — Kennzahlen über das Handelsfenster start..end. Die weiter
+    # GEÄNDERT: Kennzahlen über das Handelsfenster start..end. Die weiter
     # unten gespeicherte Equity-Kurve bleibt bewusst über den vollen geladenen Zeitraum,
     # damit der Chart den Vorlauf weiter zeigt.
     all_metrics = _extract_metrics(portfolios, columns, backtest_config)[0]
@@ -186,7 +186,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
         _clear_result_details(conn, result_id)
 
         # Metriken in BacktestResult aktualisieren
-        # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
+        # GEÄNDERT: Spec-Runner-Version mitschreiben
         _t0 = _time.time()
         conn.execute(
             BacktestResult.__table__.update()

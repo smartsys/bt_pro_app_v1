@@ -1,4 +1,4 @@
-"""API-Endpunkte für den Signifikanztest je Kandidat (Ticket 79)
+"""API-Endpunkte für den Signifikanztest je Kandidat
 
 POST /api/backtest/results/{result_id}/significance — Test anlegen und starten
 GET  /api/significance-tests/{test_id}              — ein Test

@@ -1,4 +1,4 @@
-"""Tests der Signifikanztest-Routen (Ticket 79).
+"""Tests der Signifikanztest-Routen.
 
 Die Endpunkt-Funktionen werden direkt aufgerufen (Projekt-Konvention, siehe
 test_testset_run_findings_api.py) — kein TestClient nötig. Geprüft wird:

@@ -1,4 +1,4 @@
-"""strategy_concepts.goal_json + goal_prompt (Ticket 66)
+"""strategy_concepts.goal_json + goal_prompt
 
 Fügt zwei nullable Spalten an ``strategy_concepts`` hinzu, damit ein Konzept
 sein Entwicklungsziel maschinenlesbar bei sich trägt:

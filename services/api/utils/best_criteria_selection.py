@@ -1,4 +1,4 @@
-"""Serverseitige Ermittlung der vier Bestwert-Kandidaten eines Laufs (Ticket 56).
+"""Serverseitige Ermittlung der vier Bestwert-Kandidaten eines Laufs.
 
 Die vier Kriterien sind dieselben, die der Toolbox-Lauf `run-bestwerte` markiert
 (`_bestwerte_for_run` in `.claude/skills/ds-strategie-session/scripts/toolbox.py`).
@@ -37,7 +37,7 @@ CANDIDATE_METRIC_FIELDS: Tuple[str, ...] = (
 )
 
 # Kennzahl-Felder, die ein Kriterium zum Rechnen braucht. Fehlt eine davon, weil ihre
-# Metrik-Gruppe abgewählt war (Ticket 68), bleibt der Kandidat leer mit Grund.
+# Metrik-Gruppe abgewählt war, bleibt der Kandidat leer mit Grund.
 _CRITERION_REQUIREMENTS: Dict[str, Tuple[str, ...]] = {
     'max_return': ('total_return_pct',),
     'winrate_band': ('win_rate_pct', 'total_return_pct'),

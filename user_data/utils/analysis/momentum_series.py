@@ -1,16 +1,16 @@
-"""Synthetische Reihen mit eingebautem Momentum — Positivkontrolle des Permutationstests (Ticket 80).
+"""Synthetische Reihen mit eingebautem Momentum — Positivkontrolle des Permutationstests.
 
 Gegenstück zu :mod:`user_data.utils.analysis.synthetic_series`: Das Nullmodell dort
 **zerstört** die Reihenfolge, dieses Modul **baut sie ein**. Damit entsteht ein
 Kandidat, dessen Vorteil per Konstruktion nur bei erhaltener Bar-Reihenfolge existiert —
 genau das, was der Permutationstest finden muss.
 
-**Warum es diesen Baustein braucht** (Befund aus Ticket 79): Die dort vorregistrierte
+**Warum es diesen Baustein braucht** (Befund): Die dort vorregistrierte
 Positivkontrolle mit ``dwsLookaheadOracle`` ist für dieses Nullmodell konstruktiv
 untauglich. Der Orakel-Vorteil ist **permutations-invariant**: Auf jeder synthetischen
 Reihe wird die Strategie neu gerechnet, und das Orakel liest ``close[t+6]`` dann aus der
 *synthetischen* Zukunft. Sein Vorteil wandert vollständig in die Null-Verteilung
-(gemessen: echt Sharpe 2,41 gegen Null-Mittel 3,17, p = 0,92). Der Vorteil hier ist das
+(der Test weist ihn damit nicht als signifikant aus). Der Vorteil hier ist das
 Gegenteil davon: Er steckt **in den Daten**, nicht im Regelwerk, und die Permutation
 nimmt ihn weg.
 
@@ -80,7 +80,7 @@ DEFAULT_WICK_SIGMA: float = 0.004
 # Startpreis der Reihe. Frei wählbar — der Test rechnet in Prozent.
 DEFAULT_START_PRICE: float = 100.0
 
-# Die vorregistrierte Trendstärke der Positivkontrolle (Ticket 80).
+# Die vorregistrierte Trendstärke der Positivkontrolle.
 CONTROL_TREND_STRENGTH: float = 0.20
 
 # Pseudo-Symbole der Kontrolle: Name -> (Daten-Seed, Trendstärke).
@@ -92,8 +92,8 @@ CONTROL_TREND_STRENGTH: float = 0.20
 # Null-Verteilung, der p-Wert ist also gleichverteilt. Ein Wert von 0,01 taucht unter
 # drei Ziehungen mit rund 3 Prozent Wahrscheinlichkeit auf — mit drei Punkten wäre
 # „unauffällig" nicht entscheidbar, und auch zehn Ziehungen (der Umfang der
-# Negativkontrolle aus Ticket 79) trennen 10 Prozent Trefferrate nicht sauber von 30
-# Prozent. Erst 30 Ziehungen machen die Gleichverteilung prüfbar (Ticket 80).
+# Negativkontrolle) trennen 10 Prozent Trefferrate nicht sauber von 30
+# Prozent. Erst 30 Ziehungen machen die Gleichverteilung prüfbar.
 FLAT_SEEDS: range = range(101, 131)
 
 

@@ -1,6 +1,6 @@
 """Handelsfenster einer BacktestConfig und Zuschnitt des Portfolios darauf.
 
-Ticket 58: Alle Kennzahlen eines Results beziehen sich ausschließlich auf das
+Alle Kennzahlen eines Results beziehen sich ausschließlich auf das
 Handelsfenster `start`–`end` der BacktestConfig. Der Vorlauf
 (`ohlc_start`–`ohlc_end`) existiert allein, damit die Indikatoren aufgewärmt
 sind, und geht in keine Kennzahl ein.
@@ -47,7 +47,7 @@ def build_trading_window(backtest_config: dict) -> Tuple[pd.Timestamp, pd.Timest
     if not isinstance(backtest_config, dict):
         raise ValueError(
             "Handelsfenster nicht bestimmbar: backtest_config fehlt oder ist kein Dict. "
-            "Kennzahlen dürfen nicht über den Vorlauf gerechnet werden (Ticket 58)."
+            "Kennzahlen dürfen nicht über den Vorlauf gerechnet werden."
         )
 
     missing = [key for key in ('start', 'end') if not backtest_config.get(key)]
@@ -55,7 +55,7 @@ def build_trading_window(backtest_config: dict) -> Tuple[pd.Timestamp, pd.Timest
         raise ValueError(
             "Handelsfenster nicht bestimmbar: fehlende Felder in der BacktestConfig — "
             + ", ".join(missing)
-            + ". Kennzahlen dürfen nicht über den Vorlauf gerechnet werden (Ticket 58)."
+            + ". Kennzahlen dürfen nicht über den Vorlauf gerechnet werden."
         )
 
     try:

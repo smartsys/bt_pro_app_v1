@@ -3,7 +3,7 @@ API-Endpoints für das Leaderboard
 
 GET /api/leaderboard?testset_id=<int>    — LeaderboardEntries; ohne testset_id alle Einträge
 GET /api/leaderboard/<entry_id>/drilldown — Drill-Down: Pro-Config-Results + Report
-POST /api/leaderboard/<entry_id>/rerun   — Lauf aus Snapshot allein reproduzieren (Ticket 40)
+POST /api/leaderboard/<entry_id>/rerun   — Lauf aus Snapshot allein reproduzieren
 """
 
 import logging
@@ -116,7 +116,7 @@ class DrilldownResultItem(BaseModel):
     max_drawdown_pct: Optional[float] = None
     sharpe_ratio: Optional[float] = None
     n_trades: Optional[int] = None
-    # GEÄNDERT: Ticket 58 — Nenner der Trefferquote (n_trades - open_trades).
+    # GEÄNDERT: Nenner der Trefferquote (n_trades - open_trades).
     open_trades: Optional[int] = None
     win_rate_pct: Optional[float] = None
     profit_factor: Optional[float] = None
@@ -289,7 +289,7 @@ def drilldown_leaderboard(entry_id: int):
         if entry is None:
             raise HTTPException(status_code=404, detail=f'LeaderboardEntry {entry_id} nicht gefunden.')
 
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         winning_ids: List[Any] = entry.winning_result_ids_json or []
         results: List[DrilldownResultItem] = []
 
@@ -308,7 +308,7 @@ def drilldown_leaderboard(entry_id: int):
                 continue
 
             # Symbol aus actual_params_json lesen (gespeichertes JSON)
-            # GEÄNDERT: Ticket 15 — _json-Suffix
+            # GEÄNDERT: _json-Suffix
             symbol: Optional[str] = None
             if br.actual_params_json and isinstance(br.actual_params_json, dict):
                 symbol = br.actual_params_json.get('symbol')
@@ -343,7 +343,7 @@ def drilldown_leaderboard(entry_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 40 — Snapshot-basierter Rerun-Endpunkt
+# GEÄNDERT: Snapshot-basierter Rerun-Endpunkt
 
 class RerunOut(BaseModel):
     """Ausgabe-Schema für einen Snapshot-Rerun."""
@@ -368,7 +368,7 @@ def rerun_from_snapshot(entry_id: int):
     """
     from decimal import Decimal
 
-    # GEÄNDERT: Ticket 72 — Befund Phase 1 auch für den Rerun (einzige Implementierung,
+    # GEÄNDERT: Befund Phase 1 auch für den Rerun (einzige Implementierung,
     # siehe api_testset_runs.start_testset_run) sowie die Iterations-Auflösung aus dem
     # LeaderboardEntry-Snapshot
     from services.api.utils.finding_aggregation import (
@@ -413,7 +413,7 @@ def rerun_from_snapshot(entry_id: int):
                 status_code=422,
                 detail=(
                     f'LeaderboardEntry {entry_id} enthält kein eingebettetes spec_json im '
-                    'strategy_snapshot. Dieser Eintrag wurde vor Ticket 40 angelegt und '
+                    'strategy_snapshot. Dieser Eintrag wurde vor der Umstellung angelegt und '
                     'kann nicht aus dem Snapshot allein reproduziert werden.'
                 ),
             )
@@ -446,10 +446,10 @@ def rerun_from_snapshot(entry_id: int):
         )
         testset_id: int = testset_snap.get('id', entry.testset_id)
 
-        # GEÄNDERT: Ticket 72 — Iteration für den Befund auflösen, solange die Session
+        # GEÄNDERT: Iteration für den Befund auflösen, solange die Session
         # noch offen ist. Einzige Implementierung, siehe
         # finding_aggregation.resolve_iteration_for_rerun_finding.
-        # GEÄNDERT: Ticket 101 — direkter Weg über die im Snapshot eingefrorene
+        # GEÄNDERT: direkter Weg über die im Snapshot eingefrorene
         # iteration_id, Reserve-Weg über die IndicatorConfig bleibt bestehen.
         finding_indicator_config_id: Optional[int] = entry.indicator_config_id
         snapshot_iteration_id: Optional[int] = strategy_snap.get('iteration_id')
@@ -479,7 +479,7 @@ def rerun_from_snapshot(entry_id: int):
     finally:
         session.close()
 
-    # GEÄNDERT: Ticket 72 — Befund Phase 1, bevor gerechnet wird (analog zum regulären
+    # GEÄNDERT: Befund Phase 1, bevor gerechnet wird (analog zum regulären
     # Startweg). Nur wenn die Iteration aufgelöst werden konnte (siehe oben) — ohne sie
     # fehlt der Pflicht-Kontext des Befunds, der Rerun selbst läuft trotzdem weiter.
     # Ein Fehler bei der Anlage reißt den Rerun nicht ab (analog close_finding_for_testset_run).
@@ -528,7 +528,7 @@ def rerun_from_snapshot(entry_id: int):
                 'size_type': cfg.get('size_type'),
                 'init_cash': cfg.get('init_cash'),
                 'fees': cfg.get('fees'),
-                # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter aus dem
+                # GEÄNDERT: die drei Portfolio-Parameter aus dem
                 # eingefrorenen Testset-Snapshot lesen. Alt-Einträge ohne die Keys
                 # liefern None = VBT-Default (slippage normalisiert der Spec-Runner auf 0.0).
                 'slippage': cfg.get('slippage'),
@@ -580,7 +580,7 @@ def rerun_from_snapshot(entry_id: int):
     # --- TestSetRun auf completed setzen und LeaderboardEntry erzeugen ---
     from user_data.utils.database.db import get_engine
     from sqlalchemy import text
-    # GEÄNDERT: Ticket 56 — zweiter Abschlusspfad; auch hier wird der Befund geschlossen
+    # GEÄNDERT: zweiter Abschlusspfad; auch hier wird der Befund geschlossen
     from services.api.utils.finding_aggregation import close_finding_for_testset_run
 
     engine = get_engine()
@@ -594,7 +594,7 @@ def rerun_from_snapshot(entry_id: int):
             {'n': len(configs), 'tid': testset_run_id},
         )
 
-    # GEÄNDERT: Ticket 56 — Befund Phase 2. Der Snapshot-Rerun legt selbst keinen Befund
+    # GEÄNDERT: Befund Phase 2. Der Snapshot-Rerun legt selbst keinen Befund
     # an (er läuft ohne Iteration, die Phase 1 zwingend braucht); die Funktion meldet
     # das dann als „kein Befund vorhanden" und lässt den Abschluss unberührt.
     close_finding_for_testset_run(testset_run_id)
@@ -606,7 +606,7 @@ def rerun_from_snapshot(entry_id: int):
             detail=f'LeaderboardEntry nach Rerun (TestSetRun #{testset_run_id}) konnte nicht angelegt werden.',
         )
 
-    # GEÄNDERT: Ticket 40 — spec_json aus dem Quell-Entry in den neuen Entry einbetten.
+    # GEÄNDERT: spec_json aus dem Quell-Entry in den neuen Entry einbetten.
     # Da der Rerun ohne iteration_id läuft (transient, kein FK), wird spec_json nicht
     # automatisch eingebettet. Wir übertragen es direkt aus dem Quell-Snapshot.
     if spec_json is not None:

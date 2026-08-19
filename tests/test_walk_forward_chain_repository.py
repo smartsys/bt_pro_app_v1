@@ -1,4 +1,4 @@
-"""Tests des Ketten-Repositories und der ORM-Wächter (Ticket 82).
+"""Tests des Ketten-Repositories und der ORM-Wächter.
 
 Der Schutz sitzt am ORM-Mapper und gilt damit für jeden Schreibweg über eine
 Session — nicht nur für die Repository-Funktionen. Geprüft wird:

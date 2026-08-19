@@ -1,14 +1,14 @@
 """Tests für BacktestRun.testset_run_id FK-Verknüpfung.
 
-Ticket 04: Stellt sicher, dass testset_run_id korrekt persistiert wird,
+Stellt sicher, dass testset_run_id korrekt persistiert wird,
 Einzelstarts NULL liefern und FK-Integrität gewahrt ist.
 
 Tests laufen gegen die echte PostgreSQL-Test-DB (VBT_TEST_DATABASE_URL, Port 5562),
 da die Spalte einen FK auf testset_runs hat und SQLite keine FK-Constraints erzwingt.
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 from datetime import datetime
@@ -44,7 +44,7 @@ _INDICATORS_CONFIG: dict = {}
 def backtest_config_obj(session) -> BacktestConfig:
     """Minimale BacktestConfig — Voraussetzung für TestSet."""
     config = BacktestConfig(
-        name='Ticket04-Config',
+        name='Test-Config',
         symbol='BTCUSDT',
         exchange='binance',
         timeframe='4h',
@@ -62,8 +62,8 @@ def backtest_config_obj(session) -> BacktestConfig:
 def testset_run(session, backtest_config_obj) -> TestSetRun:
     """Minimaler TestSetRun für FK-Tests."""
     ts = TestSet(
-        name='Ticket04-TestSet',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        name='Test-TestSet',
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=[backtest_config_obj.id],
     )
     session.add(ts)
@@ -95,7 +95,7 @@ def _create_run(session, testset_run_id=None) -> BacktestRun:
         timeframe=_BACKTEST_CONFIG['timeframe'],
         start_date=datetime.strptime(_BACKTEST_CONFIG['start'], '%Y-%m-%d'),
         end_date=datetime.strptime(_BACKTEST_CONFIG['end'], '%Y-%m-%d'),
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json=_BACKTEST_CONFIG,
         indicators_config_json=_INDICATORS_CONFIG,
         n_combinations=1,
@@ -181,7 +181,7 @@ def test_create_run_via_repository_with_testset_run_id(db_engine):
         ).scalar()
         ts_id = setup_conn.execute(
             text(
-                # GEÄNDERT: Ticket 15 — _json-Suffix
+                # GEÄNDERT: _json-Suffix
                 "INSERT INTO testsets (name, backtest_config_ids_json) VALUES"
                 " ('T04-Repo-TS', :ids) RETURNING id"
             ),

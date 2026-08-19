@@ -1,4 +1,4 @@
-"""Tests der Fold-Plan-Rechnung und der Plan-Validierung (Ticket 82).
+"""Tests der Fold-Plan-Rechnung und der Plan-Validierung.
 
 Reine Datums- und Prüflogik ohne DB. Geprüft wird:
 

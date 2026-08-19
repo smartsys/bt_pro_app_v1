@@ -2,7 +2,7 @@
 
 Bewusst ohne rq/redis/DB-Abhängigkeiten, damit sie ohne Container und ohne
 externe Dienste testbar ist. Übersetzt den RQ-Zustand eines toten Jobs in eine
-lesbare Abbruch-Begründung für backtest_runs.error_message (Ticket 69).
+lesbare Abbruch-Begründung für backtest_runs.error_message.
 
 RQ erkennt einen hart beendeten Work-Horse (OOM-Killer, kill -9) selbst: der
 überlebende Worker-Prozess ruft handle_job_failure() auf und schreibt einen

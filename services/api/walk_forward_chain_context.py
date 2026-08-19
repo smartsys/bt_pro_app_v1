@@ -1,4 +1,4 @@
-"""Gemeinsame Bausteine der Walk-Forward-Ketten-Routen (Ticket 82).
+"""Gemeinsame Bausteine der Walk-Forward-Ketten-Routen.
 
 Hier liegt, was sowohl die Artefakt-Routen
 (:mod:`services.api.routes.api_walk_forward_chains`) als auch die Lauf-Routen

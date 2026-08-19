@@ -1,4 +1,4 @@
-"""Repository-Funktionen für den Befund je Testset-Lauf (Ticket 56).
+"""Repository-Funktionen für den Befund je Testset-Lauf.
 
 Der Befund entsteht in zwei Phasen, und beide sind hier abgebildet:
 
@@ -151,7 +151,7 @@ def get_finding_for_testset_run(
 def count_testset_run_findings_for_testset_run(
     session: Session, testset_run_id: int,
 ) -> int:
-    """Gibt die Gesamtzahl der Befunde eines Testset-Laufs zurück (Ticket 77/A).
+    """Gibt die Gesamtzahl der Befunde eines Testset-Laufs zurück.
 
     Bei einem Rerun existieren mehrere Befunde je Testset-Lauf; die Zahl macht
     diese Historie sichtbar, wenn nur der jüngste Befund (siehe
@@ -174,7 +174,7 @@ def count_testset_run_findings_for_testset_run(
 def list_testset_run_findings_for_iteration(
     session: Session, iteration_id: int,
 ) -> List[TestSetRunFinding]:
-    """Gibt die Befund-Historie einer Iteration chronologisch zurück (Ticket 56).
+    """Gibt die Befund-Historie einer Iteration chronologisch zurück.
 
     Bewusst keine Sortier- oder Filteroption (Anforderung 7): chronologisch nach
     Anlage ist die einzige Reihenfolge, sonst entstünde eine Einladung, „nach
@@ -198,7 +198,7 @@ def list_testset_run_findings_for_iteration(
 def list_testset_run_findings_for_concept(
     session: Session, concept_id: int,
 ) -> List[TestSetRunFinding]:
-    """Gibt die Befund-Historie eines Konzepts chronologisch zurück (Ticket 85).
+    """Gibt die Befund-Historie eines Konzepts chronologisch zurück.
 
     Bewusst keine Sortier- oder Filteroption (dieselbe Regel wie bei
     `list_testset_run_findings_for_iteration`): chronologisch nach Anlage ist
@@ -223,7 +223,7 @@ def list_testset_run_findings_for_concept(
 def set_finding_interpretation(
     session: Session, finding: TestSetRunFinding, text: str,
 ) -> TestSetRunFinding:
-    """Ergänzt die Deutung nachträglich — getrennt von den Zahlen (Ticket 56).
+    """Ergänzt die Deutung nachträglich — getrennt von den Zahlen.
 
     Die Deutung ist in beiden Phasen schreibbar (siehe Docstring von
     ``TestSetRunFinding``); sie berührt keine der Phase-1/Phase-2-Spalten.
@@ -256,7 +256,7 @@ def close_testset_run_finding(
     """Schreibt die Ist-Werte und schließt den Befund (Phase 2, genau einmal).
 
     ``holdout_touched`` bleibt bewusst NULL: es gibt keinen markierten
-    Holdout-Zeitraum (Ticket 56, Out of Scope). ``False`` wäre eine Aussage, die
+    Holdout-Zeitraum (Out of Scope). ``False`` wäre eine Aussage, die
     niemand geprüft hat — der Grund steht in ``warnings['not_evaluated']``.
 
     Args:

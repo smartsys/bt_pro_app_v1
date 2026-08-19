@@ -1,5 +1,5 @@
 """
-Renderer-Dienst — „URL rein, PNG raus" (Ticket 100).
+Renderer-Dienst — „URL rein, PNG raus".
 
 Fotografiert die echte Seite mit einem langlebigen Chromium (Playwright). Je Anfrage
 entsteht ein frischer Tab, der danach wieder geschlossen wird; der Browser-Prozess selbst
@@ -45,7 +45,7 @@ IDLE_CHECK_INTERVAL_SECONDS: float = float(os.environ.get('RENDERER_IDLE_CHECK_I
 # Vorgabe für die Gesamt-Wartezeit einer Aufnahme.
 DEFAULT_TIMEOUT_MS: int = int(os.environ.get('RENDERER_DEFAULT_TIMEOUT_MS', '90000'))
 
-# Vorgabe-Ausdrücke für die Analyse-Seite (Ticket 99). Der Aufrufer kann sie ersetzen,
+# Vorgabe-Ausdrücke für die Analyse-Seite. Der Aufrufer kann sie ersetzen,
 # damit der Dienst nicht auf genau eine Seite festgenagelt ist.
 DEFAULT_READY_EXPR = 'window.__analyseReady === true'
 DEFAULT_ERROR_EXPR = 'window.__analyseError'
@@ -197,7 +197,7 @@ async def take_screenshot(
             raise RenderError(f'Seite antwortete mit HTTP {response.status}: {url}')
 
         # Auf genau ein Signal warten: fertig ODER Klartext-Fehler der Seite.
-        # Kein Rückfall auf eine feste Wartezeit — genau die soll Ticket 100 abschaffen.
+        # Kein Rückfall auf eine feste Wartezeit — genau die soll der serverseitige Weg abschaffen.
         wait_expr = f"() => (({ready_expr}) === true) || (typeof ({error_expr}) === 'string')"
         timed_out = False
         try:

@@ -1,4 +1,4 @@
-"""Tests der Walk-Forward-Ketten-Routen (Ticket 82).
+"""Tests der Walk-Forward-Ketten-Routen.
 
 Die Endpunkt-Funktionen werden direkt aufgerufen (Projekt-Konvention, siehe
 test_significance_api.py). Die Läufe entstehen über das echte

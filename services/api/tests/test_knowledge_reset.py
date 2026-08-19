@@ -1,4 +1,4 @@
-"""Tests für DELETE /api/knowledge/reset (Ticket 33, Teil B).
+"""Tests für DELETE /api/knowledge/reset (Teil B).
 
 Prüft, dass der Reset-Endpoint vault_chunks und vault_reindex_runs leert
 und korrekte Counts in der Response zurückgibt.

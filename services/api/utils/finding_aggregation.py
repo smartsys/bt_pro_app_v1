@@ -1,16 +1,16 @@
-"""Anlage und Abschluss des Befunds je Testset-Lauf (Ticket 56, Ticket 72).
+"""Anlage und Abschluss des Befunds je Testset-Lauf.
 
 ``open_finding_for_testset_run`` ist Phase 1 (Kontext + Soll beim Start) — die einzige
 Implementierung, die sowohl der reguläre Startweg (``api_testset_runs.start_testset_run``)
-als auch der Leaderboard-Rerun (``api_leaderboard.rerun_from_snapshot``) aufrufen (Ticket 72).
+als auch der Leaderboard-Rerun (``api_leaderboard.rerun_from_snapshot``) aufrufen.
 
 Der Rest der Datei ist Phase 2: Die Ist-Werte werden ausschließlich aus dem gelesen, was
 die Läufe ohnehin geschrieben haben — es wird nichts nachgerechnet und **kein** Recompute
-angestoßen. Wurde eine Metrik-Gruppe abgewählt (Ticket 68), bleibt das betroffene Feld
+angestoßen. Wurde eine Metrik-Gruppe abgewählt, bleibt das betroffene Feld
 leer und trägt seinen Grund; es wird nie mit 0 gefüllt.
 
 Eine Ausnahme von „nur aus den Läufen" ist der Sondierungs-Zähler des Konzepts
-(``strategy_concepts.probe_count``, Ticket 92): Er steht im Umfang-der-Suche-Block neben
+(``strategy_concepts.probe_count``): Er steht im Umfang-der-Suche-Block neben
 der Rastergröße, weil die Lite-Sondierungen nichts in die Datenbank schreiben und sonst
 unsichtbar blieben. Auch er wird nur ausgewiesen — nicht in ``combos_total``, nicht in
 ``N`` und nicht in die DSR eingerechnet.
@@ -58,14 +58,14 @@ logger = logging.getLogger(__name__)
 
 # Die Benchmark-Linie des Konzepts lebt bisher als Prosa in der Vault-Dokumentation.
 # Eine maschinenlesbare Quelle dafür zu schaffen ist ausdrücklich nicht Teil von
-# Ticket 56 — der Anker bleibt deshalb leer und sagt warum.
+# der Anker bleibt deshalb leer und sagt warum.
 BENCHMARK_LINE_MISSING_REASON = 'keine maschinenlesbare Benchmark-Linie vorhanden'
 
-# Es gibt keinen markierten Holdout-Zeitraum (Ticket 56, Out of Scope). Das Warnfeld ist
+# Es gibt keinen markierten Holdout-Zeitraum (Out of Scope). Das Warnfeld ist
 # vorgesehen, bleibt aber leer statt False — „nicht berührt" wäre eine Aussage, die
 # niemand geprüft hat.
 HOLDOUT_MISSING_REASON = (
-    'kein markierter Holdout-Zeitraum vorhanden (Ticket 56, Out of Scope)'
+    'kein markierter Holdout-Zeitraum vorhanden (Out of Scope)'
 )
 
 
@@ -105,7 +105,7 @@ def _active_groups(run: Any) -> tuple:
 
 
 def _read_concept_probe_count(conn: Connection, concept_id: Optional[int]) -> Dict[str, Any]:
-    """Liest den Sondierungs-Zähler des Konzepts für den Befund (Ticket 92).
+    """Liest den Sondierungs-Zähler des Konzepts für den Befund.
 
     Der Zähler steht im Befund neben der Rastergröße, weil `N` nur die
     gespeicherten Läufe kennt: Lite-Sondierungen schreiben nichts in die
@@ -162,7 +162,7 @@ def build_scope(
     vorliegenden Results steht daneben und ist **nicht** dasselbe — Läufe werden auf
     ihre Doku-Favoriten ausgedünnt.
 
-    GEÄNDERT: Ticket 92 — dazu kommt `probe_count`, der Sondierungs-Zähler des
+    GEÄNDERT: dazu kommt `probe_count`, der Sondierungs-Zähler des
     Konzepts (siehe `_read_concept_probe_count`). Er steht neben der Rastergröße
     und wird nicht in sie eingerechnet.
 
@@ -226,7 +226,7 @@ def build_benchmarks(
     Kosten-Annahmen, gerechnet vom selben Portfolio. Die Benchmark-Linie des Konzepts
     bleibt leer mit Grund. Das Ist-gegen-Soll stellt den Ziel-Schnappschuss den
     erreichten Werten gegenüber, **ohne** ihn auszuwerten: `goal_json` hat bewusst kein
-    festes Schema (Ticket 66), eine automatische Zuordnung wäre geraten.
+    festes Schema, eine automatische Zuordnung wäre geraten.
 
     Args:
         conn: Offene SQLAlchemy-Verbindung.
@@ -292,7 +292,7 @@ def build_benchmarks(
             'ist_spanne_ueber_kandidaten': ist,
             'hinweis': (
                 'Gegenüberstellung ohne Auswertung: goal_json hat bewusst kein festes '
-                'Schema (Ticket 66). Es wird nichts abgeleitet, nichts bewertet und '
+                'Schema. Es wird nichts abgeleitet, nichts bewertet und '
                 'nichts als bestanden oder durchgefallen markiert.'
             ),
         },
@@ -404,7 +404,7 @@ def build_ist_groups(engine: Engine, testset_run_id: int, finding) -> Dict[str, 
                 'candidates': candidates,
             })
 
-        # GEÄNDERT: Ticket 92 — der Sondierungs-Zähler hängt am Konzept des Befunds
+        # GEÄNDERT: der Sondierungs-Zähler hängt am Konzept des Befunds
         scope = build_scope(conn, runs, per_run, finding.concept_id)
 
         dsr_blocks: List[Dict[str, Any]] = []
@@ -505,16 +505,16 @@ def resolve_iteration_for_rerun_finding(
     entry_id: int,
     snapshot_iteration_id: Optional[int] = None,
 ) -> Tuple[Optional[int], Optional[int], Optional[Dict[str, Any]]]:
-    """Löst die Iteration für den Rerun-Befund auf (Ticket 72, direkter Weg Ticket 101).
+    """Löst die Iteration für den Rerun-Befund auf (direkter Weg).
 
     Zwei Wege, in dieser Reihenfolge:
 
-    1. **Direkter Weg (Ticket 101):** Steht ``iteration_id`` im
+    1. **Direkter Weg:** Steht ``iteration_id`` im
        ``strategy_snapshot_json`` des Eintrags (vom Builder eingefroren,
        ``repository_testsets.build_leaderboard_entry_for_testset_run``), wird sie
        direkt gegen ``StrategyIteration`` aufgelöst — die IndicatorConfig wird dafür
        nicht gebraucht.
-    2. **Reserve-Weg (Ticket 72):** Nur wenn der direkte Weg fehlt oder ins Leere
+    2. **Reserve-Weg:** Nur wenn der direkte Weg fehlt oder ins Leere
        läuft, greift der Umweg über ``LeaderboardEntry.indicator_config_id`` ->
        ``IndicatorConfig.strategy_iteration_id`` -> ``StrategyIteration``. Bleibt für
        Alt-Einträge ohne eingefrorene ``iteration_id`` erhalten.
@@ -575,7 +575,7 @@ def open_finding_for_testset_run(
     goal_snapshot: Optional[Dict[str, Any]],
     planned_n_runs: int,
 ) -> TestSetRunFinding:
-    """Legt den Befund eines startenden Testset-Laufs an (Phase 1, Ticket 56/72).
+    """Legt den Befund eines startenden Testset-Laufs an (Phase 1).
 
     Einzige Phase-1-Implementierung: wird vom regulären Startweg
     (``api_testset_runs.start_testset_run``) und vom Leaderboard-Rerun
@@ -631,7 +631,7 @@ def close_finding_for_testset_run(testset_run_id: int) -> Optional[int]:
 
     Wird von beiden Abschlusspfaden aufgerufen — dem regulären Worker-Weg und dem
     Rerun aus dem Leaderboard-Snapshot. Existiert kein Befund (etwa für Läufe, die vor
-    Ticket 56 gestartet wurden, oder für einen Snapshot-Rerun ohne Iteration), ist das
+    der Umstellung gestartet wurden, oder für einen Snapshot-Rerun ohne Iteration), ist das
     kein Fehler: rückwirkende Befunde sind ausdrücklich Out of Scope.
 
     Fehler beim Schreiben reißen den Lauf-Abschluss nicht ab, werden aber als Fehler

@@ -5,7 +5,7 @@ Teil 2: Echter End-to-End-Backtest-Vergleich — gechunkter vs. ungechunkter Lau
         Prüft bit-genaue Metrik-Gleichheit per Combo-Key (nicht positionsbasiert).
         Deckt Lücke 1 ab: Spaltenreihenfolge / Combo-Metrik-Mapping korrekt.
 
-Ticket 44: Chunk-basierte Verarbeitung großer Multi-Parameter-Backtests.
+Chunk-basierte Verarbeitung großer Multi-Parameter-Backtests.
 """
 
 import copy
@@ -15,7 +15,7 @@ import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-# GEÄNDERT: Ticket 44 — Lücke 2: Projekt-Root für direkte Ausführung ohne installed package
+# GEÄNDERT: Lücke 2: Projekt-Root für direkte Ausführung ohne installed package
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
@@ -438,7 +438,7 @@ class TestSplitIndicatorsJsonChunksStops:
 
 
 # ===========================================================================
-# GEÄNDERT: Ticket 44 — Lücke 2: Echter Backtest-Vergleich (gechunkt vs. ungechunkt)
+# GEÄNDERT: Lücke 2: Echter Backtest-Vergleich (gechunkt vs. ungechunkt)
 # ===========================================================================
 # Diese Tests benötigen vectorbtpro und laufen NUR mit dem Windows-venv.
 # Sie sind als separate Klasse mit pytest.mark.vbt_required markiert.
@@ -447,7 +447,7 @@ class TestSplitIndicatorsJsonChunksStops:
 def _make_synthetic_ohlc_data(n: int = 500, seed: int = 42):
     """Erstellt einen minimalen ohlc_data-Wrapper mit synthetischen OHLC-Daten.
 
-    Reproduziert das _OhlcWrapper-Muster aus test_ticket35_native_state_exits.py.
+    Reproduziert das _OhlcWrapper-Muster aus test__native_state_exits.py.
     Gibt ein Objekt mit .get(key) zurück das Close/Open/High/Low/Volume liefert.
     """
     import numpy as np
@@ -556,7 +556,7 @@ class TestRealBacktestChunkedVsUnchunked:
     def _run_backtest(self, chunk_size: int) -> list:
         """Führt einen Backtest mit gegebenem chunk_size aus und gibt Metriken-Liste zurück.
 
-        GEÄNDERT: Ticket 47 Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
+        GEÄNDERT: Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
         Bei chunk_size >= Anzahl Kombis kommt ein Multi-Combo-Portfolio ('portfolios')
         zurück, bei kleinerem chunk_size eine 'metrics_table'. Der Helper normalisiert
         beide Rückgabeformen auf eine positionsbasierte Metriken-Liste.
@@ -588,7 +588,7 @@ class TestRealBacktestChunkedVsUnchunked:
             metrics_list = result['metrics_table']
         else:
             pf = result['portfolios']
-            # GEÄNDERT: Ticket 58 — Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
+            # GEÄNDERT: Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
             metrics_list = _extract_metrics(
                 pf, pf.wrapper.columns, backtest_config
             )
@@ -598,7 +598,7 @@ class TestRealBacktestChunkedVsUnchunked:
     def test_chunked_matches_unchunked_all_metrics(self) -> None:
         """Gechunkter Lauf produziert bit-genaue Metriken (positionsbasiert).
 
-        GEÄNDERT: Ticket 47 Phase 2 — Multi-Combo läuft jetzt immer Single-Combo-
+        GEÄNDERT: Phase 2 — Multi-Combo läuft jetzt immer Single-Combo-
         gechunkt (nativer Pfad unterstützt kein Multi-Combo-Portfolio). Beide Läufe
         erzeugen 20 Single-Combo-Chunks. Der Vergleich erfolgt positionsbasiert.
 
@@ -616,9 +616,9 @@ class TestRealBacktestChunkedVsUnchunked:
         )
         assert len(unchunked) == 20, f"Erwarte 20 Kombis, erhalten {len(unchunked)}"
 
-        # GEÄNDERT: Ticket 47 Phase 2 — Positionsbasierter Vergleich (kein Key-Mapping).
+        # GEÄNDERT: Phase 2 — Positionsbasierter Vergleich (kein Key-Mapping).
         # Alle Metriken müssen bit-genau übereinstimmen (abs-Diff < 1e-9).
-        # GEÄNDERT: Ticket 54 — die deflated_sharpe_ratio ist hier nicht mehr dabei: sie
+        # GEÄNDERT: die deflated_sharpe_ratio ist hier nicht mehr dabei: sie
         # ist rasterweit und entsteht erst als Nachlauf über den ganzen Lauf, nachdem die
         # Results geschrieben sind. Damit gibt es keine chunk-abhängige Kennzahl mehr,
         # die eine Toleranz bräuchte.
@@ -634,7 +634,7 @@ class TestRealBacktestChunkedVsUnchunked:
                         f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chunked_val}"
                     )
                     continue
-                # GEÄNDERT: Ticket 60 — start_index/end_index (datetime) und
+                # GEÄNDERT: start_index/end_index (datetime) und
                 # total_duration (str) sind nicht numerisch; math.isnan/abs
                 # scheitern daran. Für sie zählt Gleichheit, nicht Toleranz.
                 if not isinstance(ref_val, (int, float)):
@@ -721,7 +721,7 @@ class TestRealBacktestChunkedVsUnchunked:
     def test_native_path_chunked_no_crash(self) -> None:
         """Nativer Pfad (State-Exits + Multi-Combo): gechunkter Lauf crasht nicht.
 
-        GEÄNDERT: Ticket 47 Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
+        GEÄNDERT: Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
         4 Kombis bei chunk_size=2 → 2 Multi-Combo-Sub-Grid-Chunks à 2 Kombis. Die
         metrics_table enthält 4 Einträge (alle Kombis), columns trägt den vollen
         Spalten-MultiIndex.
@@ -753,7 +753,7 @@ class TestRealBacktestChunkedVsUnchunked:
         }
 
         # 4 length x 1 multiplier = 4 Kombis
-        # GEÄNDERT: Ticket 47 Phase 2 — chunk_size spielt keine Rolle mehr für die
+        # GEÄNDERT: Phase 2 — chunk_size spielt keine Rolle mehr für die
         # Anzahl der Chunks; Multi-Combo erzwingt immer Single-Combo (4 Chunks).
         length_vals = [8, 10, 12, 14]
         multiplier_vals = [2]
@@ -803,10 +803,10 @@ class TestRealBacktestChunkedVsUnchunked:
     def test_chunked_matches_unchunked_size1_chunks(self) -> None:
         """Multi-Combo-Chunking liefert bit-genaue Metriken.
 
-        GEÄNDERT: Ticket 47 Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
+        GEÄNDERT: Bugfix — der native Pfad verarbeitet Multi-Combo direkt.
         chunk_size=9999 (>= 3 Kombis) → ein Multi-Combo-Portfolio; chunk_size=2 → zwei
         Multi-Combo-Sub-Grid-Chunks.
-        GEÄNDERT: Ticket 54 — die deflated_sharpe_ratio steht nicht mehr in diesen
+        GEÄNDERT: die deflated_sharpe_ratio steht nicht mehr in diesen
         Metriken; sie entsteht als Nachlauf über den ganzen Lauf.
 
         Grid: length=[6, 8, 10] (outer=3), multiplier=[2] (inner=1) → 3 Kombis.
@@ -841,7 +841,7 @@ class TestRealBacktestChunkedVsUnchunked:
                 metrics_list = result['metrics_table']
             else:
                 pf = result['portfolios']
-                # GEÄNDERT: Ticket 58 — Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
+                # GEÄNDERT: Handelsfenster für den Kennzahlen-Zuschnitt mitgeben.
                 metrics_list = _extract_metrics(
                     pf, pf.wrapper.columns, config
                 )
@@ -867,7 +867,7 @@ class TestRealBacktestChunkedVsUnchunked:
                         f"  Kombi {i}: {metric_name}: ref={ref_val}, gechunkt={chk_val}"
                     )
                     continue
-                # GEÄNDERT: Ticket 60 — start_index/end_index (datetime) und
+                # GEÄNDERT: start_index/end_index (datetime) und
                 # total_duration (str) sind nicht numerisch; math.isnan/abs
                 # scheitern daran. Für sie zählt Gleichheit, nicht Toleranz.
                 if not isinstance(ref_val, (int, float)):

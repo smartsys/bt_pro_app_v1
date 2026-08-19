@@ -1,4 +1,4 @@
-"""iteration_logs — append-only Denkprotokoll je Iteration (Ticket 67)
+"""iteration_logs — append-only Denkprotokoll je Iteration
 
 Legt die neue Tabelle ``iteration_logs`` an: ein chronologisches, unveränder-
 liches Log aus Freitext-Einträgen je Iteration. ``iteration_id`` trägt einen

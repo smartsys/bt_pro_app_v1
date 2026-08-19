@@ -1,4 +1,4 @@
-"""Tests für die Iterations-Log-API (Ticket 67) — append-only Denkprotokoll.
+"""Tests für die Iterations-Log-API — append-only Denkprotokoll.
 
 Tests laufen gegen eine isolierte, file-basierte SQLite-DB (TestClient-Fixture
 analog zu tests/test_obsidian_paths_and_vault_create.py) — kein Live-Container

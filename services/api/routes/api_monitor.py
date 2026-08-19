@@ -183,7 +183,7 @@ def _active_ohlc_jobs(session) -> list:
 def _active_testset_runs(session) -> list:
     """Offene TestSet-Läufe als vereinheitlichte Job-Zeilen.
 
-    GEÄNDERT: Ticket 62 — ein TestSet-Lauf ohne jeden zugehörigen BacktestRun
+    GEÄNDERT: ein TestSet-Lauf ohne jeden zugehörigen BacktestRun
     steht hinter keinem Job mehr (weder in Redis noch als DB-Zeile) und wird
     trotz status in ACTIVE_STATES nicht mehr als aktiv gewertet.
     start_testset_run (api_testset_runs.py) legt alle BacktestRuns synchron

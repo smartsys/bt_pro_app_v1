@@ -1,10 +1,10 @@
-"""Tests für das eingegrenzte `DELETE /results` (Ticket 77/B).
+"""Tests für das eingegrenzte `DELETE /results`.
 
 `result-delete-all` löschte Results außer Favoriten bisher nur global (Hintergrund-
 Job über die komplette Tabelle). Mit `run_id`/`testset_run_id` läuft stattdessen eine
 synchrone, auf die Menge eingegrenzte Löschung über `_delete_results_and_orphans` —
 dieselbe Löschsemantik wie `bulk_delete_results`, inklusive der auf die betroffenen
-Runs eingegrenzten Orphan-Sweep-Regel aus Ticket 75 (kein globaler Sweep).
+Runs eingegrenzten Orphan-Sweep-Regel (kein globaler Sweep).
 
 Die Fixtures brauchen die echte PostgreSQL-Test-DB (session/db_engine aus
 tests/conftest.py), weil `_delete_results_and_orphans` rohes SQL mit `ANY(:run_ids)`
@@ -184,7 +184,7 @@ def test_scoped_by_run_removes_only_that_runs_non_favorites(session, db_engine, 
 
 
 def test_scoped_purge_leaves_foreign_result_less_run_untouched(session, db_engine, monkeypatch):
-    """Ticket-75-Regressionsfall im neuen scoped Pfad: ein fremder, result-loser Run
+    """Regressionsfall im neuen scoped Pfad: ein fremder, result-loser Run
     (außerhalb des Scopes) überlebt eine eingegrenzte Löschung."""
     Session = sessionmaker(bind=db_engine)
     s = Session()

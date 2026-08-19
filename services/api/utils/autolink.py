@@ -1,4 +1,4 @@
-"""Auto-Linking von URLs und projektinternen Pfaden in Deutungstexten (Ticket 85).
+"""Auto-Linking von URLs und projektinternen Pfaden in Deutungstexten.
 
 Der Abschlussbericht eines Skill-Laufs schreibt Verweise auf das Sieger-Setup
 (``?setupid=N``) und den finalen Analyse-Lauf (``/backtest/runs/{id}/analyse``)

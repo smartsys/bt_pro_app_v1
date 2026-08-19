@@ -1,4 +1,4 @@
-# Renderer-Dienst (Ticket 100) — Playwright-Basis-Image, Chromium ist bereits enthalten.
+# Renderer-Dienst — Playwright-Basis-Image, Chromium ist bereits enthalten.
 # Bewusst NICHT das App-Image erweitert: Chromium samt Systembibliotheken hätte das
 # Laufzeit-Image aller App-/Worker-Container um mehrere hundert MB aufgebläht.
 FROM mcr.microsoft.com/playwright/python:v1.55.0-noble

@@ -1,6 +1,6 @@
 """backtest_results.long_trades/short_trades/bar_count — Selbstauskunft je Result
 
-Ticket 60 (Anforderungen 1+2): Ein Result kann ohne JSON-Auspacken sagen, wie
+Ein Result kann ohne JSON-Auspacken sagen, wie
 viele Long- und wie viele Short-Trades es enthielt (Summe = total_trades,
 gemessen im vbt-Kernel: `trades.direction_long`/`.direction_short.count()`)
 und wie viele Balken das tatsächlich gerechnete Handelsfenster umfasste
@@ -10,7 +10,7 @@ mit diesem Ticket zusätzlich vom Multi-Kombinations-Pfad
 (`_extract_partial_metrics`) befüllt, brauchen aber keine neue Spalte.
 
 Bewusst nullable ohne Server-Default: NULL kennzeichnet Results, die vor
-Ticket 60 entstanden sind. Der Altbestand wird nicht nachgerechnet.
+der Umstellung entstanden sind. Der Altbestand wird nicht nachgerechnet.
 
 Revision ID: 0022_result_long_short_bars
 Revises: 0021_seed_baseline_data_v3

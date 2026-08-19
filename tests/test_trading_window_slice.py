@@ -1,4 +1,4 @@
-"""Tests für den Kennzahlen-Zuschnitt auf das Handelsfenster (Ticket 58).
+"""Tests für den Kennzahlen-Zuschnitt auf das Handelsfenster.
 
 Deckt die beiden Bausteine aus `user_data/utils/metrics/trading_window.py` ab:
 die Bildung der Fenstergrenzen aus der BacktestConfig und den Zuschnitt eines
@@ -7,12 +7,12 @@ tragen muss — Spalten überleben, das Strategie-Ergebnis bleibt unangetastet,
 Buy-and-Hold-Vergleichsmaßstab und Sharpe rechnen auf dem Fenster neu, und eine
 über das Fensterende laufende Position wird als offen ausgewiesen.
 
-Ticket 60 (Anforderungen 1, 2, 8) ergänzt: die Long/Short-Aufteilung und der
+ergänzt: die Long/Short-Aufteilung und der
 tatsächlich gerechnete Zeitraum (Balkenzahl, Start-/End-Index) je Result, sowie
 die Vereinheitlichung von `expectancy`, `sqn` und `edge_ratio` auf geschlossene
-Trades (dieselbe Konvention wie `win_rate_pct`/`profit_factor` aus Ticket 58).
+Trades (dieselbe Konvention wie `win_rate_pct`/`profit_factor`).
 
-Ticket 64 hat die drei früheren Extraktionsfunktionen zu `_extract_metrics`
+Die Umstellung hat die drei früheren Extraktionsfunktionen zu `_extract_metrics`
 zusammengeführt. Die Tests unterscheiden deshalb nicht mehr nach Rechenpfad,
 sondern nach der Zahl der Spalten des Portfolios — eine Kombination gegen viele.
 """
@@ -209,7 +209,7 @@ def test_open_position_at_window_end_is_counted():
 def test_win_rate_over_closed_trades_ignores_open_position():
     """Trefferquote und Profitfaktor rechnen über geschlossene Trades.
 
-    Das ist die in Ticket 58 getroffene Entscheidung: Eine unrealisierte
+    Das ist die getroffene Entscheidung: Eine unrealisierte
     Position geht marktbewertet in total_return ein, aber nicht in die
     Trefferquote — sonst hinge diese davon ab, wo das Fenster endet.
     """
@@ -313,7 +313,7 @@ def test_closed_losing_trade_keeps_win_rate_zero():
 
 
 # ============================================================================
-# Ticket 60 — Long/Short-Aufteilung je Result (Anforderung 1)
+# Long/Short-Aufteilung je Result (Anforderung 1)
 # ============================================================================
 
 def _portfolio_with_long_and_short_entries(close: pd.Series, sweep: bool = False):
@@ -373,7 +373,7 @@ def test_multi_combination_splits_long_short_sum_to_total():
 
 
 # ============================================================================
-# Ticket 60 — gerechneter Zeitraum und Balkenzahl je Result (Anforderung 2)
+# gerechneter Zeitraum und Balkenzahl je Result (Anforderung 2)
 # ============================================================================
 
 def test_single_combination_includes_bar_count():
@@ -421,13 +421,13 @@ def test_total_duration_identical_for_one_and_many_combinations():
 
 
 # ============================================================================
-# Ticket 60 — expectancy/sqn/edge_ratio über beide Pfade vereinheitlicht (Anforderung 8)
+# expectancy/sqn/edge_ratio über beide Pfade vereinheitlicht (Anforderung 8)
 # ============================================================================
 
 def test_expectancy_identical_for_one_and_many_combinations():
     """expectancy rechnet über geschlossene Trades — bei einer wie bei vielen Kombinationen.
 
-    Pinnt den in Ticket 60 behobenen Randfall: bis dahin rechnete der
+    Pinnt den behobenen Randfall: bis dahin rechnete der
     Multi-Kombinations-Pfad über ALLE Trades (trades.expectancy), der
     Einzel-Kombinations-Pfad über pf.stats() (geschlossene Trades) — für dieselben
     Parameter unterschiedliche Werte.

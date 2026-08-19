@@ -1,4 +1,4 @@
-"""walk_forward_chains — Walk-Forward als Fold-Kette (Ticket 82)
+"""walk_forward_chains — Walk-Forward als Fold-Kette
 
 Legt die neue Tabelle ``walk_forward_chains`` an: je Kette ein Datensatz mit
 vorregistriertem Plan (Fold-Zahl, Fensterlängen, konkrete Fold-Fenster,

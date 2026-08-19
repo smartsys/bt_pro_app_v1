@@ -4,67 +4,67 @@
 
 ### Added
 - README: Installationsschritt „KI anbinden" ergänzt — der mitgelieferte Skill-Ordner ist beim Einrichten sichtbar (1.45.4)
-- Testset-Lauf und Preflight nehmen das Indikator-Raster wahlweise inline statt über eine gespeicherte IndicatorConfig (Ticket 102) (1.45.2)
-- Analyse-Screenshots entstehen serverseitig mit einem Toolbox-Aufruf statt über Browser-Fernsteuerung (Ticket 100) (1.45.0)
+- Testset-Lauf und Preflight nehmen das Indikator-Raster wahlweise inline statt über eine gespeicherte IndicatorConfig (1.45.2)
+- Analyse-Screenshots entstehen serverseitig mit einem Toolbox-Aufruf statt über Browser-Fernsteuerung (1.45.0)
 - Analyse-Seite liest ihre Heatmap-Ansicht aus Query-Parametern und meldet über window.__analyseReady, wann alle Diagramme fertig gezeichnet sind (1.44.21)
-- --wait-Bilanz für data-update/data-download in der Toolbox (Ticket 97) (1.44.17)
-- Sondierungs-Zähler am Konzept: Lite-Läufe werden mitgezählt und im Befund neben der Rastergröße ausgewiesen (Ticket 92) (1.44.12)
+- --wait-Bilanz für data-update/data-download in der Toolbox (1.44.17)
+- Sondierungs-Zähler am Konzept: Lite-Läufe werden mitgezählt und im Befund neben der Rastergröße ausgewiesen (1.44.12)
 - Chart-Playground-Schnellbacktest liefert sharpe_ratio und position_coverage_pct (Marktpräsenz) (1.44.10)
-- Ein gechunkter Multiparameterlauf speichert jeden fertigen Chunk sofort und ist nach hartem Abbruch fortsetzbar (Ticket 71) (1.44.0)
-- Konzept-Detailseite mit Ziel neben Befund-Historie, Auto-Linking der Befund-Verweise und Leaderboard-Rerun-Knopf (Ticket 85) (1.43.0)
-- Walk-Forward als Fold-Kette mit eigenem, unveränderlichem Artefakt (Ticket 82) (1.42.0)
-- Positivkontrolle für den Permutationstest: synthetische Momentum-Reihe mit echtem Reihenfolge-Vorteil (Ticket 80) (1.41.0)
-- Signifikanztest je Kandidat: Monte-Carlo-Permutationstest und Trade-Level-Bootstrap (Ticket 79) (1.40.0)
+- Ein gechunkter Multiparameterlauf speichert jeden fertigen Chunk sofort und ist nach hartem Abbruch fortsetzbar (1.44.0)
+- Konzept-Detailseite mit Ziel neben Befund-Historie, Auto-Linking der Befund-Verweise und Leaderboard-Rerun-Knopf (1.43.0)
+- Walk-Forward als Fold-Kette mit eigenem, unveränderlichem Artefakt (1.42.0)
+- Positivkontrolle für den Permutationstest: synthetische Momentum-Reihe mit echtem Reihenfolge-Vorteil (1.41.0)
+- Signifikanztest je Kandidat: Monte-Carlo-Permutationstest und Trade-Level-Bootstrap (1.40.0)
 - Toolbox: befund --testset-run, Eingrenzung von result-delete-all über --run/--testset-run, --out/--full auch bei den --json-Verben (1.39.2)
-- Befund-Artefakt am Testset-Lauf: eigene Tabelle testset_run_findings, zweiphasig und unveränderlich (Ticket 56) (1.38.0)
+- Befund-Artefakt am Testset-Lauf: eigene Tabelle testset_run_findings, zweiphasig und unveränderlich (1.38.0)
 - Run-Reaper erkennt Runs, deren RQ-Job durch harten Worker-Abbruch tot ist, und setzt sie mit lesbarer Begründung auf failed (1.37.4)
-- Einzel-Run-Endpunkt GET /api/backtest/runs/{id}; Toolbox stellt run:<id> und run-wait darauf um (Ticket 70) (1.37.1)
-- Metrik-Auswahl beim Run-Start: welche Kennzahl-Gruppen ein Lauf rechnet, ist wählbar (Ticket 68) (1.37.0)
-- Iterations-Log: append-only Denkprotokoll je Iteration mit API, Toolbox-Verben und read-only Frontend-Ansicht (Ticket 67) (1.36.1)
+- Einzel-Run-Endpunkt GET /api/backtest/runs/{id}; Toolbox stellt run:<id> und run-wait darauf um (1.37.1)
+- Metrik-Auswahl beim Run-Start: welche Kennzahl-Gruppen ein Lauf rechnet, ist wählbar (1.37.0)
+- Iterations-Log: append-only Denkprotokoll je Iteration mit API, Toolbox-Verben und read-only Frontend-Ansicht (1.36.1)
 - Strategie-Konzept trägt ein Entwicklungsziel (goal_json + goal_prompt) sowie den Status „idee" für ungetestete Recherche-Fundsachen (1.36.0)
-- Portfolio-Parameter Slippage und Stop-Ausführung vollständig durchgezogen: slippage, stop_exit_price und stop_order_type als reguläre BacktestConfig-Felder (Ticket 59) (1.33.0)
-- Tests für den Monitor-Karteileichen-Filter und Klarstellung im Modell-Kommentar (Ticket 62 Nachtrag) (1.32.3)
+- Portfolio-Parameter Slippage und Stop-Ausführung vollständig durchgezogen: slippage, stop_exit_price und stop_order_type als reguläre BacktestConfig-Felder (1.33.0)
+- Tests für den Monitor-Karteileichen-Filter und Klarstellung im Modell-Kommentar (1.32.3)
 - Messwerkzeuge zur Bewertung von Multiparameter-Läufen: Symbol-Korrelation und zwei Kontroll-Indikatoren (1.31.0)
 
 ### Changed
 - Leaderboard-Eintrag trägt seine Iteration selbst — der Rerun-Befund löst sie über die im strategy_snapshot_json eingefrorene iteration_id auf (1.45.1)
 - Analyse-Screenshots sind keine Pflicht des Entwicklungs-Loops mehr; Screenshot-Standard auf den isolierten Browser nachgezogen (1.44.20)
-- Screenshot-Standard trägt das Verfahren als Hauptteil, deckt kleine Raster ab und löst den Chrome-Profil-Lock (Ticket 96) (1.44.15)
+- Screenshot-Standard trägt das Verfahren als Hauptteil, deckt kleine Raster ab und löst den Chrome-Profil-Lock (1.44.15)
 - TestSet-Löschen fragt nach, statt zu blockieren — Läufe, Runs und Results bleiben erhalten (1.44.6)
-- Test-Suite läuft im Container statt im Windows-venv (Ticket 88) (1.44.3)
-- Doku-Nachzug nach der Skill-Entkernung: Run-Journal-Verweise auf das Iterations-Log umgestellt (Ticket 74) (1.39.4)
-- Skill ds-strategie-session entkernt und auf den agentischen Entwicklungs-Loop ausgerichtet (Ticket 73) (1.39.0)
-- Toolbox: Wissenssuche mit wählbarer Trefferzahl per --k; totes Verb result-metrics-level entfernt (Ticket 70) (1.37.2)
-- Kennzahlen entstehen in genau einer Funktion — ein Result trägt denselben Satz, egal wie es entstanden ist (Ticket 64 + 60) (1.34.0)
-- Kennzahlen rechnen ausschließlich über das Handelsfenster start–end; dokumentierter Schnitt, alte und neue Zahlen sind nicht vergleichbar (Ticket 58) (1.32.0)
+- Test-Suite läuft im Container statt im Windows-venv (1.44.3)
+- Doku-Nachzug nach der Skill-Entkernung: Run-Journal-Verweise auf das Iterations-Log umgestellt (1.39.4)
+- Skill ds-strategie-session entkernt und auf den agentischen Entwicklungs-Loop ausgerichtet (1.39.0)
+- Toolbox: Wissenssuche mit wählbarer Trefferzahl per --k; totes Verb result-metrics-level entfernt (1.37.2)
+- Kennzahlen entstehen in genau einer Funktion — ein Result trägt denselben Satz, egal wie es entstanden ist (1.34.0)
+- Kennzahlen rechnen ausschließlich über das Handelsfenster start–end; dokumentierter Schnitt, alte und neue Zahlen sind nicht vergleichbar (1.32.0)
 - Obsidian-Vault-Umzug nach 30_Trading/vbt/strategies nachgezogen und Notizen an die Vault-Templates angeglichen (1.30.95)
 
 ### Fixed
 - Obsidian-Vault-Pfade auf die neue Ordnerstruktur gezogen (Werkzeugwelt als Unterordner) (1.45.3)
 - data-update überlagert den Kerzenbestand per merge() statt ihn per update() fortzuschreiben (1.44.19)
-- Lesender Zugriff in den OHLC-Anlege-Routen steht ebenfalls unter der Datei-Sperre (Ticket 97) (1.44.18)
+- Lesender Zugriff in den OHLC-Anlege-Routen steht ebenfalls unter der Datei-Sperre (1.44.18)
 - OHLC-Schreiber auf dieselbe Timeframe-Datei laufen nicht mehr in errno 11 (HDF5-Dateisperre) (1.44.16)
-- Lite-Routentests laufen im Standardlauf mit (Ticket 94) (1.44.14)
-- Lite-Aufruf-Beispiele in der Workflow-Doku tragen --concept <id> (Ticket 93) (1.44.13)
-- Toolbox-Verb playground-run-backtest-lite ist maschinenlesbar auswertbar und läuft nicht mehr in den 10s-Timeout (Ticket 91) (1.44.11)
-- Favoriten-Verben der Toolbox setzen idempotent statt umzuschalten — ein wiederholter Aufruf entfernt keine Markierung mehr (Ticket 89) (1.44.9)
+- Lite-Routentests laufen im Standardlauf mit (1.44.14)
+- Lite-Aufruf-Beispiele in der Workflow-Doku tragen --concept <id> (1.44.13)
+- Toolbox-Verb playground-run-backtest-lite ist maschinenlesbar auswertbar und läuft nicht mehr in den 10s-Timeout (1.44.11)
+- Favoriten-Verben der Toolbox setzen idempotent statt umzuschalten — ein wiederholter Aufruf entfernt keine Markierung mehr (1.44.9)
 - Leaderboard: Rerun- und Löschen-Button stehen nebeneinander statt untereinander (1.44.8)
 - Läufe eines gelöschten TestSets landen weiter im Leaderboard (1.44.7)
-- Numba- und Bytecode-Cache des Test-Containers über Laufgrenzen hinweg erhalten (Ticket 88) (1.44.4)
-- API-Tests als integration markiert und stillen pgvector-Fallback beseitigt (Ticket 88) (1.44.5)
+- Numba- und Bytecode-Cache des Test-Containers über Laufgrenzen hinweg erhalten (1.44.4)
+- API-Tests als integration markiert und stillen pgvector-Fallback beseitigt (1.44.5)
 - Scheduler-Cronjobs (enqueue_reindex, reap_stale_jobs, reap_stale_runs) scheitern nicht mehr an fehlender Container-Umgebung (1.44.2)
-- vbt-Container erhält NUMBA_CACHE_DIR zur Behebung von Numba-Cache-Fehlern beim Import von vectorbtpro (Ticket 87) (1.44.1)
+- vbt-Container erhält NUMBA_CACHE_DIR zur Behebung von Numba-Cache-Fehlern beim Import von vectorbtpro (1.44.1)
 - Response-Race im 3D-Volumen-Widget der Analyse-Seite behoben (1.43.2)
 - OHLC-HDF5-Dateien im Bind-Mount wieder schreibbar — alle schreibenden Container laufen unter derselben uid (1.43.1)
 - Walk-Forward-Einzelschritt reicht die iteration_id des Anker-Laufs durch und weist einen Anker ohne Iteration vor dem Anlegen des Runs ab (1.42.2)
-- Roadmap führte Paket 5 trotz abgeschlossener Tickets 79/80 weiter als offen — Fundstellen auf den belegten Code-Stand nachgezogen (Ticket 84) (1.42.1)
+- Roadmap führte Paket 5 trotz abgeschlossener Tickets 79/80 weiter als offen — Fundstellen auf den belegten Code-Stand nachgezogen (1.42.1)
 - Analyse-Heatmap: veraltete Antworten überschreiben nicht mehr die aktuelle Achsenwahl (1.39.3)
 - Bulk-Delete von Results löscht keine fremden Runs mehr über einen globalen Orphan-Sweep (1.39.1)
-- Ein über den Leaderboard-Rerun gestarteter Testset-Lauf erzeugt jetzt einen Befund (Ticket 72) (1.38.1)
-- Konzept-/Iterations-Export nimmt goal_json/goal_prompt und iteration_logs vollständig mit; zwei reihenfolgeabhängige Testfehlerquellen behoben (Ticket 70) (1.37.3)
-- Deflated Sharpe Ratio: eigene, korrigierte Rechnung als Nachlauf über den ganzen Lauf (Ticket 54) (1.35.0)
-- Modell/DB-Drift bei testset_runs.testset_id aufgelöst und Karteileichen im Job-Monitor entfernt (Ticket 62) (1.32.2)
-- Alembic-Migrationsziel sichtbar und unfallsicher gemacht, testset-delete gegen Fremdschlüssel-Konflikt abgesichert (Ticket 61) (1.32.1)
+- Ein über den Leaderboard-Rerun gestarteter Testset-Lauf erzeugt jetzt einen Befund (1.38.1)
+- Konzept-/Iterations-Export nimmt goal_json/goal_prompt und iteration_logs vollständig mit; zwei reihenfolgeabhängige Testfehlerquellen behoben (1.37.3)
+- Deflated Sharpe Ratio: eigene, korrigierte Rechnung als Nachlauf über den ganzen Lauf (1.35.0)
+- Modell/DB-Drift bei testset_runs.testset_id aufgelöst und Karteileichen im Job-Monitor entfernt (1.32.2)
+- Alembic-Migrationsziel sichtbar und unfallsicher gemacht, testset-delete gegen Fremdschlüssel-Konflikt abgesichert (1.32.1)
 - Vault-Pfad-Tests auf den migrierten Pfad 30_Trading/vbt/strategies nachgezogen (1.31.1)
 
 
@@ -123,7 +123,7 @@
 - Toolbox: Indikator-Timeframe (tf) wird angezeigt, -indicator-set mergt statt zu ersetzen (1.30.66)
 - Schnellbacktest rechnet genau eine Kombination: Startwert-Reduktion vor dem Runner-Aufruf (1.30.63)
 - Indicator-Configs-Tabelle sortiert wieder absteigend nach ID (1.30.62)
-- Getragene Ketten-Param-Level konsistent id-benennen — behebt 7x-Blowup der Portfolio-Spaltenzahl bei zugleich verkettetem und direkt referenziertem Indikator (Ticket 53) (1.30.60)
+- Getragene Ketten-Param-Level konsistent id-benennen — behebt 7x-Blowup der Portfolio-Spaltenzahl bei zugleich verkettetem und direkt referenziertem Indikator (1.30.60)
 - Playground-Schnellbacktest: Listen-förmige Stops ließen alle Trade-Marker still verschwinden (Audit-Befund 8) (1.30.58)
 - Playground: Grüner Entry-Hintergrund respektiert jetzt das Handelsfenster (start/end) (1.30.57)
 
@@ -153,7 +153,7 @@
 ### Fixed
 - Negative Shift-Werte in Rules-Conditions werden abgewiesen (Audit-Befund 3: Lookahead-Schutz) (1.30.54)
 - Rules-Engine: '!='-Vergleich liefert bei NaN-Operanden keine Phantom-Signale mehr (1.30.53)
-- Rules-Engine (nativer Pfad): disjunkte Entry-/Exit-Sweep-Achsen werden jetzt zum vollen Kreuzprodukt gekreuzt statt still falsch gerechnet (Audit-Befund 1, Ticket 51) (1.30.51)
+- Rules-Engine (nativer Pfad): disjunkte Entry-/Exit-Sweep-Achsen werden jetzt zum vollen Kreuzprodukt gekreuzt statt still falsch gerechnet (Audit-Befund 1) (1.30.51)
 - Chart-Playground: Race Condition im grünen Entry-Hintergrund behoben — überlappende Refreshes hinterließen verwaiste Overlays (1.30.46)
 - Chart-Playground und Backtest-Runner: TA-Lib-Indikatoren wurden ab der ersten Datenlücke konstant (flache Linie), weil ein einzelnes durch Resampling entstandenes NaN via TA-Lib bis zum Serienende propagiert. Behoben durch NaN-sicheren Indikator-Lauf (skipna). (1.30.44)
 - Label-Notation crasht nicht mehr bei Stop-Sweeps (preview-labels/generate-labels) (1.30.36)
@@ -165,7 +165,7 @@
 - Toolbox-Lücken: nachträgliche Indicator-Config-Verknüpfung, Label-Generierung mit Zusatz und persistiertes Bestwert-Kriterium am Doku-Favoriten (1.30.33)
 - Result-Lookup per Parameter-Werten (API) und Auswerte-Verben für die Strategie-Toolbox (Favoriten-Liste, Metrik-Query, Kreuz-Test, Kombinations-Verfolgung, Plateau-Score, JSON-Ausgabe) (1.30.32)
 - Chart-Playground: Umschalter JSON/Visuell für die Indikatoren- und Entry/Exit-Logic-Card (1.30.28)
-- Ticket 50 angelegt: Toolbox-Indikator-Katalog filterbar machen (--group/--search), stille 4000-Zeichen-Kürzung in _print_data durch expliziten Kürzungs-Hinweis ersetzen (1.30.25)
+-  angelegt: Toolbox-Indikator-Katalog filterbar machen (--group/--search), stille 4000-Zeichen-Kürzung in _print_data durch expliziten Kürzungs-Hinweis ersetzen (1.30.25)
 - GUI für DB-Snapshot Export/Import unter Konfiguration (1.30.24)
 - Benutzerhandbuch angelegt und Run-Analyse-Maske sprachlich geschärft (1.30.23)
 - Job-Übersicht (Monitoring-Maske) für Queues, Worker und Job-Status (1.30.20)
@@ -175,13 +175,13 @@
 ### Changed
 - Bestwert-Spalte in der Results-Tabelle verschlankt, sortierbar gemacht und dokumentiert; TP/SL sortierbar (1.30.34)
 - Per-Indikator-Timeframe: „gleich“ ist jetzt der explizite Wert 'same' — null/fehlend bedeutet „Wert fehlt“ und schlägt bei der Verarbeitung sichtbar fehl (kein impliziter Fallback mehr) (1.30.29)
-- Toolbox: Indikator-Katalog filterbar gemacht und stille 4000-Zeichen-Kürzung behoben (Ticket 50) (1.30.26)
+- Toolbox: Indikator-Katalog filterbar gemacht und stille 4000-Zeichen-Kürzung behoben (1.30.26)
 
 ### Fixed
 - Indikator-Inputs mit Nicht-OHLCV-Namen (z.B. series_a/series_b bei custom:dwsCrossover) schlugen im Playground und Config-Editor fehl („Kein Mapping für Input") (1.30.31)
 - Chart-Playground: Aktions-Buttons wieder am unteren Card-Rand, neue Indikatoren landen oberhalb der Stops-Zeile (1.30.30)
 - Chart-Playground: Result-Laden zeigt konkrete Indikatorwerte des Results statt Sweep-Ranges des Laufs (1.30.27)
-- Multiparameter-Lauf kreuzt getrennte Indikator-Achsen jetzt korrekt (Ticket 49) (1.30.22)
+- Multiparameter-Lauf kreuzt getrennte Indikator-Achsen jetzt korrekt (1.30.22)
 - Kombinationen-Anzahl beim Rerun eines Runs korrekt statt 0 anzeigen (1.30.21)
 - Test-Suite collectet und läuft wieder vollständig durch (493 passed, 1 skipped) (1.30.17)
 - Runs-Analyse: Parameter-Heatmaps blieben sporadisch leer ("Zwei verschiedene Parameter auswählen"), obwohl Results und variierte Parameter vorhanden waren (1.30.16)
@@ -251,26 +251,26 @@
 ## [1.23.0] - 2026-06-23
 
 ### Added
-- Ticket 48: Aktiv-Schalter pro Regel-Block und Indikator im Chart-Playground (1.22.0)
+- Aktiv-Schalter pro Regel-Block und Indikator im Chart-Playground (1.22.0)
 - Playground: Spec als neue Iteration oder neues Konzept speichern (1.21.0)
 - Strategie-Toolbox: Verben zur Bestwert-Auswertung von Multiparameter-Läufen (1.20.2)
-- Ticket 47 (Teil 1): Short-Unterstützung im nativen Pfad (evaluate_rules_native) (1.19.0)
-- Ticket 46: Short-Positionen im Masken-Pfad des Spec-Runners via is_short=True auf Entry/Exit-Blöcken (1.18.0)
+-  (Teil 1): Short-Unterstützung im nativen Pfad (evaluate_rules_native) (1.19.0)
+- Short-Positionen im Masken-Pfad des Spec-Runners via is_short=True auf Entry/Exit-Blöcken (1.18.0)
 
 ### Changed
 - Chart-Playground: Layout der Indikator-Cards und der Entry/Exit-Regelblöcke überarbeitet (1.23.0)
-- Dokumentation und Strategie-Toolbox auf Rule-Block- und Indikator-enabled (Ticket 48) nachgezogen (1.22.1)
+- Dokumentation und Strategie-Toolbox auf Rule-Block- und Indikator-enabled nachgezogen (1.22.1)
 - Strategie-Konzepte: ID-Spalte vor Slug, Konzept-Zeilen starten zugeklappt (1.21.2)
 - Playground: Slug- und Kategorie-Feld aus "Spec speichern"-Modal entfernt (1.21.1)
-- Ticket 47 Phase 2: Einheitlicher nativer Pfad — Masken-Pfad aus spec_runner entfernt (1.20.0)
+-  Phase 2: Einheitlicher nativer Pfad — Masken-Pfad aus spec_runner entfernt (1.20.0)
 - Performance der Backtest-Results-Tabelle drastisch verbessert (Indizes + Query-Umbau) (1.17.41)
 
 ### Removed
 - Tote services/api/schemas.py entfernt (vom gleichnamigen Package schemas/__init__.py verschattet, nie geladen) (1.17.44)
 
 ### Fixed
-- Multi-Combo im nativen Spec-Runner-Pfad jetzt korrekt vektorisiert statt fehlerhaftem Single-Combo-Pre-Expand (Ticket 47) (1.20.1)
-- Ticket 46: Short-Block-Guard greift jetzt auch im nativen Pfad (evaluate_rules_native) (1.18.1)
+- Multi-Combo im nativen Spec-Runner-Pfad jetzt korrekt vektorisiert statt fehlerhaftem Single-Combo-Pre-Expand (1.20.1)
+- Short-Block-Guard greift jetzt auch im nativen Pfad (evaluate_rules_native) (1.18.1)
 - Recompute speicherte Detail-Tabellen mehrfach (Faktor 3x) — recompute_single_result ist jetzt idempotent (1.17.45)
 - Run-Dauer in der Runs-Liste zeigt jetzt die echte Verarbeitungszeit statt der Queue-Wartezeit (1.17.43)
 - Results-Header zeigte bei run_id-Filter die Gesamtzahl; Runs-Liste zählte ineffizient (1.17.42)
@@ -304,7 +304,7 @@
 - Strategie-Doku konsistent gemacht: Iter-Note-Pfade, App-URLs als Variable, veraltete Ports/Worker-Namen/Versionsschema (1.17.36)
 - Iter-Note-Pfad-Konvention in Doku an gelebte Vault-Struktur angeglichen (Ordner pro Version) (1.17.33)
 - ds-strategie-session: Iter-Note-Suche im Vault auf rekursiven Glob umgestellt (1.17.32)
-- Zwei weitere veraltete Tests an aktuellen Code-Stand angeglichen (ticket22, ticket42) (1.17.18)
+- Zwei weitere veraltete Tests an aktuellen Code-Stand angeglichen (1.17.18)
 
 
 ## [1.17.17] - 2026-06-18
@@ -372,8 +372,8 @@
 ### Added
 - Goal-Gate: deterministische, regime-asymmetrische Mandat-Bewertung pro Testset-Config (erster Baustein des autonomen Strategie-Loops) (1.15.0)
 - README.md und .env.example fuer das oeffentliche GitHub-Repository angelegt (1.14.3)
-- Ticket 44 — Combo-Batching im Spec-Runner: Multiparameter-Läufe mit >5k Kombis werden automatisch chunk-weise verarbeitet um OOM bei 36k+ Kombis zu vermeiden (1.13.0)
-- Ticket 44 — Combo-Batching im Spec-Runner: OOM-Schutz für grosse Multiparameter-Läufe (1.12.0)
+-  — Combo-Batching im Spec-Runner: Multiparameter-Läufe mit >5k Kombis werden automatisch chunk-weise verarbeitet um OOM bei 36k+ Kombis zu vermeiden (1.13.0)
+-  — Combo-Batching im Spec-Runner: OOM-Schutz für grosse Multiparameter-Läufe (1.12.0)
 
 ### Changed
 - Repo für die öffentliche GitHub-Bereitstellung bereinigt: interne Pfade, Projektnamen und den privaten Obsidian-Vault-Namen aus allen getrackten Dateien entfernt bzw. über Umgebungsvariablen konfigurierbar gemacht (1.14.5)
@@ -390,9 +390,9 @@
 ### Fixed
 - Chart-Playground: Sichtbarkeits-Toggle der Indikatoren verwirft nicht mehr den Schnellbacktest, Fit-Button leuchtet beim Laden, Display-Änderungen respektieren den visuellen TF (1.14.2)
 - OHLC-Update-Job (Aktualisieren-Button unter /config/data) schlug bei Multi-Symbol-Dateien fehl mit "Number of symbols must be equal to the number of matched paths" (1.13.7)
-- Deflated Sharpe Ratio (DSR) im Chunked-Lauf quer-schnittlich korrekt berechnet (Ticket 44) (1.13.4)
-- Ticket 44: Schema-brechenden n_block==1-Workaround in _run_chunked durch ursachenbehebenden Fix ersetzt (1.13.3)
-- Ticket 44: Schema-brechenden n_block==1-Workaround in _run_chunked entfernt; _extract_partial_metrics liefert nun in allen Fällen exakt 16 Felder (1.13.2)
+- Deflated Sharpe Ratio (DSR) im Chunked-Lauf quer-schnittlich korrekt berechnet (1.13.4)
+- Schema-brechenden n_block==1-Workaround in _run_chunked durch ursachenbehebenden Fix ersetzt (1.13.3)
+- Schema-brechenden n_block==1-Workaround in _run_chunked entfernt; _extract_partial_metrics liefert nun in allen Fällen exakt 16 Felder (1.13.2)
 - Combo-Batching Lücken geschlossen: Single-Combo-Chunk-Bug in _run_chunked behoben, echte Backtest-Tests und Acceptance-Tests ergänzt (1.13.1)
 - Playground-Setups- und Testsets-Tabelle: Raute vor ID entfernt (1.11.15)
 - Backtest-Results-Tabelle: Raute vor Run-ID entfernt (1.11.14)
@@ -402,11 +402,11 @@
 
 ### Added
 - Konzept-Filter: Option (ohne Konzept) fuer Results ohne zugeordnete Iteration (1.11.6)
-- Ticket 40 — Leaderboard-Eintrag allein reproduzierbar: spec_json-Einbettung und Rerun-Endpunkt (1.11.0)
-- Ticket 42: Playground flüchtig aus Result laden (kein Setup anlegen) (1.10.17)
-- Ticket 43 — "Aus Result speichern" auf Snapshot vereinheitlicht (alle drei Wege löschfest) (1.10.16)
-- Ticket 43 — Speichern aus Result via full_config_snapshot_json (BC/IC/Setup) (1.10.14)
-- Ticket 41 — BacktestResult trägt vollständigen Config-Snapshot (full_config_snapshot_json) (1.10.13)
+-  — Leaderboard-Eintrag allein reproduzierbar: spec_json-Einbettung und Rerun-Endpunkt (1.11.0)
+- Playground flüchtig aus Result laden (kein Setup anlegen) (1.10.17)
+-  — "Aus Result speichern" auf Snapshot vereinheitlicht (alle drei Wege löschfest) (1.10.16)
+-  — Speichern aus Result via full_config_snapshot_json (BC/IC/Setup) (1.10.14)
+-  — BacktestResult trägt vollständigen Config-Snapshot (full_config_snapshot_json) (1.10.13)
 
 ### Changed
 - Chart-Playground: Default-Linienstärke der Indikatoren von 2 auf 1 Pixel gesenkt (1.11.12)
@@ -417,7 +417,7 @@
 - Results-Tabelle: Strategie-Spalte in Konzept + Iteration aufgeteilt, Favorit-Spalten schmaler (1.11.4)
 - Iterations-Filter zeigt die Iterations-ID im Label an (1.11.3)
 - Results-Filter: Strategie-Dropdown in getrennte Felder Konzept und Iteration aufgeteilt (1.11.2)
-- Ticket 43: Aus-Result-Speichern auf vollständigen Config-Snapshot umgestellt (1.10.15)
+- Aus-Result-Speichern auf vollständigen Config-Snapshot umgestellt (1.10.15)
 - Wissens-Vektorindex auf den ganzen Obsidian-Vault ausgeweitet (statt nur 30_Trading) (1.10.12)
 
 ### Removed
@@ -435,7 +435,7 @@
 - Cleanup-Konvention für Einmal-/Wegwerf-Dateien in CLAUDE.md verankert (1.10.10)
 - Ticket-Status-Marker eingeführt: Pflichtzeile **Status:** offen|abgeschlossen direkt unter der H1 jedes Tickets (1.10.6)
 - Toolbox auf vollständige API-Abdeckung erweitert — die KI kann jetzt jede operative Route bedienen (ändern, löschen, alle Aktionen); plus neuer Backend-Endpoint zum Löschen eines Konzepts (1.9.17)
-- Objekt-Toolbox (ds-strategie-session) um Bau-, Lauf- und Listen-Befehle erweitert — voller Strategie-Loop über die CLI bedienbar (Ticket 38) (1.9.16)
+- Objekt-Toolbox (ds-strategie-session) um Bau-, Lauf- und Listen-Befehle erweitert — voller Strategie-Loop über die CLI bedienbar (1.9.16)
 - Doku-Favoriten (roter Stern) als zweite, unabhängige Favoriten-Markierung mit eigenem Löschschutz (1.9.12)
 
 ### Changed
@@ -445,7 +445,7 @@
 - Doku-Struktur nach Publikum getrennt: documentation/ in project/ (User) und knowledge/ (KI/Dev) aufgeteilt (1.10.5)
 - Custom-Indikatoren-Liste auf eine Quelle reduziert: doppelte Tabelle in guide.md durch Verweis auf indicators.md ersetzt (1.9.19)
 - Skill ds-strategie-session entschlackt: Pfad-B-Befehlskatalog aus SKILL.md entfernt, Detail-Referenz auf zwei kanonische Quellen konsolidiert (1.9.18)
-- Terminologie: englische Abkürzung „OoS"/„Out-of-Sample" durchgängig durch deutsche Projektbegriffe ersetzt (Ticket 39) (1.9.15)
+- Terminologie: englische Abkürzung „OoS"/„Out-of-Sample" durchgängig durch deutsche Projektbegriffe ersetzt (1.9.15)
 - Seed-Export schreibt jetzt datierte, versionierte Dumps (1.9.14)
 - Stern-Spalten beschriftet (F = Favorit, D = Doku-Favorit) und sortierbar gemacht (1.9.13)
 
@@ -538,7 +538,7 @@
 
 ### Removed
 - Doku-Konsolidierung — abgeloeste Konzept-Ablage und redundantes Meta-Entscheidungs-Log entfernt (1.7.24)
-- Ticket 35 abgeschlossen: Cooldown-Approximation der Rules-Engine zurueckgebaut (State-Exits laufen ausschliesslich nativ) (1.7.15)
+-  abgeschlossen: Cooldown-Approximation der Rules-Engine zurueckgebaut (State-Exits laufen ausschliesslich nativ) (1.7.15)
 
 ### Fixed
 - ds-strategie-session-Skill: status.md-Verortung auf den Vault korrigiert (1.7.25)
@@ -555,7 +555,7 @@
 
 ### Added
 - indicators.md: Deep-Dive zu Multi-Combo-Berechnung, Cross-Produkt und Recompute (Abschnitte 6.5-6.9) (1.7.9)
-- Native State-Exits per signal_func_nb (Ticket 35, Schritt 1) (1.7.0)
+- Native State-Exits per signal_func_nb (1.7.0)
 - Equity-Tooltip im Chart-Playground: Klick auf die Equity-Linie zeigt ein Label mit dem aktuellen Equity-Wert (analog zur Result-Chart-Ansicht) (1.6.26)
 - Chart-Playground-Setups speichern jetzt auch die Auswahl der Dropdowns Iteration, Backtest-Config und Indikator-Config und stellen sie beim Laden wieder ein (1.6.25)
 - Chart-Playground: Setup speichern unter… belegt Name und Beschreibung automatisch vor (1.6.22)
@@ -587,8 +587,8 @@
 - Kurzbeschreibungsfeld für Strategie-Konzepte im Edit-Modal ergänzt (1.6.5)
 - Strategie-Entwicklung Dokumentationsstruktur aufgebaut (1.6.0)
 - vault_reindex_runs: JSONB-Spalte files_changed mit reindexierten und gelöschten Vault-Pfaden pro Lauf (1.5.1)
-- Ticket 33 — Vault-Indexer Cleanup-Paket: Sentinel-Row, Reset-Button und Worker-Architektur (1.5.0)
-- Vault-Indexer: Content-Hash-Skip statt reiner mtime-Vergleich (Ticket 32) (1.4.2)
+-  — Vault-Indexer Cleanup-Paket: Sentinel-Row, Reset-Button und Worker-Architektur (1.5.0)
+- Vault-Indexer: Content-Hash-Skip statt reiner mtime-Vergleich (1.4.2)
 
 ### Changed
 - Tests in test_api_strategy.py an den aktuellen Code- und Datenstand angepasst (kein Produktionscode geaendert). (1.6.14)
@@ -597,8 +597,8 @@
 - Playground-Iterations-Registry und App-Guide überarbeitet (1.6.1)
 
 ### Fixed
-- Ticket 34: Fehlermeldung fehlgeschlagener Backtest-Runs wird jetzt in der Child-Row der Runs-Tabelle angezeigt. (1.6.16)
-- Ticket 34: Exit-/Entry-Bedingungen im Chart-Playground werden auch bei deaktivierten oder fehlenden Indikator-Referenzen sichtbar gerendert; Run bricht bei solchen Referenzen mit klarer Meldung ab. (1.6.15)
+- Fehlermeldung fehlgeschlagener Backtest-Runs wird jetzt in der Child-Row der Runs-Tabelle angezeigt. (1.6.16)
+- Exit-/Entry-Bedingungen im Chart-Playground werden auch bei deaktivierten oder fehlenden Indikator-Referenzen sichtbar gerendert; Run bricht bei solchen Referenzen mit klarer Meldung ab. (1.6.15)
 - v42 Iteration und BT Config #562 auf Referenz-Result #695198 ausgerichtet (1.6.12)
 - Chart-Playground: Zwei Rendering-Bugs bei Indikator-/Rules-Darstellung behoben (1.6.11)
 - Playground Schnellbacktest: sl_stop-Default überschreibt Config-null nicht mehr (1.6.10)
@@ -612,17 +612,17 @@
 ## [1.4.1] - 2026-05-28
 
 ### Added
-- Vault-Knowledge-Dashboard: GET /api/knowledge/stats + Übersichts-Seite /knowledge (Ticket 30) (1.4.0)
-- Vault-Reindex Frontend: Wissens-Index-Seiten und GET /api/knowledge/files Endpoint (Ticket 29) (1.3.0)
-- Ticket 28: Vault-Reindex-Job-History — Persistenz und API (1.2.0)
-- Ticket 26 — Vault-Vektorisierung: REST-Endpoints GET /api/knowledge/search und POST /api/knowledge/reindex (1.1.1)
-- Ticket 25 — Vault-Vektorisierung: Embedding-Client, Markdown-Chunker und Indexer-Worker (1.1.0)
-- Ticket 24 — Vault-Vektorisierung: pgvector-Schema und SQLAlchemy-Modell VaultChunk (1.0.176)
+- Vault-Knowledge-Dashboard: GET /api/knowledge/stats + Übersichts-Seite /knowledge (1.4.0)
+- Vault-Reindex Frontend: Wissens-Index-Seiten und GET /api/knowledge/files Endpoint (1.3.0)
+- Vault-Reindex-Job-History — Persistenz und API (1.2.0)
+-  — Vault-Vektorisierung: REST-Endpoints GET /api/knowledge/search und POST /api/knowledge/reindex (1.1.1)
+-  — Vault-Vektorisierung: Embedding-Client, Markdown-Chunker und Indexer-Worker (1.1.0)
+-  — Vault-Vektorisierung: pgvector-Schema und SQLAlchemy-Modell VaultChunk (1.0.176)
 - Helper-Script und Skill zum gebuendelten Einlesen von vbt_app-Konfigurationen via URLs oder typ:id-Kurzformen (1.0.175)
 - Workflow `setup-via-api.md` fuer Setup-Anlage und Backtest-Ausfuehrung via API ergaenzt (1.0.173)
 - Chart-Playground Schnellanalyse zeigt Trade-Marker mit Entry/Exit/PnL im Chart (1.0.171)
 - Chart-Playground Schnellanalyse zeigt Equity-Kurve im Chart (1.0.167)
-- Ticket 23: Schnellanalyse-Button (Lite-Backtest) im Chart-Playground (1.0.164)
+- Schnellanalyse-Button (Lite-Backtest) im Chart-Playground (1.0.164)
 
 ### Changed
 - Skill ds_strategie_session ins Projekt-Repo verschoben und Ablauf auf Discovery-First umgestellt (Korrektur zu v1.0.173) (1.0.174)
@@ -632,8 +632,8 @@
 - Chart-Playground: Schnellanalyse/Backtest-Buttons in obere Action-Zeile verschoben, Lite-Badge-Kontrast verbessert (1.0.165)
 
 ### Fixed
-- Vault-Indexer: Mount-Guard gegen unbeabsichtigtes Mass-Delete bei fehlendem Bind-Mount (Ticket 31) (1.4.1)
-- Ticket 27 — PyYAML-Blocker behoben, Vault-Mount korrigiert, Initial-Reindex und Smoketest erfolgreich (1.1.2)
+- Vault-Indexer: Mount-Guard gegen unbeabsichtigtes Mass-Delete bei fehlendem Bind-Mount (1.4.1)
+-  — PyYAML-Blocker behoben, Vault-Mount korrigiert, Initial-Reindex und Smoketest erfolgreich (1.1.2)
 - Schnellanalyse: Equity-Kurve wurde nicht ausgeliefert weil pf.value ein DataFrame war (1.0.169)
 - Chart-Playground /compute: Indikator-Reihenfolge wird per Topo-Sort aufgeloest (1.0.168)
 
@@ -676,7 +676,7 @@
 ### Changed
 - Backtest-Runs: TestSet-Spalte zeigt testset_run_id statt TestSet-Name (1.0.143)
 - Indicator-Configs-Tabelle: Konzept- und Iteration-Spalten ergaenzt, Workflows/Default entfernt, Indikatoren ohne Zeilenumbruch (1.0.140)
-- Ticket 22 — Indikator-Config: lose Verknüpfung zu Strategy-Concept und Iteration (1.0.139)
+-  — Indikator-Config: lose Verknüpfung zu Strategy-Concept und Iteration (1.0.139)
 - Leaderboard: Default-Sortierung auf Sum Return % (statt Ø Return %) (1.0.138)
 - Leaderboard: Spalten Ø Return % und Sum Return % links neben Erstellt am verschoben (nach Ø Profit-Faktor) (1.0.137)
 - Leaderboard: Spalte IndicatorConfig durch generische Spalte Indikatoren ersetzt — Badges aus indicator_config_snapshot_json mit Parameter-Tooltip (1.0.136)
@@ -704,7 +704,7 @@
 - Konfiguration: Verwaltungsseiten für Playground-Setups (Liste + Edit-Maske mit allen Feldern) (1.0.119)
 - Chart-Playground: Backtest-Result inline anzeigen mit Kennzahlen-Panel, Equity-Sub-Chart und Trade-Markern; drei Analyse-Tabs (Indikatoren/Strategie/Portfolio | Stats | Trades); gemeinsame JS-Module result/tabs.js und result/overlay.js für Wiederverwendung mit result_chart.html (1.0.108)
 - Iteration loeschen mit optionaler Obsidian-Ordner-Entfernung und Vault-Ordner-Rename bei Versionsaenderung (1.0.106)
-- Ticket 16 — Deterministische Obsidian-Pfade, vault-create Endpunkte, Frontend-Button (1.0.104)
+-  — Deterministische Obsidian-Pfade, vault-create Endpunkte, Frontend-Button (1.0.104)
 
 ### Changed
 - Chart-Playground: Button-Label und Confirm-Dialog "Loeschen" → "Löschen" mit echtem Umlaut (1.0.123)
@@ -714,19 +714,19 @@
 - Chart-Playground: Equity wird als Overlay-Series am Haupt-Chart gerendert statt als Sub-Chart (1.0.117)
 - Indicator-JSON-Schema bereinigt: Tickets 18-21 umgesetzt, dwsFastSMA-Param 'mult' zu 'multiplier' DB-migriert. (1.0.114)
 - calcCombinations() in beiden Templates haertet: META_KEYS explizit ueberspringen (1.0.112)
-- Ticket 18 — Recompute auf _build_resolved_config umgestellt, resolved_config_json schreibt Skalare statt Pseudo-Ranges (1.0.111)
-- dwsFastSMA-Param `mult` zu `multiplier` umbenannt, Alias-Map entfernt (Ticket 19) (1.0.110)
+-  — Recompute auf _build_resolved_config umgestellt, resolved_config_json schreibt Skalare statt Pseudo-Ranges (1.0.111)
+- dwsFastSMA-Param `mult` zu `multiplier` umbenannt, Alias-Map entfernt (1.0.110)
 
 ### Removed
-- _rules-Legacy-Key vollständig entfernt: DB gesäubert, Worker- und Chart-Playground-Fallback gelöscht (Ticket 21) (1.0.113)
+- _rules-Legacy-Key vollständig entfernt: DB gesäubert, Worker- und Chart-Playground-Fallback gelöscht (1.0.113)
 
 ### Fixed
 - Chart-Playground: TF-Buttons werden nach Setup-Load bzw. Backtest-Config-Wechsel neu gerendert (1.0.118)
 - Result-Chart-Seite: chart-data-Endpoint warf 500-Traceback wegen alter Tabellen-Namen in Raw-SQL (1.0.116)
-- test_ticket11: Frontend-Route-Pfad korrigiert (`/config/strategy` → `/config/strategy-concepts`) (1.0.115)
-- Chart-Playground: Equity-Kurve sichtbar, Tab-Label und Cleanup korrigiert (Ticket 17 Nachbesserung) (1.0.109)
+- test_Frontend-Route-Pfad korrigiert (`/config/strategy` → `/config/strategy-concepts`) (1.0.115)
+- Chart-Playground: Equity-Kurve sichtbar, Tab-Label und Cleanup korrigiert (1.0.109)
 - Chart-Playground: Setup-Laden baut Strategie und Indikatoren wieder auf (1.0.107)
-- Ticket 16 Bugfix: Obsidian-Vault-Mount und vault-create Idempotenz (1.0.105)
+-  Bugfix: Obsidian-Vault-Mount und vault-create Idempotenz (1.0.105)
 
 
 ## [1.0.103] - 2026-05-25
@@ -734,19 +734,19 @@
 ### Added
 - Strategie-Konzepte-Seite: Child-Rows immer aufgeklappt, Typ-Spalte und Kurzbeschreibung an Iterationen (1.0.103)
 - Strategie-Iterationen koennen jetzt hartcodiert oder generisch sein (1.0.102)
-- Test-Infrastruktur: Dedizierte Test-DB, zentrale Fixtures, Safety-Check gegen Arbeits-DB (Ticket 14) (1.0.97)
-- Ticket 09: Tabellen strategy_concepts + strategy_iterations mit Daten-Migration, Repository, API-Routes und Tests (1.0.91)
+- Test-Infrastruktur: Dedizierte Test-DB, zentrale Fixtures, Safety-Check gegen Arbeits-DB (1.0.97)
+- Tabellen strategy_concepts + strategy_iterations mit Daten-Migration, Repository, API-Routes und Tests (1.0.91)
 - Seed-Snapshot-Mechanismus fuer lokale DB (export/import) (1.0.87)
 - Backtest-Config-Edit: OHLC-Vorschau-Chart mit Toolbar und Verfuegbarkeitsanzeige; Config-Liste mit Verfuegbarkeits-Warnungen und Schnellzugriff zum Downloader (1.0.85)
 
 ### Changed
-- Ticket 15 — Vorlagen- und Setup-Tabellen aufraeumen: JSON-Suffix-Sweep, Schema-Refactoring, Konverter-Pair (1.0.99)
-- Test-DB auf Bind-Mount umgestellt (Nachbesserung Ticket 14) (1.0.98)
-- Ticket 13: Naming-Cleanup — testset (ein Wort) als konsistenter Bezeichner im gesamten Projekt (1.0.95)
-- Ticket 12: Chart-Playground-Runs registrieren Spec automatisch als StrategyIteration; _rules-Key-Trick aus BacktestRun.indicators_config entfernt (1.0.94)
-- Ticket 11: Strategie-UI auf zweistufige Concepts/Iterations-Ansicht umgestellt; /backtest/results zeigt sprechende Concept/Iteration-Spalte; /backtest/start nutzt zweistufiges Dropdown mit iteration_id-Persistierung (1.0.93)
-- Ticket 10: iteration_id FK an indicator_configs, backtest_runs, backtest_results — Backfill + Write-Pfad (1.0.92)
-- Bulk-Delete Batch-Größe in `_delete_result_details` von 500 auf 5.000 erhöht (Ticket 08) — reduziert Append-Aufrufe über TimescaleDB-Hypertable-Chunks um Faktor 10 (1.0.90)
+-  — Vorlagen- und Setup-Tabellen aufraeumen: JSON-Suffix-Sweep, Schema-Refactoring, Konverter-Pair (1.0.99)
+- Test-DB auf Bind-Mount umgestellt (Nachbesserung) (1.0.98)
+- Naming-Cleanup — testset (ein Wort) als konsistenter Bezeichner im gesamten Projekt (1.0.95)
+- Chart-Playground-Runs registrieren Spec automatisch als StrategyIteration; _rules-Key-Trick aus BacktestRun.indicators_config entfernt (1.0.94)
+- Strategie-UI auf zweistufige Concepts/Iterations-Ansicht umgestellt; /backtest/results zeigt sprechende Concept/Iteration-Spalte; /backtest/start nutzt zweistufiges Dropdown mit iteration_id-Persistierung (1.0.93)
+- iteration_id FK an indicator_configs, backtest_runs, backtest_results — Backfill + Write-Pfad (1.0.92)
+- Bulk-Delete Batch-Größe in `_delete_result_details` von 500 auf 5.000 erhöht — reduziert Append-Aufrufe über TimescaleDB-Hypertable-Chunks um Faktor 10 (1.0.90)
 - Backtest-Configs auf 22/23-Zeitraum aktualisiert und Workflow-Menue in Konfiguration verschoben (1.0.89)
 - Test-Set-Detail: Backtest-Auswahl als DataTable mit Checkboxen + Symbole-in-Beschreibung-Button; Test-Set-Liste: Aktionen als Icons (1.0.86)
 
@@ -754,8 +754,8 @@
 - Strategie-Konzept-Detailseite /config/strategy-concepts/{id} entfernt (1.0.101)
 
 ### Fixed
-- Ticket 15 Code-Sweep nachgezogen: übersehene ORM-Attributzugriffe auf alte Spaltennamen behoben (1.0.100)
-- Ticket 13 Nachbesserung: test_set_snapshot vollständig auf testset_snapshot umbenannt (1.0.96)
+-  Code-Sweep nachgezogen: übersehene ORM-Attributzugriffe auf alte Spaltennamen behoben (1.0.100)
+-  Nachbesserung: test_set_snapshot vollständig auf testset_snapshot umbenannt (1.0.96)
 - Seed-Import restartet jetzt auch den app-Service (FastAPI/Frontend) (1.0.88)
 - Fehlende DataTables-i18n-Datei und Drill-Down-Modal im Leaderboard repariert (1.0.84)
 
@@ -763,13 +763,13 @@
 ## [1.0.83] - 2026-05-24
 
 ### Added
-- Leaderboard-View (Ticket 07): API /api/leaderboard, Drill-Down-API und View /leaderboard mit Navigation (1.0.83)
-- Aggregat-Berechnung nach Abschluss aller TestSet-Runs (Ticket 06): LeaderboardEntry wird automatisch im Worker-Prozess erstellt, sobald alle N BacktestRuns eines TestSetRuns completed sind. (1.0.82)
-- Ticket 05: TestSet-Lauf-Maske im Frontend mit API-Endpunkt, Worker-Increment-Logik und Tests (1.0.81)
-- Ticket 04: BacktestRun.testset_run_id FK — optionale Zuordnung eines Backtest-Runs zu einem TestSet-Run (1.0.80)
-- Ticket 03: Tabellen testset_runs und leaderboard_entries mit Alembic-Migration, Repository-Funktionen und Tests (1.0.79)
-- Ticket 02: Tabelle test_sets mit vollständigem CRUD (Migration, API, Frontend, Tests) (1.0.78)
-- spec_runner.VERSION-Konstante und Spalten spec_runner_version in backtest_runs und backtest_results (Ticket 01) (1.0.77)
+- Leaderboard-View: API /api/leaderboard, Drill-Down-API und View /leaderboard mit Navigation (1.0.83)
+- Aggregat-Berechnung nach Abschluss aller TestSet-Runs: LeaderboardEntry wird automatisch im Worker-Prozess erstellt, sobald alle N BacktestRuns eines TestSetRuns completed sind. (1.0.82)
+- TestSet-Lauf-Maske im Frontend mit API-Endpunkt, Worker-Increment-Logik und Tests (1.0.81)
+- BacktestRun.testset_run_id FK — optionale Zuordnung eines Backtest-Runs zu einem TestSet-Run (1.0.80)
+- Tabellen testset_runs und leaderboard_entries mit Alembic-Migration, Repository-Funktionen und Tests (1.0.79)
+- Tabelle test_sets mit vollständigem CRUD (Migration, API, Frontend, Tests) (1.0.78)
+- spec_runner.VERSION-Konstante und Spalten spec_runner_version in backtest_runs und backtest_results (1.0.77)
 - Bulk-Löschen für Backtest Runs und Results (1.0.75)
 - dyn-v0.41 Cross-Symbol-Validierung bar2+AssetDD-Schichten abgeschlossen (1.0.68)
 - Multi-Combo-State-Primitiven in rules_engine.py + zweiter Worker-Container (1.0.67)

@@ -147,18 +147,6 @@ Sind bereits `root`-eigene Dateien im Mount gelandet (z.B. aus einer älteren In
 ```bash
 docker exec -u 0 frontend_bt_pro_v1 chown -R 1000:1000 /app/data/ohlc_data /app/user_data /app/services
 ```
-
----
-
-## KI-Bedienung & eigenes Strategie-Vorgehen
-
-Die KI-gestützte Arbeit (siehe oben) wird über eine **Bedienschicht** angesteuert, die im Repo mitgeliefert wird:
-
-- **Skill `ds-strategie-session`** (`.claude/skills/`) — für Claude Code: der agentische Entwicklungs-Loop (Auftrag, Recherche, Bauen, Preflight, kleines Raster, Bewerten, Iterieren, Härten, Abschluss) plus die Objekt-Toolbox, die auch einzeln nutzbar ist.
-- **`toolbox.py`** — Helfer, der jedes App-Objekt (Iteration, Configs, Results, Test-Sets, Leaderboard …) über die API liest, anlegt, startet, ändert oder löscht. Basis-URL über `VBT_APP_BASE_URL` (Default `http://localhost:5570`).
-
-Der Skill beschreibt den **generischen** Entwicklungs-Loop. Bewusst **nicht** mitgeliefert wird die **eigene Methodik** — also die strategie-spezifische Ausarbeitung (Workflow-Beschreibungen, Iterations-Logs, Status-Doku). Das ist das eigene Vorgehen jedes Nutzers und gehört nicht ins Paket. Empfehlung: leg dir dafür eine eigene Wissensbasis unter `documentation/knowledge/strategy-development/` an (Workflows, Konventionen) und optional einen Obsidian-Vault (Pfad über `OBSIDIAN_VAULT_HOST_PATH`) für Konzept-/Status-/Iterations-Notizen. Der Skill greift solche Inhalte automatisch auf, wenn sie vorhanden sind — funktioniert aber auch ohne.
-
 ---
 
 ## Technische Referenz

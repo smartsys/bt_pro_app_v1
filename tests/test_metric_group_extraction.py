@@ -1,4 +1,4 @@
-"""Tests der Gruppen-Auswahl in `repository._extract_metrics` (Ticket 68).
+"""Tests der Gruppen-Auswahl in `repository._extract_metrics`.
 
 Geprüft wird das, worauf sich Runner und Persistenz verlassen:
 
@@ -183,7 +183,7 @@ def test_single_combination_selection_behaves_like_the_multi_column_case():
     """Auch mit einer einzelnen Kombination greift die Auswahl gleich.
 
     Skalar statt Series ist der Sonderfall, an dem der Zusammenbau schon einmal
-    auseinandergelaufen ist (Ticket 44).
+    auseinandergelaufen ist.
     """
     pf = _portfolio(n_columns=1)
     columns = pf.wrapper.columns

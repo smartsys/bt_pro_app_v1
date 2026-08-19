@@ -1,21 +1,21 @@
 """Tests für repository_testsets.py — CRUD und Validierung.
 
-Ticket 02: Stellt sicher, dass TestSet-CRUD korrekt funktioniert und
+Stellt sicher, dass TestSet-CRUD korrekt funktioniert und
 backtest_config_ids-Validierung fehlende IDs mit klarer Meldung ablehnt.
 
 Hinweis: JSONB (PostgreSQL-spezifisch) wird im Model verwendet. Tests laufen
 daher gegen die echte PostgreSQL-Test-DB (VBT_TEST_DATABASE_URL, Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import pytest
 
 from datetime import datetime
 
 from user_data.utils.database.models import BacktestConfig, BacktestRun, TestSet, TestSetRun
-# GEÄNDERT: Ticket 13 — Funktionsnamen auf testset-Varianten umgestellt
+# GEÄNDERT: Funktionsnamen auf testset-Varianten umgestellt
 from user_data.utils.database.repository_testsets import (
     TestSetRunsBlockingError,
     create_testset,
@@ -86,7 +86,7 @@ def test_create_testset(session, backtest_config):
     assert ts.id is not None
     assert ts.name == 'Mein TestSet'
     assert ts.description == 'Beschreibung'
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert ts.backtest_config_ids_json == [backtest_config.id]
     assert ts.created_by == 'test-user'
     assert ts.created_at is not None
@@ -96,7 +96,7 @@ def test_create_testset_multiple_configs(session, backtest_config, second_backte
     """Anlegen mit mehreren Config-IDs."""
     ids = [backtest_config.id, second_backtest_config.id]
     ts = create_testset(session=session, name='Multi-Set', backtest_config_ids=ids)
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert set(ts.backtest_config_ids_json) == set(ids)
 
 
@@ -204,7 +204,7 @@ def test_update_testset_name(session, backtest_config):
     assert updated is not None
     assert updated.name == 'Neu'
     # Config-IDs unverändert
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert updated.backtest_config_ids_json == [backtest_config.id]
 
 
@@ -212,7 +212,7 @@ def test_update_testset_config_ids(session, backtest_config, second_backtest_con
     """backtest_config_ids eines TestSets aktualisieren."""
     ts = create_testset(session=session, name='Update-Test', backtest_config_ids=[backtest_config.id])
     updated = update_testset(session, ts.id, backtest_config_ids=[second_backtest_config.id])
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert updated.backtest_config_ids_json == [second_backtest_config.id]
 
 

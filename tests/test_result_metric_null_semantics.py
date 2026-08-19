@@ -1,4 +1,4 @@
-"""Persistenz-Semantik der Metrik-Auswahl (Ticket 68, Anforderung 3).
+"""Persistenz-Semantik der Metrik-Auswahl (Anforderung 3).
 
 `save_strategy_results` schreibt immer **alle** Kennzahl-Spalten. Felder, die eine
 Auswahl nicht gerechnet hat, gehen ausdrücklich als NULL in die Datenbank — auch im

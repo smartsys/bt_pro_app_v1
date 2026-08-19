@@ -1,4 +1,4 @@
-"""significance_tests — Signifikanztest je Kandidat (Ticket 79)
+"""significance_tests — Signifikanztest je Kandidat
 
 Legt die neue Tabelle ``significance_tests`` an: je Testlauf ein Datensatz, der
 nach ``completed``/``failed`` unveränderlich ist. Zwei Methoden teilen sich die

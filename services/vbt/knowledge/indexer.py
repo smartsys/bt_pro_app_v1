@@ -157,8 +157,7 @@ def _insert_sentinel(engine, vault_path: str, mtime: datetime, file_hash: str) -
     Vor dem Insert werden eventuell bestehende Rows für den vault_path gelöscht
     (gleiche Semantik wie _insert_chunks: full replace pro Datei).
 
-    Sentinel-Rows haben chunk_index=0, text='', embedding=NULL. Der Content-Hash-Skip
-    aus Ticket 32 erkennt sie über chunk_index=0 und file_sha1 und überspringt
+    Sentinel-Rows haben chunk_index=0, text='', embedding=NULL. Der Content-Hash-Skip erkennt sie über chunk_index=0 und file_sha1 und überspringt
     die Datei beim nächsten Lauf.
 
     Args:
@@ -284,7 +283,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
     start_ts = time.monotonic()
     engine = _get_engine()
 
-    # GEÄNDERT: Ticket 31 — Mount-Guard Schritt A: vault_root-Existenz prüfen
+    # GEÄNDERT: Mount-Guard Schritt A: vault_root-Existenz prüfen
     if not vault_root.exists() or not vault_root.is_dir():
         logger.critical(
             "[INDEXER] vault_root nicht erreichbar: %s — Abbruch ohne Cleanup", vault_root,
@@ -295,9 +294,9 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
     files_reindexed = 0
     files_deleted = 0
     chunks_written = 0
-    # GEÄNDERT: Ticket 32 — Counter für Dateien mit gleichem Content (nur mtime-Änderung)
+    # GEÄNDERT: Counter für Dateien mit gleichem Content (nur mtime-Änderung)
     files_unchanged = 0
-    # GEÄNDERT: Ticket 34 — Pfad-Listen für files_changed JSONB
+    # GEÄNDERT: Pfad-Listen für files_changed JSONB
     reindexed_paths: list[str] = []
     deleted_paths: list[str] = []
 
@@ -312,7 +311,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
         md_files = [f for f in vault_root.rglob("*.md") if not _is_excluded(f, vault_root)]
         vault_paths_to_check = None  # alle aus DB prüfen
 
-    # GEÄNDERT: Ticket 31 — Mount-Guard Schritt B: leere Dateiliste beim Voll-Reindex
+    # GEÄNDERT: Mount-Guard Schritt B: leere Dateiliste beim Voll-Reindex
     if target_path is None and not md_files:
         logger.critical(
             "[INDEXER] vault_root erreichbar, aber keine .md-Dateien gefunden "
@@ -350,7 +349,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
             deleted_paths.append(vp)
             logger.info("[INDEXER] Gelöschte Datei bereinigt: %s (%d Chunks entfernt)", vp, deleted)
 
-    # GEÄNDERT: Ticket 32 — _get_db_mtime_map durch _get_db_file_state_map ersetzt
+    # GEÄNDERT: _get_db_mtime_map durch _get_db_file_state_map ersetzt
     # --- 3. Datei-State-Map aus DB laden (mtime + SHA1-Hash) ---
     if target_path is not None and target_path.exists():
         db_state_map = _get_db_file_state_map(
@@ -360,7 +359,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
     else:
         db_state_map = _get_db_file_state_map(engine)
 
-    # GEÄNDERT: Ticket 31 — Lazy-Imports erst hier, nach den Guards (nicht am Funktions-Anfang)
+    # GEÄNDERT: Lazy-Imports erst hier, nach den Guards (nicht am Funktions-Anfang)
     from services.vbt.knowledge.chunker import chunk_markdown
     from services.vbt.knowledge.embedding import embed
 
@@ -369,7 +368,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
         files_scanned += 1
         vp = _vault_path_relative(md_file, vault_root)
 
-        # GEÄNDERT: Ticket 32 — Content-Hash-Skip statt reiner mtime-Vergleich
+        # GEÄNDERT: Content-Hash-Skip statt reiner mtime-Vergleich
         file_mtime = datetime.fromtimestamp(md_file.stat().st_mtime)
         db_state = db_state_map.get(vp)
 
@@ -397,7 +396,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
 
             # Chunken
             chunks = chunk_markdown(md_file)
-            # GEÄNDERT: Ticket 33 — Sentinel-Row für Dateien ohne chunkbaren Content
+            # GEÄNDERT: Sentinel-Row für Dateien ohne chunkbaren Content
             if not chunks:
                 logger.debug("[INDEXER] Keine Chunks aus: %s — Sentinel-Row schreiben", vp)
                 _insert_sentinel(engine, vp, file_mtime, file_hash)
@@ -417,7 +416,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
                     "embedding": embedding,
                 })
 
-            # GEÄNDERT: Ticket 32 — file_hash an _insert_chunks weiterreichen
+            # GEÄNDERT: file_hash an _insert_chunks weiterreichen
             n_written = _insert_chunks(engine, vp, file_mtime, chunks_data, file_hash)
             chunks_written += n_written
             files_reindexed += 1
@@ -436,7 +435,7 @@ def reindex(vault_root: Path, target_path: Optional[Path] = None) -> dict:
         "chunks_written": chunks_written,
         "files_unchanged": files_unchanged,
         "duration_seconds": round(duration, 2),
-        # GEÄNDERT: Ticket 34 — Pfad-Listen für files_changed JSONB
+        # GEÄNDERT: Pfad-Listen für files_changed JSONB
         "reindexed_paths": reindexed_paths,
         "deleted_paths": deleted_paths,
     }
@@ -473,7 +472,7 @@ def _main() -> None:
     except ImportError:
         pass
 
-    parser = argparse.ArgumentParser(description="Vault-Reindex (Ticket 25)")
+    parser = argparse.ArgumentParser(description="Vault-Reindex")
     parser.add_argument(
         "--target",
         type=str,

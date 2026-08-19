@@ -51,8 +51,8 @@ def _require_env(name: str) -> str:
     return value
 
 
-# GEÄNDERT: Ticket 14 — VBT_TEST_DATABASE_URL hat Vorrang (Migrationen gegen Test-DB)
-# GEÄNDERT: Ticket 61 — die Variable wird ausschließlich aus der echten Umgebung
+# GEÄNDERT: VBT_TEST_DATABASE_URL hat Vorrang (Migrationen gegen Test-DB)
+# GEÄNDERT: die Variable wird ausschließlich aus der echten Umgebung
 # gelesen, NICHT mehr aus der .env-Datei. Grund: die .env trägt die Test-URL dauerhaft,
 # dadurch landete jedes von Hand aufgerufene "alembic upgrade head" still auf der
 # Test-DB. Die pytest-Isolation bleibt unberührt, weil tests/conftest.py die Variable

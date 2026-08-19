@@ -1,4 +1,4 @@
-"""Tests für die --wait-Bilanz von data-update/data-download (Ticket 97).
+"""Tests für die --wait-Bilanz von data-update/data-download.
 
 Prüft die geteilte Funktion `_data_jobs_wait` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` sowie ihre Anbindung in

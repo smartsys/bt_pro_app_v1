@@ -1,14 +1,14 @@
-"""Tests für die Leaderboard-API (Ticket 07).
+"""Tests für die Leaderboard-API.
 
 Testet direkt die Repository-Funktionen und die Endpunkt-Logik:
 - list_leaderboard_entries_with_triggered_by — Default-Sort, NULL-Handling, Filter
 - get_leaderboard_entry + drilldown-Logik — Reihenfolge, null-Markierung
 
 Verwendet PostgreSQL (JSONB-kompatibel), Test-DB via VBT_TEST_DATABASE_URL (Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 from datetime import datetime as dt
 from decimal import Decimal
@@ -58,7 +58,7 @@ def test_set(session, backtest_config):
     """TestSet für API-Tests."""
     ts = TestSet(
         name='API-Leaderboard-TestSet',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=[backtest_config.id],
     )
     session.add(ts)
@@ -72,7 +72,7 @@ def other_test_set(session, backtest_config):
     """Zweites TestSet, um Filter-Isolation zu prüfen."""
     ts = TestSet(
         name='API-Leaderboard-OtherTestSet',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_ids_json=[backtest_config.id],
     )
     session.add(ts)
@@ -89,7 +89,7 @@ def _make_entry(session, test_set, strategy_name: str, total_return_avg=None, te
         strategy_family='teststrategie',
         strategy_name=strategy_name,
         configs_total=3,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         testset_snapshot_json={'name': test_set.name},
         strategy_snapshot_json={'strategy_family': 'teststrategie', 'strategy_name': strategy_name},
         winning_result_ids_json=winning_result_ids or [],
@@ -126,7 +126,7 @@ def _make_backtest_run(session):
         timeframe='4h',
         start_date=dt(2024, 1, 1),
         end_date=dt(2024, 12, 31),
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={'symbol': 'BTCUSDT'},
         indicators_config_json={},
         status='completed',
@@ -209,7 +209,7 @@ def test_drilldown_winning_result_ids_order(session, test_set):
 
     r1 = BacktestResult(
         run_id=bt_run.id, params_hash='aaa',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'symbol': 'BTCUSDT'},
         total_return_pct=10.0, total_trades=5,
     )
@@ -232,7 +232,7 @@ def test_drilldown_winning_result_ids_order(session, test_set):
 
     fetched = get_leaderboard_entry(session, entry.id)
     assert fetched is not None
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert fetched.winning_result_ids_json[0] == r1.id
     assert fetched.winning_result_ids_json[1] == r2.id
 
@@ -252,7 +252,7 @@ def test_drilldown_null_positions_in_winning_ids(session, test_set):
 
     fetched = get_leaderboard_entry(session, entry.id)
     assert fetched is not None
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     assert len(fetched.winning_result_ids_json) == 2
     assert fetched.winning_result_ids_json[0] is None
     assert fetched.winning_result_ids_json[1] is None
@@ -263,7 +263,7 @@ def test_drilldown_mixed_null_and_real_ids(session, test_set):
     bt_run = _make_backtest_run(session)
     r = BacktestResult(
         run_id=bt_run.id, params_hash='ccc',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'symbol': 'BTCUSDT'},
         total_return_pct=8.0, total_trades=3,
     )
@@ -279,7 +279,7 @@ def test_drilldown_mixed_null_and_real_ids(session, test_set):
 
     fetched = get_leaderboard_entry(session, entry.id)
     assert fetched is not None
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     ids = fetched.winning_result_ids_json
     assert len(ids) == 2
     assert ids[0] is None     # Position 0: leer

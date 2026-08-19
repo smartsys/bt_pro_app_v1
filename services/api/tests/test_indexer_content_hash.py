@@ -1,4 +1,4 @@
-"""Tests für den Content-Hash-Skip im Vault-Indexer (Ticket 32).
+"""Tests für den Content-Hash-Skip im Vault-Indexer.
 
 Prüft, dass reindex() nur dann Embeddings berechnet und Chunks neu schreibt,
 wenn sich der Datei-Inhalt tatsächlich geändert hat. Reine mtime-Änderungen
@@ -332,7 +332,7 @@ class TestBackwardsCompat:
 
         vault_path = "test_backwards.md"
 
-        # Pre-existing Row mit file_sha1='' direkt in DB einfügen (simuliert Bestand vor Ticket 32)
+        # Pre-existing Row mit file_sha1='' direkt in DB einfügen (simuliert Bestand vor der Umstellung)
         # Hinweis: ::vector-Cast kollidiert mit SQLAlchemy-Parameterformat — rohe psycopg2-Connection verwenden
         old_mtime = datetime.fromtimestamp(md_file.stat().st_mtime - 100)
         emb_str = "[" + ",".join(["0.0"] * 1024) + "]"
@@ -343,7 +343,7 @@ class TestBackwardsCompat:
                 "INSERT INTO vault_chunks "
                 "(vault_path, chunk_index, heading_path, content, frontmatter_json, mtime, file_sha1, embedding, indexed_at) "
                 "VALUES (%s, 0, NULL, %s, '{}', %s, '', %s::vector, %s)",
-                (vault_path, "Alter Inhalt (pre-Ticket-32)", old_mtime, emb_str, datetime.now()),
+                (vault_path, "Alter Inhalt", old_mtime, emb_str, datetime.now()),
             )
 
         # Datei touchen (mtime ist jetzt neuer als DB-mtime)

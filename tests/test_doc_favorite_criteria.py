@@ -1,14 +1,14 @@
-"""Doku-Favorit + gewonnene Bestwert-Kriterien (roter Stern, ToDo 10 + Ticket 89).
+"""Doku-Favorit + gewonnene Bestwert-Kriterien (roter Stern, ToDo 10).
 
 Verifiziert services/api/routes/api_backtest.py:
 - mark_doc_favorite_criteria: setzt roten Stern + best_criteria_json (idempotent), überschreibt
   Keys auch bei bereits gesetztem Stern, dedupliziert
-- mark_doc_favorite_criteria (Ticket 89): 'criteria' ist echt optional — fehlt der
+- mark_doc_favorite_criteria: 'criteria' ist echt optional — fehlt der
   Schlüssel im Body, bleiben vorhandene Kriterien unangetastet; 'changed' zeigt die
   tatsächliche Zustandsänderung
 - unbekannter Key -> 400, unbekanntes Result -> 404
 - toggle_doc_favorite: beim Ausschalten werden die Kriterien mit-geleert (Kopplung)
-- unmark_doc_favorite (Ticket 89): gezieltes, idempotentes Entfernen inkl. Kriterien
+- unmark_doc_favorite: gezieltes, idempotentes Entfernen inkl. Kriterien
 """
 
 import json
@@ -127,7 +127,7 @@ def test_toggle_off_leert_kriterien(test_engine, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Ticket 89 — setzend statt umschaltend: criteria echt optional, changed-Flag,
+# setzend statt umschaltend: criteria echt optional, changed-Flag,
 # gezieltes idempotentes Entfernen über unmark_doc_favorite.
 # ---------------------------------------------------------------------------
 

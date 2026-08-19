@@ -1,4 +1,4 @@
-"""Tests der Toolbox-Verben zum Signifikanztest (Ticket 79).
+"""Tests der Toolbox-Verben zum Signifikanztest.
 
 Geprüft werden `significance_start`, `significance_read`, `significance_list` und
 `_print_significance` aus

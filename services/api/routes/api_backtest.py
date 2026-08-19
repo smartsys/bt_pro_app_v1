@@ -40,7 +40,7 @@ from user_data.utils.database.models import (
     BacktestRun, BacktestResult, BacktestTrade, BacktestOrder, BacktestPosition,
     BacktestEquity, BacktestIndicator, BacktestParam, BacktestConfig, IndicatorConfig,
     BacktestJob, StrategyConfig,
-    # GEÄNDERT: Ticket 11 — Concepts/Iterations für sprechende Strategie-Spalte
+    # GEÄNDERT: Concepts/Iterations für sprechende Strategie-Spalte
     StrategyConcept, StrategyIteration,
     TestSet, TestSetRun,
 )
@@ -53,14 +53,14 @@ from user_data.utils.database.repository import (
     get_run_param_names, lookup_result_rows_by_params,
     get_scope_param_names, lookup_results_across_runs,
 )
-# GEÄNDERT: Ticket 61 — Waisen-Schutz: leere Testset-Läufe beim Run-Löschen mitnehmen
+# GEÄNDERT: Waisen-Schutz: leere Testset-Läufe beim Run-Löschen mitnehmen
 from user_data.utils.database.repository_testsets import purge_empty_testset_runs
-# GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+# GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
 from user_data.strategies.generic.spec_runner import VERSION as _spec_runner_version, SPEC_RUNNER_IMPORT_PATH
-# GEÄNDERT: Ticket 68 — Metrik-Auswahl beim Run-Start
+# GEÄNDERT: Metrik-Auswahl beim Run-Start
 from user_data.utils.metrics.metric_sets import validate_metrics_selection
 
-# GEÄNDERT: Batch-Größe für Bulk-Delete erhöht (Ticket 08) — 10x weniger Append-Aufrufe über Hypertable-Chunks
+# GEÄNDERT: Batch-Größe für Bulk-Delete erhöht — 10x weniger Append-Aufrufe über Hypertable-Chunks
 _DELETE_BATCH_SIZE = 5000
 
 # RQ-Job-Namen (voll-qualifiziert) als eine Wahrheit — von enqueue, _stop_run_jobs
@@ -106,16 +106,16 @@ def start_backtest(request_body: dict):
     Erstellt einen BacktestRun (sofort in /runs sichtbar) und übergibt
     nur die run_id an den Worker.
 
-    Body (neu, Ticket 11): { "backtest_config_id": int, "indicator_config_id": int, "iteration_id": int }
+    Body (neu): { "backtest_config_id": int, "indicator_config_id": int, "iteration_id": int }
     Body (legacy): { "backtest_config_id": int, "strategy_config_id": int, "indicator_config_id": int }
-    Optional (Ticket 68): "metrics": "kern" | "voll" | "auto" (Default) | ["gruppe1", ...]
+    Optional: "metrics": "kern" | "voll" | "auto" (Default) | ["gruppe1", ...]
         — welche Kennzahl-Gruppen der Lauf rechnet. Unbekannte Stufe/Gruppen-Keys
         werden abgelehnt, bevor ein Run angelegt wird.
     """
     backtest_config_id = request_body.get('backtest_config_id')
     strategy_config_id = request_body.get('strategy_config_id')
     indicator_config_id = request_body.get('indicator_config_id')
-    # GEÄNDERT: Ticket 11 — iteration_id aus neuem zweistufigem Dropdown
+    # GEÄNDERT: iteration_id aus neuem zweistufigem Dropdown
     iteration_id = request_body.get('iteration_id')
 
     if not backtest_config_id or not indicator_config_id:
@@ -124,14 +124,14 @@ def start_backtest(request_body: dict):
             status_code=400,
         )
 
-    # GEÄNDERT: Ticket 11 — entweder iteration_id oder strategy_config_id muss gesetzt sein
+    # GEÄNDERT: entweder iteration_id oder strategy_config_id muss gesetzt sein
     if not iteration_id and not strategy_config_id:
         return JSONResponse(
             {'error': 'iteration_id oder strategy_config_id erforderlich'},
             status_code=400,
         )
 
-    # GEÄNDERT: Ticket 68 — Metrik-Auswahl syntaktisch prüfen, BEVOR ein Run angelegt
+    # GEÄNDERT: Metrik-Auswahl syntaktisch prüfen, BEVOR ein Run angelegt
     # wird. Die 'auto'-Auflösung selbst (braucht n_combinations) passiert erst in
     # create_backtest_run.
     try:
@@ -149,7 +149,7 @@ def start_backtest(request_body: dict):
         if not ind:
             return JSONResponse({'error': f'Indicator-Config #{indicator_config_id} nicht gefunden'}, status_code=404)
 
-        # GEÄNDERT: Ticket 11 — strategy_family/strategy_name aus Iteration ableiten wenn iteration_id gesetzt
+        # GEÄNDERT: strategy_family/strategy_name aus Iteration ableiten wenn iteration_id gesetzt
         if iteration_id:
             iteration = session.query(StrategyIteration).filter(StrategyIteration.id == iteration_id).first()
             if not iteration:
@@ -191,7 +191,7 @@ def start_backtest(request_body: dict):
                 'size_type': bt.size_type,
                 'init_cash': bt.init_cash,
                 'fees': bt.fees,
-                # GEÄNDERT: Ticket 59 — slippage und die zwei Stop-Ausführungsfelder
+                # GEÄNDERT: slippage und die zwei Stop-Ausführungsfelder
                 # aus der BacktestConfig durchreichen. Vorher rechnete der echte Run
                 # still mit den VBT-Defaults, während der Playground die Werte nutzte.
                 'slippage': bt.slippage,
@@ -204,7 +204,7 @@ def start_backtest(request_body: dict):
         }
         if import_path:
             backtest_config_json['import_path'] = import_path
-        # GEÄNDERT: Ticket 68 — Metrik-Auswahl (Vorbild chunk_size): nur ablegen, wenn
+        # GEÄNDERT: Metrik-Auswahl (Vorbild chunk_size): nur ablegen, wenn
         # explizit angegeben. Fehlt der Key, gilt 'auto' (Default), aufgelöst in
         # create_backtest_run.
         if metrics_selection is not None:
@@ -217,12 +217,12 @@ def start_backtest(request_body: dict):
         session.close()
 
     # Run anlegen (status=queued) — Worker setzt auf running wenn Job startet
-    # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version mitschreiben
     run_id = create_backtest_run(
         backtest_config=backtest_config_json,
         indicators_config=indicators_json,
         spec_runner_version=_spec_runner_version,
-        # GEÄNDERT: Ticket 11 — iteration_id direkt übergeben
+        # GEÄNDERT: iteration_id direkt übergeben
         iteration_id=iteration_id,
         # GEÄNDERT: Herkunfts-Referenzen auf die gewählten Configs mitschreiben
         backtest_config_id=backtest_config_id,
@@ -259,10 +259,10 @@ def start_walk_forward(request_body: dict):
         if not run:
             return JSONResponse({'error': f'Run #{result.run_id} nicht gefunden'}, status_code=404)
 
-        # GEÄNDERT: Ticket 83 — Anker-Lauf ohne Iteration abweisen, BEVOR ein Run
+        # GEÄNDERT: Anker-Lauf ohne Iteration abweisen, BEVOR ein Run
         # angelegt wird (der Worker scheitert sonst hart, weil die Rules
         # ausschließlich aus iteration.spec_json kommen). Vorbild: load_anchor_run
-        # in walk_forward_chain_context.py (Ticket 82).
+        # in walk_forward_chain_context.py.
         if run.iteration_id is None:
             return JSONResponse(
                 {
@@ -274,7 +274,7 @@ def start_walk_forward(request_body: dict):
                 status_code=400,
             )
 
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         if not result.resolved_config_json:
             return JSONResponse({'error': f'Result #{result_id} hat keine resolved_config_json'}, status_code=400)
 
@@ -289,7 +289,7 @@ def start_walk_forward(request_body: dict):
     backtest_config = shift_backtest_window(backtest_config, months)
 
     # Run erstellen und Job starten
-    # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version mitschreiben
     run_id = create_backtest_run(
         backtest_config=backtest_config,
         indicators_config=indicators_config,
@@ -297,7 +297,7 @@ def start_walk_forward(request_body: dict):
         parent_result_id=result_id,
         selection_metric=metric,
         spec_runner_version=_spec_runner_version,
-        # GEÄNDERT: Ticket 83 — iteration_id des Ankers durchreichen (vorher fehlte
+        # GEÄNDERT: iteration_id des Ankers durchreichen (vorher fehlte
         # sie, der Worker scheiterte hart bei run.iteration_id is None).
         iteration_id=anchor_iteration_id,
     )
@@ -320,7 +320,7 @@ def start_walk_forward(request_body: dict):
 def _serialize_runs(session, runs: list) -> list[dict]:
     """Reichert BacktestRun-ORM-Objekte zur API-Feldform der Runs-Liste an.
 
-    GEÄNDERT: Ticket 70/C — aus get_runs herausgezogen, damit die Listen-Route
+    GEÄNDERT: aus get_runs herausgezogen, damit die Listen-Route
     (get_runs) und der Einzel-Endpunkt (get_run) exakt dieselbe Serialisierung
     nutzen, statt sie zu duplizieren.
     """
@@ -350,7 +350,7 @@ def _serialize_runs(session, runs: list) -> list[dict]:
             .all()
         )
 
-    # Job-Status pro Run (für Worker-Anzeige). GEÄNDERT: Ticket 70/C — auf die
+    # Job-Status pro Run (für Worker-Anzeige). GEÄNDERT: auf die
     # übergebenen run_ids gefiltert (vorher ungefiltert über die ganze Tabelle);
     # nötig, seit diese Funktion auch für den Einzel-Run-Endpunkt läuft.
     job_stats_rows = session.query(
@@ -506,7 +506,7 @@ def get_runs(
 def get_run(run_id: int) -> dict:
     """Einzelner Backtest-Run in derselben Feldform wie ein Element der Runs-Liste.
 
-    GEÄNDERT: Ticket 70/C — löst die 500er-Grenze der Listen-Route
+    GEÄNDERT: löst die 500er-Grenze der Listen-Route
     (RUN_LIST_LIMIT in der Toolbox) für den Einzelfall auf: ein Run ist damit
     unabhängig davon erreichbar, ob er unter den zuletzt N Runs liegt.
     Nutzt _serialize_runs — dieselbe Serialisierung wie get_runs.
@@ -521,7 +521,7 @@ def get_run(run_id: int) -> dict:
     try:
         run = session.query(BacktestRun).filter(BacktestRun.id == run_id).first()
         if run is None:
-            # GEÄNDERT: Ticket 70/C — im Modul etablierte 404-Form (JSONResponse mit
+            # GEÄNDERT: im Modul etablierte 404-Form (JSONResponse mit
             # 'error'-Key), nicht HTTPException/'detail' (siehe Nachbarzeilen oben im File).
             return JSONResponse({'error': f'Run #{run_id} nicht gefunden'}, status_code=404)
         items = _serialize_runs(session, [run])
@@ -682,7 +682,7 @@ def get_all_results(
     """Alle Results mit optionalen Filtern. Joined mit backtest_runs für Kontext."""
     session = get_session()
     try:
-        # GEÄNDERT: Ticket 11 — outer join auf Iterations/Concepts für sprechende Strategie-Spalte
+        # GEÄNDERT: outer join auf Iterations/Concepts für sprechende Strategie-Spalte
         query = (
             session.query(BacktestResult, BacktestRun, StrategyIteration, StrategyConcept, IndicatorConfig)
             .join(BacktestRun, BacktestResult.run_id == BacktestRun.id)
@@ -712,7 +712,7 @@ def get_all_results(
             items.append({
                 'id': result.id,
                 'run_id': result.run_id,
-                # GEÄNDERT: Ticket 15 — _json-Suffix
+                # GEÄNDERT: _json-Suffix
                 'actual_params': result.actual_params_json,
                 'total_return_pct': result.total_return_pct,
                 'benchmark_return_pct': result.benchmark_return_pct,
@@ -720,10 +720,10 @@ def get_all_results(
                 'sortino_ratio': result.sortino_ratio,
                 'max_drawdown_pct': result.max_drawdown_pct,
                 'total_trades': result.total_trades,
-                # GEÄNDERT: Ticket 58 — offene Positionen mitliefern; die Trefferquote rechnet
+                # GEÄNDERT: offene Positionen mitliefern; die Trefferquote rechnet
                 # über total_trades - open_trades, der Nenner muss mit angezeigt werden.
                 'open_trades': result.open_trades,
-                # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern (long_trades + short_trades
+                # GEÄNDERT: Long/Short-Aufteilung mitliefern (long_trades + short_trades
                 # = total_trades). NULL bei Alt-Results.
                 'long_trades': result.long_trades,
                 'short_trades': result.short_trades,
@@ -732,7 +732,7 @@ def get_all_results(
                 'end_value': result.end_value,
                 'strategy_family': run.strategy_family,
                 'strategy_name': run.strategy_name,
-                # GEÄNDERT: Ticket 11 — sprechende Strategie-Felder aus Concept/Iteration
+                # GEÄNDERT: sprechende Strategie-Felder aus Concept/Iteration
                 'concept_name': concept.name if concept else None,
                 # GEÄNDERT: Iterations-Version (Integer) + optionaler Name, keine PK-ID
                 'iteration_version': iteration.version if iteration else None,
@@ -813,7 +813,7 @@ def get_results_datatable(request: Request) -> dict:
 
     session = get_session()
     try:
-        # GEÄNDERT: Ticket 11 — outer join auf Iterations/Concepts für sprechende Strategie-Spalte
+        # GEÄNDERT: outer join auf Iterations/Concepts für sprechende Strategie-Spalte
         query = (
             session.query(BacktestResult, BacktestRun, StrategyIteration, StrategyConcept, IndicatorConfig)
             .join(BacktestRun, BacktestResult.run_id == BacktestRun.id)
@@ -1010,7 +1010,7 @@ def get_results_datatable(request: Request) -> dict:
             data.append({
                 'id': result.id,
                 'run_id': result.run_id,
-                # GEÄNDERT: Ticket 15 — _json-Suffix
+                # GEÄNDERT: _json-Suffix
                 'actual_params': result.actual_params_json,
                 'total_return_pct': result.total_return_pct,
                 'benchmark_return_pct': result.benchmark_return_pct,
@@ -1019,10 +1019,10 @@ def get_results_datatable(request: Request) -> dict:
                 'max_drawdown_pct': result.max_drawdown_pct,
                 'downside_risk': result.downside_risk,
                 'total_trades': result.total_trades,
-                # GEÄNDERT: Ticket 58 — offene Positionen mitliefern; die Trefferquote rechnet
+                # GEÄNDERT: offene Positionen mitliefern; die Trefferquote rechnet
                 # über total_trades - open_trades, der Nenner muss mit angezeigt werden.
                 'open_trades': result.open_trades,
-                # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern (long_trades + short_trades
+                # GEÄNDERT: Long/Short-Aufteilung mitliefern (long_trades + short_trades
                 # = total_trades). Speist u.a. die Toolbox-Vergleichstabelle. NULL bei Alt-Results.
                 'long_trades': result.long_trades,
                 'short_trades': result.short_trades,
@@ -1037,7 +1037,7 @@ def get_results_datatable(request: Request) -> dict:
                 'best_criteria': criteria_keys_to_badges(result.best_criteria_json),
                 'strategy_family': run.strategy_family,
                 'strategy_name': run.strategy_name,
-                # GEÄNDERT: Ticket 11 — sprechende Strategie-Felder aus Concept/Iteration
+                # GEÄNDERT: sprechende Strategie-Felder aus Concept/Iteration
                 'concept_name': concept.name if concept else None,
                 # GEÄNDERT: Iterations-Version (Integer) + optionaler Name, keine PK-ID
                 'iteration_version': iteration.version if iteration else None,
@@ -1320,10 +1320,10 @@ def _delete_result_details(session, result_ids: list[int]) -> None:
     if not result_ids:
         return
 
-    # GEÄNDERT: Tabellen-Namen auf Ticket-13-Schema aktualisiert (backtest_result_*)
+    # GEÄNDERT: Tabellen-Namen auf Schema aktualisiert (backtest_result_*)
     tables = ['backtest_result_indicators', 'backtest_result_equity', 'backtest_result_trades',
               'backtest_result_orders', 'backtest_result_positions', 'backtest_result_params', 'backtest_jobs']
-    # GEÄNDERT: Batch-Größe auf _DELETE_BATCH_SIZE erhöht (Ticket 08)
+    # GEÄNDERT: Batch-Größe auf _DELETE_BATCH_SIZE erhöht
     for i in range(0, len(result_ids), _DELETE_BATCH_SIZE):
         chunk = result_ids[i:i + _DELETE_BATCH_SIZE]
         ids_str = ','.join(str(rid) for rid in chunk)
@@ -1336,9 +1336,9 @@ def _delete_results_and_orphans(session, result_ids: list) -> dict:
     """Löscht Results + Detail-Daten und räumt die dadurch verwaisten Runs auf.
 
     Gemeinsame Kernlogik für `bulk_delete_results` und den eingegrenzten Pfad von
-    `delete_all_results` (Ticket 77/B) — eine Löschsemantik, nicht zwei. Der
+    `delete_all_results` — eine Löschsemantik, nicht zwei. Der
     Orphan-Sweep bleibt auf die Runs der übergebenen Result-IDs eingegrenzt (kein
-    globaler Sweep über die gesamte Tabelle, Ticket 75); leer gewordene
+    globaler Sweep über die gesamte Tabelle); leer gewordene
     Testset-Läufe werden mitgeräumt. Committet nicht selbst — der Aufrufer steuert
     die Transaktion.
 
@@ -1368,10 +1368,10 @@ def _delete_results_and_orphans(session, result_ids: list) -> dict:
         BacktestResult.id.in_(existing)
     ).delete(synchronize_session='fetch')
 
-    # GEÄNDERT: Ticket 75 — Orphan-Sweep nur über die von dieser Operation betroffenen
+    # GEÄNDERT: Orphan-Sweep nur über die von dieser Operation betroffenen
     # Runs, kein globales NOT IN. Ein fremder, result-loser Run (failed-Lauf, gezielt
     # geleerte Results) überlebt damit fremde Löschungen. RETURNING liefert die
-    # betroffenen Testset-Läufe mit (Ticket 61).
+    # betroffenen Testset-Läufe mit.
     orphan_rows = session.execute(text(
         "DELETE FROM backtest_runs WHERE id = ANY(:run_ids) "
         "AND id NOT IN (SELECT DISTINCT run_id FROM backtest_results) "
@@ -1478,7 +1478,7 @@ def delete_run(run_id: int) -> JSONResponse:
         if not run:
             raise HTTPException(status_code=404, detail="Run nicht gefunden")
 
-        # GEÄNDERT: Ticket 61 — Testset-Zugehörigkeit vor dem Löschen merken
+        # GEÄNDERT: Testset-Zugehörigkeit vor dem Löschen merken
         testset_run_id = run.testset_run_id
 
         result_ids = [r.id for r in session.query(BacktestResult.id).filter(
@@ -1493,7 +1493,7 @@ def delete_run(run_id: int) -> JSONResponse:
 
         session.delete(run)
         session.flush()
-        # GEÄNDERT: Ticket 61 — Testset-Lauf mitnehmen, wenn er dadurch leer wird
+        # GEÄNDERT: Testset-Lauf mitnehmen, wenn er dadurch leer wird
         purge_empty_testset_runs(session, [testset_run_id])
         session.commit()
     finally:
@@ -1532,7 +1532,7 @@ def restart_run(run_id: int) -> JSONResponse:
         run.n_combinations = _count_combinations(run.indicators_config_json)
         run.completed_at = None
         run.created_at = datetime.now()
-        # GEÄNDERT: Ticket 71 — Fortsetzungspunkt zurücksetzen. Der Neustart löscht alle
+        # GEÄNDERT: Fortsetzungspunkt zurücksetzen. Der Neustart löscht alle
         # Results; ein stehengebliebener Zähler würde den Lauf sonst Chunks überspringen
         # lassen, deren Ergebnisse gerade gelöscht wurden.
         run.completed_chunks = 0
@@ -1556,11 +1556,11 @@ def resume_run(run_id: int) -> JSONResponse:
 
     Gegenstück zum Neustart (`/restart`): Der Neustart löscht alle Results und rechnet
     von vorn, das Fortsetzen behält sie und überspringt die bereits gespeicherten
-    Chunks (Ticket 71). Es ist bewusst ein eigener Einstieg — der Weg „Analyse starten"
+    Chunks. Es ist bewusst ein eigener Einstieg — der Weg „Analyse starten"
     auf der Run-Analyse-Seite rechnet die fehlenden Zeitreihen einzelner Results nach
     und hat mit der Rechnung des Laufs nichts zu tun.
 
-    Der Anstoß bleibt manuell (Ticket 69): Es gibt keinen automatischen Neustart
+    Der Anstoß bleibt manuell: Es gibt keinen automatischen Neustart
     abgebrochener Läufe.
 
     Args:
@@ -1652,7 +1652,7 @@ def bulk_delete_runs(payload: dict = Body(...)) -> JSONResponse:
         if not existing:
             return JSONResponse({'status': 'ok', 'deleted_runs': 0, 'deleted_results': 0})
 
-        # GEÄNDERT: Ticket 61 — betroffene Testset-Läufe vor dem Löschen merken
+        # GEÄNDERT: betroffene Testset-Läufe vor dem Löschen merken
         affected_testset_run_ids = [
             r[0] for r in session.query(BacktestRun.testset_run_id)
             .filter(BacktestRun.id.in_(existing)).distinct().all()
@@ -1672,7 +1672,7 @@ def bulk_delete_runs(payload: dict = Body(...)) -> JSONResponse:
             BacktestRun.id.in_(existing)
         ).delete(synchronize_session='fetch')
 
-        # GEÄNDERT: Ticket 61 — Testset-Läufe mitnehmen, die dadurch leer werden
+        # GEÄNDERT: Testset-Läufe mitnehmen, die dadurch leer werden
         purge_empty_testset_runs(session, affected_testset_run_ids)
 
         session.commit()
@@ -1691,7 +1691,7 @@ def bulk_delete_results(payload: dict = Body(...)) -> JSONResponse:
 
     Erwartet Body: {"ids": [1, 2, 3]}. Verwaiste Runs unter den betroffenen Results
     (ohne verbleibende Results) werden ebenfalls entfernt — der Orphan-Sweep bleibt
-    dabei auf die Runs dieser Results eingegrenzt (Ticket 75), kein globaler Sweep
+    dabei auf die Runs dieser Results eingegrenzt, kein globaler Sweep
     über die gesamte Tabelle. Favoriten-Schutz wird hier NICHT angewendet — die UI
     bestimmt die Auswahl explizit. Die Antwort nennt die mitgelöschten Run-IDs unter
     'deleted_run_ids'.
@@ -1783,17 +1783,17 @@ def delete_all_results(
 ) -> JSONResponse:
     """Löscht Results außer Favoriten — global (Hintergrund-Job) oder eingegrenzt.
 
-    GEÄNDERT (Ticket 45): Ohne Eingrenzung unverändert asynchron über RQ, damit die UI
+    GEÄNDERT: Ohne Eingrenzung unverändert asynchron über RQ, damit die UI
     nicht minutenlang blockiert — das Löschen über die TimescaleDB-Hypertables ist
     teuer. Die Lösch-Logik liegt in worker_tasks.delete_all_results_job; der
     Fortschritt wird über den globalen Lösch-Job-Toast (GET /delete-jobs/active)
     angezeigt.
 
-    GEÄNDERT (Ticket 77/B): Mit run_id ODER testset_run_id (schließen sich aus) läuft
+    GEÄNDERT: Mit run_id ODER testset_run_id (schließen sich aus) läuft
     stattdessen eine synchrone, auf die Menge eingegrenzte Löschung — non-favorisierte
     Results der Menge weg, Favoriten (gelb und rot) sowie fremde Objekte unberührt.
     Reuses `_delete_results_and_orphans` (dieselbe Löschsemantik wie bulk_delete_results,
-    inkl. der auf die betroffenen Runs eingegrenzten Orphan-Sweep-Regel aus Ticket 75).
+    inkl. der auf die betroffenen Runs eingegrenzten Orphan-Sweep-Regel).
     """
     if run_id is not None and testset_run_id is not None:
         raise HTTPException(status_code=400, detail="run_id und testset_run_id schließen sich aus")
@@ -1874,7 +1874,7 @@ def cancel_delete_job(job_id: str) -> JSONResponse:
 def toggle_favorite(result_id: int) -> JSONResponse:
     """Favorit-Status eines Results umschalten (Toggle).
 
-    Bleibt der reine Toggle für den manuellen Frontend-Stern (Ticket 89 rührt daran
+    Bleibt der reine Toggle für den manuellen Frontend-Stern (rührt daran
     nicht). Für idempotentes Setzen/Entfernen (z. B. aus der Toolbox) siehe
     /favorite/mark und /favorite/unmark direkt darunter.
     """
@@ -1890,7 +1890,7 @@ def toggle_favorite(result_id: int) -> JSONResponse:
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den gelben
+# GEÄNDERT: idempotentes Gegenstück zum Toggle oben. Setzt den gelben
 # Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
 @router.post('/results/{result_id}/favorite/mark')
 def mark_favorite(result_id: int) -> JSONResponse:
@@ -1908,7 +1908,7 @@ def mark_favorite(result_id: int) -> JSONResponse:
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+# GEÄNDERT: gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
 @router.post('/results/{result_id}/favorite/unmark')
 def unmark_favorite(result_id: int) -> JSONResponse:
     """Entfernt den gelben Favoriten-Stern gezielt und idempotent (schaltet nie an)."""
@@ -1932,7 +1932,7 @@ def toggle_doc_favorite(result_id: int) -> JSONResponse:
 
     Manueller Weg (Frontend-Stern): setzt keine Bestwert-Kriterien. Beim Ausschalten
     werden vorhandene best_criteria_json mit-geleert — Flag und Kriterien sind gekoppelt,
-    kein verwaistes Label ohne Stern. Bleibt der reine Toggle (Ticket 89 rührt daran
+    kein verwaistes Label ohne Stern. Bleibt der reine Toggle (rührt daran
     nicht); für idempotentes Setzen/Entfernen siehe /doc_favorite/mark weiter unten und
     /doc_favorite/unmark.
     """
@@ -1956,7 +1956,7 @@ def toggle_doc_favorite(result_id: int) -> JSONResponse:
 # auch dann, wenn der Stern bereits gesetzt ist (run-bestwerte markiert idempotent). Genutzt
 # von der Toolbox (run-bestwerte, result-doc-favorite); der manuelle Frontend-Stern bleibt
 # der reine Toggle oben.
-# GEÄNDERT: Ticket 89 — criteria ist jetzt echt optional: fehlt der Schlüssel im Body
+# GEÄNDERT: criteria ist jetzt echt optional: fehlt der Schlüssel im Body
 # komplett (z. B. beim reinen Setzen über die Toolbox ohne --criteria), bleibt ein
 # bestehendes best_criteria_json unangetastet, statt es auf None zu leeren. Nur ein
 # explizit übergebenes criteria (auch eine leere Liste) überschreibt.
@@ -2004,7 +2004,7 @@ def mark_doc_favorite_criteria(result_id: int, body: dict = Body(default=None)) 
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — Gegenstück zu /mark: gezieltes, idempotentes Entfernen (nur über
+# GEÄNDERT: Gegenstück zu /mark: gezieltes, idempotentes Entfernen (nur über
 # --off in der Toolbox). Leert best_criteria_json mit (gleiche Kopplung wie der manuelle
 # Toggle beim Ausschalten) — kein verwaistes Kriterien-Label ohne Stern.
 @router.post('/results/{result_id}/doc_favorite/unmark')
@@ -2193,11 +2193,11 @@ def get_stats(result_id: int) -> dict:
             'Benchmark Return [%]': result.benchmark_return_pct,
             'Total Orders': result.total_orders,
             'Total Trades': result.total_trades,
-            # GEÄNDERT: Ticket 58 — am Ende des Handelsfensters offene Positionen. Sie
+            # GEÄNDERT: am Ende des Handelsfensters offene Positionen. Sie
             # zählen in 'Total Trades' mit, aber nicht in Win Rate und Profit Factor
-            # (die rechnen über geschlossene Trades). NULL bei Results von vor Ticket 58.
+            # (die rechnen über geschlossene Trades). NULL bei Results von vor der Umstellung.
             'Open Trades': result.open_trades,
-            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung (long_trades + short_trades =
+            # GEÄNDERT: Long/Short-Aufteilung (long_trades + short_trades =
             # total_trades, inklusive einer am Fensterende offenen Position) und die
             # Balkenzahl des tatsächlich gerechneten Handelsfensters. NULL bei Alt-Results.
             'Long Trades': result.long_trades,
@@ -2239,7 +2239,7 @@ def get_stats(result_id: int) -> dict:
             'Alpha': result.alpha,
             'Beta': result.beta,
             'Information Ratio': result.information_ratio,
-            # GEÄNDERT: Ticket 64 — Verteilungsform der Renditen je Result. 'Kurtosis' ist
+            # GEÄNDERT: Verteilungsform der Renditen je Result. 'Kurtosis' ist
             # die ROHE Wölbung (Normalverteilung rund 3), nicht die Excess-Wölbung.
             'Skew': result.skew,
             'Kurtosis': result.kurtosis,
@@ -2359,7 +2359,7 @@ def get_top_results(
     engine = get_engine()
     with engine.connect() as conn:
         # GEÄNDERT: Alle Analyse-Metriken im SELECT für vollständige Top-Results
-        # GEÄNDERT: Ticket 15 — _json-Suffix (Raw-SQL muss neuen Spaltennamen verwenden)
+        # GEÄNDERT: _json-Suffix (Raw-SQL muss neuen Spaltennamen verwenden)
         rows = conn.execute(text(f"""
             SELECT id, actual_params_json, total_return_pct, sharpe_ratio,
                    max_drawdown_pct, win_rate_pct, profit_factor, sortino_ratio,
@@ -2387,9 +2387,9 @@ def get_top_results(
             'profit_factor': r.profit_factor,
             'sortino_ratio': r.sortino_ratio,
             'total_trades': r.total_trades,
-            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            # GEÄNDERT: Nenner der Trefferquote mitliefern.
             'open_trades': r.open_trades,
-            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern.
+            # GEÄNDERT: Long/Short-Aufteilung mitliefern.
             'long_trades': r.long_trades,
             'short_trades': r.short_trades,
             'end_value': r.end_value,
@@ -2442,9 +2442,9 @@ def get_analyse_summary(run_id: int) -> dict:
                 MIN(max_drawdown_pct) AS min_dd,
                 SUM(CASE WHEN total_return_pct > 0 THEN 1 ELSE 0 END) AS profitable,
                 SUM(CASE WHEN sharpe_ratio > 1 THEN 1 ELSE 0 END) AS sharpe_gt1,
-                -- GEÄNDERT: Ticket 64 — Nenner der durchschnittlichen Trefferquote
+                -- GEÄNDERT: Nenner der durchschnittlichen Trefferquote
                 -- sichtbar machen. avg_winrate mittelt über win_rate_pct, und die
-                -- rechnet seit Ticket 58 über geschlossene Trades, während
+                -- rechnet seit der Umstellung über geschlossene Trades, während
                 -- total_trades die offene Position mitzählt. Ohne diese Zahl stünde
                 -- ein Durchschnitt da, dessen Grundgesamtheit niemand sieht.
                 SUM(CASE WHEN open_trades > 0 THEN 1 ELSE 0 END) AS with_open_position,
@@ -2485,7 +2485,7 @@ def get_analyse_summary(run_id: int) -> dict:
         'avg_sharpe': _r(row.avg_sharpe),
         'avg_drawdown': _r(row.avg_dd),
         'avg_winrate': _r(row.avg_winrate),
-        # GEÄNDERT: Ticket 64 — „N von M Kombinationen mit offener Position" gehört
+        # GEÄNDERT: „N von M Kombinationen mit offener Position" gehört
         # neben die durchschnittliche Trefferquote (siehe SQL oben).
         'with_open_position_count': row.with_open_position,
         'avg_profit_factor': _r(row.avg_pf),
@@ -2505,7 +2505,7 @@ def get_analyse_summary(run_id: int) -> dict:
         'avg_edge_ratio': _r(row.avg_edge_ratio),
         'avg_alpha': _r(row.avg_alpha, 4),
         'avg_beta': _r(row.avg_beta),
-        # GEÄNDERT: Ticket 54 — 4 Nachkommastellen wie bei avg_alpha. Die korrigierte
+        # GEÄNDERT: 4 Nachkommastellen wie bei avg_alpha. Die korrigierte
         # DSR liegt für reale Läufe im Bereich weniger Tausendstel; auf 2 Stellen
         # gerundet käme durchgängig 0.0 heraus.
         'avg_deflated_sharpe': _r(row.avg_deflated_sharpe, 4),

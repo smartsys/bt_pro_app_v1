@@ -1,7 +1,7 @@
 """Repository-Funktionen für StrategyConcept und StrategyIteration.
 
 CRUD-Operationen sowie Lookup-Helper für die zweistufige Strategie-Schicht.
-Ticket 09: strategy_concepts + strategy_iterations Tabellen.
+strategy_concepts + strategy_iterations Tabellen.
 """
 
 from typing import Dict, List, Optional
@@ -185,7 +185,7 @@ def force_delete_concept(session: Session, concept_id: int) -> bool:
         session.query(BacktestRun).filter(
             BacktestRun.iteration_id.in_(iteration_ids)
         ).delete(synchronize_session=False)
-        # GEÄNDERT: Ticket 67 — Log-Einträge der betroffenen Iterationen mitlöschen (FK)
+        # GEÄNDERT: Log-Einträge der betroffenen Iterationen mitlöschen (FK)
         session.query(IterationLog).filter(
             IterationLog.iteration_id.in_(iteration_ids)
         ).delete(synchronize_session=False)
@@ -204,7 +204,7 @@ def force_delete_concept(session: Session, concept_id: int) -> bool:
 
 
 def increment_concept_probe_count(session: Session, concept_id: int) -> int:
-    """Zählt die Lite-Sondierungen eines Konzepts atomar hoch (Ticket 92).
+    """Zählt die Lite-Sondierungen eines Konzepts atomar hoch.
 
     Die Erhöhung läuft als einzelnes `UPDATE ... SET probe_count = probe_count + 1
     RETURNING probe_count` — der Wert wird nie in Python gelesen, erhöht und
@@ -394,7 +394,7 @@ def delete_iteration(session: Session, iteration_id: int) -> bool:
     iteration = get_iteration(session, iteration_id)
     if iteration is None:
         return False
-    # GEÄNDERT: Ticket 67 — Log-Einträge sind Kind-Objekte der Iteration (FK); ohne
+    # GEÄNDERT: Log-Einträge sind Kind-Objekte der Iteration (FK); ohne
     # explizites Löschen würde der Postgres-FK die Iterations-Löschung blockieren
     session.query(IterationLog).filter(
         IterationLog.iteration_id == iteration_id
@@ -478,7 +478,7 @@ def force_delete_iteration(session: Session, iteration_id: int) -> bool:
     session.query(BacktestRun).filter(
         BacktestRun.iteration_id.in_(all_ids)
     ).delete(synchronize_session=False)
-    # GEÄNDERT: Ticket 67 — Log-Einträge des gesamten Teilbaums mitlöschen (FK)
+    # GEÄNDERT: Log-Einträge des gesamten Teilbaums mitlöschen (FK)
     session.query(IterationLog).filter(
         IterationLog.iteration_id.in_(all_ids)
     ).delete(synchronize_session=False)
@@ -497,7 +497,7 @@ def force_delete_iteration(session: Session, iteration_id: int) -> bool:
 
 
 # ============================================================================
-# Iteration-Log CRUD (Ticket 67) — append-only, kein Update/Delete
+# Iteration-Log CRUD — append-only, kein Update/Delete
 # ============================================================================
 
 def create_iteration_log(

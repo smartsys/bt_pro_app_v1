@@ -1,4 +1,4 @@
-"""Tests für die Run-Start-Validierung von Indikator-Referenzen (Ticket 34).
+"""Tests für die Run-Start-Validierung von Indikator-Referenzen.
 
 Stellt sicher, dass run_spec_strategy abbricht, wenn eine Entry-/Exit-Regel
 einen deaktivierten (enabled: false) oder ganz fehlenden Indikator referenziert.
@@ -18,7 +18,7 @@ from user_data.strategies.generic.spec_runner import (
 
 def _entry_rule(lhs, op='>', rhs='close') -> dict:
     """Baut ein minimales rules_json mit einer Entry-Condition im Blocks-Format."""
-    # GEÄNDERT: Ticket 48 — Blocks-Format (Produktionsformat seit Ticket 46);
+    # GEÄNDERT: Blocks-Format (Produktionsformat seit der Umstellung);
     # _validate_rule_references prüft nur aktive Blöcke (block.get('enabled', True)).
     return {
         'entry': {'blocks': [{'conditions': [{'lhs': lhs, 'lhs_shift': 0, 'op': op, 'rhs': rhs, 'rhs_shift': 0}]}]},
@@ -107,7 +107,7 @@ def test_validate_raises_on_missing_indicator():
 
 def test_validate_raises_on_disabled_in_exit():
     """Deaktivierter Indikator auch in Exit-Conditions wird erkannt."""
-    # GEÄNDERT: Ticket 48 — Blocks-Format
+    # GEÄNDERT: Blocks-Format
     rules = {
         'entry': {'blocks': [{'conditions': [
             {'lhs': 'close', 'lhs_shift': 0, 'op': '>', 'rhs': 'indicator:teststrategie:teststrategie', 'rhs_shift': 0},
@@ -127,7 +127,7 @@ def test_validate_raises_on_disabled_in_exit():
 
 def test_validate_reports_disabled_and_missing_together():
     """Deaktivierte und fehlende Indikatoren werden gemeinsam gemeldet."""
-    # GEÄNDERT: Ticket 48 — Blocks-Format
+    # GEÄNDERT: Blocks-Format
     rules = {
         'entry': {'blocks': [{'conditions': [
             {'lhs': 'indicator:supertrend:direction', 'lhs_shift': 0, 'op': '>', 'rhs': 0, 'rhs_shift': 0},

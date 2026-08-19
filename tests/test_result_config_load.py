@@ -1,4 +1,4 @@
-"""Ticket 42 — Playground flüchtig aus Result laden (kein Setup anlegen).
+"""Playground flüchtig aus Result laden (kein Setup anlegen).
 
 Verifiziert:
 - get_result_config: liefert korrektes Schema (backtest_config_json, indicators_config_json,

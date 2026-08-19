@@ -1,4 +1,4 @@
-"""Tests für den Befund am Leaderboard-Rerun (Ticket 72, direkter Weg Ticket 101).
+"""Tests für den Befund am Leaderboard-Rerun (direkter Weg).
 
 Geprüft wird, was `finding_aggregation.py` an neuer Logik mitbringt — ohne den
 schweren HTTP-Pfad `rerun_from_snapshot` selbst auszuführen (der rechnet echte
@@ -6,10 +6,10 @@ Strategien über vbt/OHLC, dafür gibt es in diesem Projekt bewusst keine Unit-T
 siehe `test_leaderboard_spec_json_snapshot.py`):
 
   - `resolve_iteration_for_rerun_finding` — löst die Iteration zuerst über die im
-    Snapshot eingefrorene `iteration_id` (Ticket 101, direkter Weg); nur wenn die
+    Snapshot eingefrorene `iteration_id` (direkter Weg); nur wenn die
     fehlt oder ins Leere läuft, greift der Reserve-Weg über
     LeaderboardEntry.indicator_config_id -> IndicatorConfig.strategy_iteration_id
-    -> StrategyIteration -> StrategyConcept (Ticket 72). Jede Bruchstelle beider
+    -> StrategyIteration -> StrategyConcept. Jede Bruchstelle beider
     Wege bleibt sichtbar (WARNING-Log), bricht aber nichts ab.
   - `open_finding_for_testset_run` — die gemeinsame Phase-1-Implementierung, die
     jetzt sowohl der reguläre Startweg als auch der Rerun aufrufen.
@@ -182,7 +182,7 @@ def test_iteration_without_goal_resolves_with_empty_snapshot(test_session):
 def test_resolves_iteration_directly_from_snapshot_id(
     test_session, iteration_of_concept, concept_with_goal,
 ):
-    """Direkter Weg (Ticket 101): die eingefrorene iteration_id löst ohne IndicatorConfig auf."""
+    """Direkter Weg: die eingefrorene iteration_id löst ohne IndicatorConfig auf."""
     iteration_id, concept_id, goal_snapshot = resolve_iteration_for_rerun_finding(
         test_session, None, entry_id=20, snapshot_iteration_id=iteration_of_concept.id,
     )
@@ -195,7 +195,7 @@ def test_resolves_iteration_directly_from_snapshot_id(
 def test_falls_back_to_indicator_config_when_snapshot_iteration_is_dangling(
     test_session, indicator_config_linked, iteration_of_concept, concept_with_goal,
 ):
-    """Reserve-Weg (Ticket 72): zeigt die Snapshot-iteration_id ins Leere, greift der Config-Weg."""
+    """Reserve-Weg: zeigt die Snapshot-iteration_id ins Leere, greift der Config-Weg."""
     iteration_id, concept_id, goal_snapshot = resolve_iteration_for_rerun_finding(
         test_session, indicator_config_linked.id, entry_id=21,
         snapshot_iteration_id=999999,

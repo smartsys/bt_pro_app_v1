@@ -11,7 +11,7 @@ from sqlalchemy import Column, Index, Integer, String, Float, DateTime, Text, En
 from sqlalchemy.dialects.postgresql import JSONB as _PgJSONB
 from sqlalchemy.types import TypeDecorator, UserDefinedType
 from sqlalchemy.orm import DeclarativeBase, relationship
-# GEÄNDERT: Ticket 56 — Attribut-Historie für den Schreibschutz auf Phase-1-Feldern
+# GEÄNDERT: Attribut-Historie für den Schreibschutz auf Phase-1-Feldern
 from sqlalchemy.orm.attributes import get_history
 
 try:
@@ -35,7 +35,7 @@ class _VectorCompat(TypeDecorator):
         self.dim = dim
 
     def load_dialect_impl(self, dialect):
-        # GEÄNDERT (Nachtrag Ticket 88): Fehlt pgvector unter PostgreSQL, fiel der Typ
+        # GEÄNDERT (Nachtrag): Fehlt pgvector unter PostgreSQL, fiel der Typ
         # bisher still auf JSON zurück. Die Spalte ist dort aber als 'vector' angelegt —
         # jeder Schreibzugriff scheiterte danach in der Datenbank, mit einem Fehler, der
         # nicht mehr auf die fehlende Abhängigkeit zeigte. Der JSON-Weg ist allein für
@@ -58,7 +58,7 @@ class _JsonbCompat(TypeDecorator):
     Ermöglicht JSONB-Semantik in Produktion (PostgreSQL) und kompatiblen
     Fallback in Testumgebungen (SQLite In-Memory).
 
-    GEÄNDERT: Ticket 56 — optionales ``none_as_null``. Standard bleibt False (Python
+    GEÄNDERT: optionales ``none_as_null``. Standard bleibt False (Python
     ``None`` landet als JSON-``null`` in der Spalte, unverändertes Verhalten für alle
     Bestandsspalten). Mit ``none_as_null=True`` wird ``None`` als echtes SQL-NULL
     geschrieben — nötig überall dort, wo „leer" per ``IS NULL`` abfragbar sein muss.
@@ -104,11 +104,11 @@ class BacktestConfig(Base):
     size_type = Column(String(20), nullable=False, default='value')
     init_cash = Column(Float, nullable=False, default=100)
     fees = Column(Float, nullable=False, default=0.001)
-    # GEÄNDERT: Ticket 59 — slippage als regulärer Portfolio-Parameter (analog fees).
+    # GEÄNDERT: slippage als regulärer Portfolio-Parameter (analog fees).
     # Default 0.0 entspricht dem bisherigen impliziten VBT-Default, kein stiller
     # Verhaltenswechsel für Bestandsconfigs.
     slippage = Column(Float, nullable=False, default=0.0, server_default='0')
-    # GEÄNDERT: Ticket 59 — stop_exit_price/stop_order_type persistiert statt nur
+    # GEÄNDERT: stop_exit_price/stop_order_type persistiert statt nur
     # transient im Playground-Formular. None = VBT-Default (keine erzwungene
     # Voreinstellung), dieselbe Konvention wie im Playground-JS.
     stop_exit_price = Column(String(20), nullable=True)
@@ -137,7 +137,7 @@ class IndicatorConfig(Base):
     is_default = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=True)
-    # GEÄNDERT: Ticket 22 — lose Verknüpfung (kein FK) zu Strategy-Concept und -Iteration.
+    # GEÄNDERT: lose Verknüpfung (kein FK) zu Strategy-Concept und -Iteration.
     # Löschen/Umbenennen der Ziele bricht nichts; Lookup auf Name/Version geschieht in der API.
     strategy_concept_id = Column(Integer, nullable=True)
     strategy_iteration_id = Column(Integer, nullable=True)
@@ -146,7 +146,7 @@ class IndicatorConfig(Base):
 class StrategyConfig(Base):
     """Wiederverwendbare Strategie-Konfiguration (hartcodiert oder generisch).
 
-    GEÄNDERT: Ticket 15 — type-Feld + strategy_config_json für generische Strategien;
+    GEÄNDERT: type-Feld + strategy_config_json für generische Strategien;
     import_path jetzt nullable (nur bei type='hardcoded' gefüllt).
     XOR-Validierung in der API: entweder import_path (hardcoded) oder strategy_config_json (generic).
     """
@@ -157,11 +157,11 @@ class StrategyConfig(Base):
     description = Column(Text, nullable=True)
     strategy_family = Column(String(100), nullable=False)
     strategy_name = Column(String(100), nullable=False)
-    # GEÄNDERT: Ticket 15 — 'hardcoded' oder 'generic'
+    # GEÄNDERT: 'hardcoded' oder 'generic'
     type = Column(String(20), nullable=False, default='hardcoded')
-    # GEÄNDERT: Ticket 15 — nullable (nur bei hardcoded gefüllt)
+    # GEÄNDERT: nullable (nur bei hardcoded gefüllt)
     import_path = Column(String(500), nullable=True)
-    # GEÄNDERT: Ticket 15 — Spec für generische Strategien (nur bei generic gefüllt)
+    # GEÄNDERT: Spec für generische Strategien (nur bei generic gefüllt)
     strategy_config_json = Column(JSON, nullable=True)
     is_default = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
@@ -169,7 +169,7 @@ class StrategyConfig(Base):
 
 
 # ============================================================================
-# Strategie-Konzepte und Iterationen (Ticket 09)
+# Strategie-Konzepte und Iterationen
 # ============================================================================
 
 class StrategyConcept(Base):
@@ -185,18 +185,18 @@ class StrategyConcept(Base):
     name = Column(String(200), nullable=False)
     category = Column(String(50), nullable=True)
     description = Column(Text, nullable=True)
-    # GEÄNDERT: Ticket 16 — obsidian_slug entfernt (Pfad wird aus slug abgeleitet)
+    # GEÄNDERT: obsidian_slug entfernt (Pfad wird aus slug abgeleitet)
     status = Column(String(20), nullable=False, default='active')
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     created_by = Column(String(120), nullable=True)
     # GEÄNDERT: High-Water-Mark der vergebenen Iterations-Nummern (nur steigend, kein Reuse nach Löschen)
     iteration_counter = Column(Integer, nullable=False, default=0, server_default='0')
-    # GEÄNDERT: Ticket 66 — Entwicklungsziel des Konzepts. goal_json (strukturierte
+    # GEÄNDERT: Entwicklungsziel des Konzepts. goal_json (strukturierte
     # Zielgrößen, frei formuliert, kein festes Schema) + goal_prompt (Original-Auftrag
     # im Wortlaut). Beide nullable, kein Gate — reine Anzeige/Speicherung/Übernahme.
     goal_json = Column(_JsonbCompat, nullable=True)
     goal_prompt = Column(Text, nullable=True)
-    # GEÄNDERT: Ticket 92 — Zähler der Lite-Sondierungen dieses Konzepts (nur steigend,
+    # GEÄNDERT: Zähler der Lite-Sondierungen dieses Konzepts (nur steigend,
     # kein Zurücksetzen). Macht den Suchumfang sichtbar, der nicht im Raster steht;
     # wird ausgewiesen, nicht bewertet (keine Schwelle, keine Verrechnung in die DSR).
     probe_count = Column(Integer, nullable=False, default=0, server_default='0')
@@ -215,7 +215,7 @@ class StrategyIteration(Base):
     __table_args__ = (
         Index('idx_iterations_concept', 'concept_id'),
         Index('idx_iterations_parent', 'parent_iteration_id'),
-        # GEÄNDERT: Ticket 12 — Index für Hash-Lookup (concept_id + spec_hash)
+        # GEÄNDERT: Index für Hash-Lookup (concept_id + spec_hash)
         Index('idx_iterations_spec_hash', 'concept_id', 'spec_hash'),
         UniqueConstraint('concept_id', 'version', name='uq_strategy_iterations_concept_version'),
     )
@@ -227,7 +227,7 @@ class StrategyIteration(Base):
     # GEÄNDERT: Freier Anzeige-Name (optional); version ist die fortlaufende Nummer
     version_name = Column(String(100), nullable=True)
     spec_json = Column(_JsonbCompat, nullable=True)
-    # GEÄNDERT: Ticket 12 — SHA-256-Kurzhash (16 Zeichen) über kanonisches spec_json für schnellen Lookup
+    # GEÄNDERT: SHA-256-Kurzhash (16 Zeichen) über kanonisches spec_json für schnellen Lookup
     spec_hash = Column(String(16), nullable=True)
     # GEÄNDERT: Iteration kennzeichnet, ob sie auf hartcodierte oder generische Strategie verweist
     type = Column(String(20), nullable=False, default='generic')
@@ -235,7 +235,7 @@ class StrategyIteration(Base):
     import_path = Column(String(500), nullable=True)
     parent_iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=True)
     status = Column(String(20), nullable=False, default='active')
-    # GEÄNDERT: Ticket 16 — obsidian_path entfernt (Pfad wird aus slug + version abgeleitet)
+    # GEÄNDERT: obsidian_path entfernt (Pfad wird aus slug + version abgeleitet)
     # GEÄNDERT: Kurzbeschreibung der Iteration (was hat sich geändert?) — unabhängig von Obsidian
     description = Column(Text, nullable=True)
     # GEÄNDERT: Favoriten-Flag für Iterationen (Stern-Markierung im UI)
@@ -249,7 +249,7 @@ class StrategyIteration(Base):
 
 
 class IterationLog(Base):
-    """Append-only Denkprotokoll einer Iteration (Ticket 67).
+    """Append-only Denkprotokoll einer Iteration.
 
     Freitext-Eintrag, der festhält, warum ein Versuch unternommen wurde und was
     aus dem Ergebnis geschlossen wird. Bewusst kein Update-/Delete-Pfad — die
@@ -287,7 +287,7 @@ class BacktestRun(Base):
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     backtest_config_json = Column(JSON, nullable=False)
     indicators_config_json = Column(JSON, nullable=False)
 
@@ -302,21 +302,21 @@ class BacktestRun(Base):
     current_chunk = Column(Integer, nullable=True)
     total_chunks = Column(Integer, nullable=True)
 
-    # GEÄNDERT: Ticket 71 — Fortsetzungspunkt. Zählt die von vorn her vollständig
+    # GEÄNDERT: Fortsetzungspunkt. Zählt die von vorn her vollständig
     # gerechneten UND gespeicherten Chunks; wird in derselben Transaktion wie die
     # Results des Chunks geschrieben und kann deshalb nie mehr behaupten, als in der
     # Datenbank steht. Ein fortgesetzter Lauf überspringt genau diese Chunks, ein
     # Neustart (Rerun, löscht alle Results) setzt den Wert auf 0 zurück.
     completed_chunks = Column(Integer, nullable=False, server_default='0', default=0)
 
-    # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs. 'usable' | 'no_signals' |
+    # GEÄNDERT: Selbstauskunft des Laufs. 'usable' | 'no_signals' |
     # 'insufficient_history'; NULL bei Alt-Runs und bei Runs, die nie bis zur
     # Bewertung kamen (failed). Der lesbare Grund steht in usability_note. Der Lauf
     # bleibt in jedem Fall vollständig erhalten — Kennzeichnung, kein Ausblenden.
     usability = Column(String(32), nullable=True)
     usability_note = Column(Text, nullable=True)
 
-    # GEÄNDERT: Ticket 60 — Vorlauf-Prüfung beim Run-Start (siehe
+    # GEÄNDERT: Vorlauf-Prüfung beim Run-Start (siehe
     # user_data/strategies/generic/warmup.py). warmup_bars = tatsächlich vorhandener
     # Vorlauf zwischen ohlc_start und start in Basis-Balken, warmup_required_bars =
     # längste konfigurierte Indikator-Periode, warmup_note = lesbare Meldung.
@@ -324,7 +324,7 @@ class BacktestRun(Base):
     warmup_required_bars = Column(Integer, nullable=True)
     warmup_note = Column(Text, nullable=True)
 
-    # GEÄNDERT: Ticket 54 — Annualisierungsfaktor des Laufs, genau der Wert, den VBT
+    # GEÄNDERT: Annualisierungsfaktor des Laufs, genau der Wert, den VBT
     # selbst benutzt (`ReturnsAccessor.ann_factor` = Jahresfrequenz / Balkenfrequenz).
     # Der gespeicherte `backtest_results.sharpe_ratio` ist annualisiert; die Deflated
     # Sharpe Ratio braucht den Sharpe je Balken. Mit diesem Faktor ist die Rückrechnung
@@ -341,13 +341,13 @@ class BacktestRun(Base):
     parent_result_id = Column(Integer, nullable=True)
     selection_metric = Column(String(50), nullable=True)
 
-    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
     spec_runner_version = Column(String(20), nullable=True)
 
-    # GEÄNDERT: TestSet-Run-Zuordnung (Ticket 04) — nullable, nur bei TestSet-Läufen gesetzt
+    # GEÄNDERT: TestSet-Run-Zuordnung — nullable, nur bei TestSet-Läufen gesetzt
     testset_run_id = Column(Integer, ForeignKey('testset_runs.id'), nullable=True)
 
-    # GEÄNDERT: Ticket 10 — FK auf strategy_iterations
+    # GEÄNDERT: FK auf strategy_iterations
     iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=True)
     iteration = relationship('StrategyIteration', foreign_keys=[iteration_id])
 
@@ -367,7 +367,7 @@ class BacktestRun(Base):
     __table_args__ = (
         Index('ix_backtest_runs_testset_run_id', 'testset_run_id'),
         Index('idx_backtest_runs_iteration', 'iteration_id'),
-        # GEÄNDERT: Ticket 60 — Filter "welche Läufe sind nicht verwertbar?"
+        # GEÄNDERT: Filter "welche Läufe sind nicht verwertbar?"
         Index('idx_backtest_runs_usability', 'usability'),
     )
 
@@ -382,21 +382,21 @@ class BacktestResult(Base):
     # MD5-Hash für Duplikat-Erkennung (run_id + actual_params)
     params_hash = Column(String(32), nullable=False)
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     actual_params_json = Column(JSON, nullable=False)
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     resolved_config_json = Column(JSON, nullable=True)
 
     # Zeitraum
-    # GEÄNDERT: Ticket 60 — start_index/end_index/total_duration sind seit Ticket 58 das
+    # GEÄNDERT: start_index/end_index/total_duration sind seit der Umstellung das
     # tatsächlich gerechnete Handelsfenster start..end (nicht das Datenfenster ab
-    # ohlc_start). Seit Ticket 64 füllt sie _extract_metrics für jeden Lauf.
+    # ohlc_start). Seit der Umstellung füllt sie _extract_metrics für jeden Lauf.
     start_index = Column(DateTime, nullable=True)
     end_index = Column(DateTime, nullable=True)
     total_duration = Column(String(50), nullable=True)
-    # GEÄNDERT: Ticket 60 — Zahl der Balken im gerechneten Handelsfenster
-    # (pf.wrapper.shape[0]). NULL bei Alt-Results vor Ticket 60.
+    # GEÄNDERT: Zahl der Balken im gerechneten Handelsfenster
+    # (pf.wrapper.shape[0]). NULL bei Alt-Results vor der Umstellung.
     bar_count = Column(Integer, nullable=True)
 
     # Portfolio-Werte
@@ -421,16 +421,16 @@ class BacktestResult(Base):
     total_orders = Column(Integer, nullable=True)
     total_fees_paid = Column(Float, nullable=True)
     total_trades = Column(Integer, nullable=True)
-    # GEÄNDERT: Ticket 58 — Anzahl der am Ende des Handelsfensters (start..end) offenen
+    # GEÄNDERT: Anzahl der am Ende des Handelsfensters (start..end) offenen
     # Positionen. Sie gehen marktbewertet in total_return_pct/end_value ein, aber NICHT
     # in win_rate_pct und profit_factor (die rechnen über geschlossene Trades).
     # total_trades - open_trades = Grundgesamtheit von Trefferquote und Profitfaktor.
-    # NULL bei Results, die vor Ticket 58 entstanden sind (spec_runner_version < 3.0.0).
+    # NULL bei Results, die vor der Umstellung entstanden sind (spec_runner_version < 3.0.0).
     open_trades = Column(Integer, nullable=True)
-    # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung je Result (trades.direction_long/
+    # GEÄNDERT: Long/Short-Aufteilung je Result (trades.direction_long/
     # .direction_short.count()), wie total_trades inklusive einer am Fensterende
     # offenen Position. long_trades + short_trades = total_trades. NULL bei
-    # Alt-Results vor Ticket 60.
+    # Alt-Results vor der Umstellung.
     long_trades = Column(Integer, nullable=True)
     short_trades = Column(Integer, nullable=True)
 
@@ -470,17 +470,17 @@ class BacktestResult(Base):
     sqn = Column(Float, nullable=True)
     edge_ratio = Column(Float, nullable=True)
 
-    # GEÄNDERT: Ticket 64 — Verteilungsform der Renditen je Kombination. Bausteine der
-    # Deflated Sharpe Ratio, ohne die sie nicht nachrechenbar ist (Ticket 54).
+    # GEÄNDERT: Verteilungsform der Renditen je Kombination. Bausteine der
+    # Deflated Sharpe Ratio, ohne die sie nicht nachrechenbar ist.
     # kurtosis ist die ROHE Wölbung (Normalverteilung rund 3), nicht die
-    # Excess-Wölbung. NULL bei Results, die vor Ticket 64 entstanden sind.
+    # Excess-Wölbung. NULL bei Results, die vor der Umstellung entstanden sind.
     skew = Column(Float, nullable=True)
     kurtosis = Column(Float, nullable=True)
 
     # GEÄNDERT: Overfitting-Kontrolle
     deflated_sharpe_ratio = Column(Float, nullable=True)
 
-    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit (Ticket 01)
+    # GEÄNDERT: Spec-Runner-Version für Reproduzierbarkeit
     spec_runner_version = Column(String(20), nullable=True)
 
     # Favorit-Markierung
@@ -496,11 +496,11 @@ class BacktestResult(Base):
     # damit "kein Kriterium" beim Sortieren korrekt ans Ende (nullslast) faellt.
     best_criteria_json = Column(JSON(none_as_null=True), nullable=True)
 
-    # GEÄNDERT: Ticket 10 — FK auf strategy_iterations
+    # GEÄNDERT: FK auf strategy_iterations
     iteration_id = Column(Integer, ForeignKey('strategy_iterations.id'), nullable=True)
     iteration = relationship('StrategyIteration', foreign_keys=[iteration_id])
 
-    # GEÄNDERT: Ticket 41 — vollständiger Config-Snapshot (backtest_config, indicators, rules)
+    # GEÄNDERT: vollständiger Config-Snapshot (backtest_config, indicators, rules)
     # Nullable für Bestandsschutz — Alt-Results bleiben als NULL erhalten
     full_config_snapshot_json = Column(JSON, nullable=True)
 
@@ -550,7 +550,7 @@ class OhlcDownloadJob(Base):
 
 class BacktestParam(Base):
     """Parameter-Werte pro Result für Analyse-Queries."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_params -> backtest_result_params
+    # GEÄNDERT: Tabelle backtest_params -> backtest_result_params
     __tablename__ = 'backtest_result_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -561,7 +561,7 @@ class BacktestParam(Base):
 
 class BacktestEquity(Base):
     """Equity-Kurve pro Zeitpunkt (nur bei n_combinations == 1)."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_equity -> backtest_result_equity
+    # GEÄNDERT: Tabelle backtest_equity -> backtest_result_equity
     __tablename__ = 'backtest_result_equity'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -572,7 +572,7 @@ class BacktestEquity(Base):
 
 class BacktestTrade(Base):
     """Ein einzelner Trade (nur bei n_combinations == 1)."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_trades -> backtest_result_trades
+    # GEÄNDERT: Tabelle backtest_trades -> backtest_result_trades
     __tablename__ = 'backtest_result_trades'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -596,7 +596,7 @@ class BacktestTrade(Base):
 
 class BacktestOrder(Base):
     """Eine einzelne Order (nur bei n_combinations == 1)."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_orders -> backtest_result_orders
+    # GEÄNDERT: Tabelle backtest_orders -> backtest_result_orders
     __tablename__ = 'backtest_result_orders'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -615,7 +615,7 @@ class BacktestOrder(Base):
 
 class BacktestPosition(Base):
     """Eine einzelne Position (nur bei n_combinations == 1)."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_positions -> backtest_result_positions
+    # GEÄNDERT: Tabelle backtest_positions -> backtest_result_positions
     __tablename__ = 'backtest_result_positions'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -638,7 +638,7 @@ class BacktestPosition(Base):
 
 class BacktestIndicator(Base):
     """Indikator-Werte pro Zeitpunkt (nur bei n_combinations == 1). Generisch für alle Indikator-Typen."""
-    # GEÄNDERT: Ticket 13 — Tabelle backtest_indicators -> backtest_result_indicators
+    # GEÄNDERT: Tabelle backtest_indicators -> backtest_result_indicators
     __tablename__ = 'backtest_result_indicators'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -652,7 +652,7 @@ class BacktestIndicator(Base):
 class ChartPlaygroundSetup(Base):
     """Gespeichertes Chart-Playground-Setup — vier separate JSON-Spalten.
 
-    GEÄNDERT: Ticket 15 — altes config_json aufgeteilt in:
+    GEÄNDERT: altes config_json aufgeteilt in:
     - backtest_config_json: Markt/Zeitraum/Portfolio-Block
     - indicators_config_json: Indikator-Dict (gleiche Struktur wie BacktestRun)
     - strategy_config_json: Rules-Block {entry, exit}
@@ -663,7 +663,7 @@ class ChartPlaygroundSetup(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    # GEÄNDERT: Ticket 15 — vier neue Spalten statt config_json
+    # GEÄNDERT: vier neue Spalten statt config_json
     backtest_config_json = Column(JSON, nullable=False)
     indicators_config_json = Column(JSON, nullable=False)
     strategy_config_json = Column(JSON, nullable=False)
@@ -673,7 +673,7 @@ class ChartPlaygroundSetup(Base):
 
 
 # ============================================================================
-# Test-Sets (Ticket 02)
+# Test-Sets
 # ============================================================================
 
 class TestSet(Base):
@@ -683,7 +683,7 @@ class TestSet(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, unique=True)
     description = Column(Text, nullable=True)
-    # GEÄNDERT: Ticket 15 — _json-Suffix; JSONB für bessere Index-/Query-Performance
+    # GEÄNDERT: _json-Suffix; JSONB für bessere Index-/Query-Performance
     backtest_config_ids_json = Column(_JsonbCompat, nullable=False)
     # GEÄNDERT: Opt-in-Schalter — nur bei True wird nach einem TestSet-Lauf ein
     # LeaderboardEntry erstellt. Default False (bewusstes Aktivieren nötig).
@@ -696,7 +696,7 @@ class TestSet(Base):
 
 
 # ============================================================================
-# TestSet-Runs und Leaderboard (Ticket 03)
+# TestSet-Runs und Leaderboard
 # ============================================================================
 
 class TestSetRun(Base):
@@ -711,11 +711,11 @@ class TestSetRun(Base):
     # GEÄNDERT: kein FK mehr — TestSetRuns sind lose an das TestSet gekoppelt
     # (wie LeaderboardEntry.testset_id). Löschen eines TestSets blockiert nicht
     # und lässt die operativen Läufe unangetastet.
-    # GEÄNDERT: Ticket 62 — diese Zusage gilt seit der Migration
+    # GEÄNDERT: diese Zusage gilt seit der Migration
     # 0019_drop_testset_runs_fk auch in der Datenbank. Bis dahin trug
     # `0001_baseline.sql` hier fälschlich den Fremdschlüssel
     # fk_testset_runs_testset_id (Modell/DB-Drift, Ursache des HTTP-500 aus
-    # Ticket 61). Diesen Constraint nicht versehentlich wieder einführen.
+    # . Diesen Constraint nicht versehentlich wieder einführen.
     # Ergänzung: Auf Anwendungsebene zieht delete_testset (siehe
     # repository_testsets.py) die Zusage inzwischen nach — es löscht ausschließlich
     # die TestSet-Zeile. Hängen noch Läufe dran, fragt die Oberfläche einmal nach
@@ -724,10 +724,10 @@ class TestSetRun(Base):
     testset_id = Column(Integer, nullable=False)
     strategy_family = Column(String(100), nullable=False)
     strategy_name = Column(String(100), nullable=False)
-    # GEÄNDERT: Ticket 15 — kein FK mehr, JSON inline
+    # GEÄNDERT: kein FK mehr, JSON inline
     indicators_config_json = Column(_JsonbCompat, nullable=False, default=dict)
 
-    # Status via CHECK-Constraint (kein SQLAlchemy-Enum-Typ — explizite Entscheidung Ticket 03)
+    # Status via CHECK-Constraint (kein SQLAlchemy-Enum-Typ — explizite Entscheidung)
     status = Column(String(20), nullable=False, default='queued')
 
     n_runs_total = Column(Integer, nullable=False)
@@ -766,7 +766,7 @@ class LeaderboardEntry(Base):
     indicator_config_id = Column(Integer, nullable=True)
     spec_runner_version = Column(String(20), nullable=True)
 
-    # Aggregate (nullable — werden in Ticket 06 befüllt)
+    # Aggregate (nullable — werden befüllt)
     total_return_avg = Column(Numeric(12, 4), nullable=True)
     total_return_sum = Column(Numeric(12, 4), nullable=True)
     max_drawdown_avg = Column(Numeric(12, 4), nullable=True)
@@ -775,7 +775,7 @@ class LeaderboardEntry(Base):
     configs_passed = Column(Integer, nullable=True)  # NULL solange kein Goal-Filter
     filter_breached = Column(Boolean, nullable=True)
 
-    # GEÄNDERT: Ticket 15 — _json-Suffix; Snapshots (Source of Truth für Reproduzierbarkeit nach Cleanup)
+    # GEÄNDERT: _json-Suffix; Snapshots (Source of Truth für Reproduzierbarkeit nach Cleanup)
     testset_snapshot_json = Column(_JsonbCompat, nullable=False)
     indicator_config_snapshot_json = Column(_JsonbCompat, nullable=True)
     strategy_snapshot_json = Column(_JsonbCompat, nullable=False)
@@ -790,7 +790,7 @@ class LeaderboardEntry(Base):
 
 
 # ============================================================================
-# Befund je Testset-Lauf (Ticket 56)
+# Befund je Testset-Lauf
 # ============================================================================
 
 class FindingImmutableError(Exception):
@@ -804,7 +804,7 @@ class FindingImmutableError(Exception):
 
 
 class TestSetRunFinding(Base):
-    """Befund eines Testset-Laufs — Soll beim Start, Ist beim Abschluss (Ticket 56).
+    """Befund eines Testset-Laufs — Soll beim Start, Ist beim Abschluss.
 
     Zweiphasiger, unveränderlicher Datensatz: Phase 1 legt Kontext und Soll beim
     Start an, Phase 2 ergänzt die Ist-Werte genau einmal beim Abschluss. Eine
@@ -841,7 +841,7 @@ class TestSetRunFinding(Base):
     __table_args__ = (
         Index('idx_testset_run_findings_iteration', 'iteration_id'),
         Index('idx_testset_run_findings_testset_run', 'testset_run_id'),
-        # GEÄNDERT: Ticket 85 — Index für die Konzept-Detailseite (by-concept-Route)
+        # GEÄNDERT: Index für die Konzept-Detailseite (by-concept-Route)
         Index('idx_testset_run_findings_concept', 'concept_id'),
     )
 
@@ -861,7 +861,7 @@ class TestSetRunFinding(Base):
 
     # --- Soll (Phase 1) ---
     # Schnappschuss von strategy_concepts.goal_json. Bleibt JSON, weil goal_json per
-    # Ticket 66 bewusst kein festes Schema hat und sich nicht in Spalten zerlegen lässt.
+    # bewusst kein festes Schema hat und sich nicht in Spalten zerlegen lässt.
     goal_snapshot_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
     # Grund, wenn kein Soll vorliegt (z.B. "kein Ziel am Konzept hinterlegt").
     goal_missing_reason = Column(Text, nullable=True)
@@ -880,7 +880,7 @@ class TestSetRunFinding(Base):
     benchmarks_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
     warnings_json = Column(_JsonbCompat(none_as_null=True), nullable=True)
     # Vorgesehen, aber bis auf Weiteres nicht befüllt: es gibt noch keinen markierten
-    # Holdout-Zeitraum (Ticket 56, Out of Scope). Bleibt NULL statt False.
+    # Holdout-Zeitraum (Out of Scope). Bleibt NULL statt False.
     holdout_touched = Column(Boolean, nullable=True)
     # Abschlusszeitpunkt der zweiten Phase. Gesetzt = Befund geschlossen.
     closed_at = Column(DateTime, nullable=True)
@@ -1019,7 +1019,7 @@ def _block_testset_run_finding_phase2_updates(mapper, connection, target) -> Non
 
 
 # ============================================================================
-# Vault-Vektorisierung (Ticket 24)
+# Vault-Vektorisierung
 # ============================================================================
 
 class VaultChunk(Base):
@@ -1032,9 +1032,9 @@ class VaultChunk(Base):
     __tablename__ = 'vault_chunks'
 
     __table_args__ = (
-        # GEÄNDERT: Ticket 24 — Unique-Constraint verhindert doppelte Chunks bei Reindex
+        # GEÄNDERT: Unique-Constraint verhindert doppelte Chunks bei Reindex
         UniqueConstraint('vault_path', 'chunk_index', name='uq_vault_chunks_path_index'),
-        # GEÄNDERT: Ticket 24 — B-Tree-Index für inkrementellen Reindex (alte Chunks löschen)
+        # GEÄNDERT: B-Tree-Index für inkrementellen Reindex (alte Chunks löschen)
         Index('ix_vault_chunks_vault_path', 'vault_path'),
     )
 
@@ -1047,22 +1047,22 @@ class VaultChunk(Base):
     # Überschriften-Pfad, z.B. "Iterations > v0.41 > Lessons" (NULL bei Frontmatter-only)
     heading_path = Column(String(1024), nullable=True)
     # Reiner Chunk-Text inkl. Code-Blöcken (leer für Sentinel-Rows)
-    # GEÄNDERT: Ticket 33 — nullable=True erlaubt leere Sentinel-Rows für Stub-Dateien
+    # GEÄNDERT: nullable=True erlaubt leere Sentinel-Rows für Stub-Dateien
     content = Column(Text, nullable=True)
     # Kompletter Frontmatter-Block der Quelldatei (redundant pro Chunk, vereinfacht Filter-Queries)
     frontmatter_json = Column(_JsonbCompat, nullable=True)
     # mtime der Quelldatei zum Indexier-Zeitpunkt (für inkrementellen Reindex)
     mtime = Column(DateTime, nullable=False)
-    # GEÄNDERT: Ticket 32 — SHA1-Hash des Datei-Inhalts (für Content-Hash-Skip)
+    # GEÄNDERT: SHA1-Hash des Datei-Inhalts (für Content-Hash-Skip)
     file_sha1 = Column(String(40), nullable=False, default="")
     # bge-m3-Embedding (1024-dim); NULL für Sentinel-Rows (Stub-Dateien ohne chunkbaren Content)
-    # GEÄNDERT: Ticket 33 — nullable=True erlaubt Sentinel-Rows ohne Embedding
+    # GEÄNDERT: nullable=True erlaubt Sentinel-Rows ohne Embedding
     embedding = Column(_VectorCompat(1024), nullable=True)
     indexed_at = Column(DateTime, nullable=False, default=datetime.now)
 
 
 # ============================================================================
-# Vault-Reindex-Job-Historie (Ticket 28)
+# Vault-Reindex-Job-Historie
 # ============================================================================
 
 class VaultReindexRun(Base):
@@ -1102,14 +1102,14 @@ class VaultReindexRun(Base):
     chunks_written = Column(Integer, nullable=True)
     # Bei 'failed': die Exception-Message
     error_message = Column(Text, nullable=True)
-    # GEÄNDERT: Ticket 34 — reindexierte und gelöschte Vault-Pfade pro Lauf
+    # GEÄNDERT: reindexierte und gelöschte Vault-Pfade pro Lauf
     # Format: {"reindexed": [...], "deleted": [...]}; NULL wenn Lauf abgebrochen
     files_changed = Column(_JsonbCompat, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
 
 
 # ============================================================================
-# Signifikanztest je Kandidat (Ticket 79)
+# Signifikanztest je Kandidat
 # ============================================================================
 
 # Zulässige Methoden. `permutation` = Monte-Carlo-Permutationstest gegen
@@ -1131,7 +1131,7 @@ class SignificanceTestImmutableError(Exception):
 
 
 class SignificanceTest(Base):
-    """Ein statistischer Signifikanztest für genau einen Kandidaten (Ticket 79).
+    """Ein statistischer Signifikanztest für genau einen Kandidaten.
 
     Ein Kandidat ist ein Result: Iteration × eingefrorene Parameterkombination ×
     BacktestConfig. Zwei Methoden teilen sich diese Tabelle, weil beide dieselbe
@@ -1232,7 +1232,7 @@ def _block_completed_significance_test_updates(mapper, connection, target) -> No
 
 
 # ============================================================================
-# Walk-Forward-Fold-Kette (Ticket 82)
+# Walk-Forward-Fold-Kette
 # ============================================================================
 
 # Status-Lebenslauf. `completed`/`failed` sind Endzustände — ab dann ist der
@@ -1272,7 +1272,7 @@ class WalkForwardChainImmutableError(Exception):
 
 
 class WalkForwardChain(Base):
-    """Eine Walk-Forward-Fold-Kette: Plan, Fold-Ergebnisse, Gesamtbewertung (Ticket 82).
+    """Eine Walk-Forward-Fold-Kette: Plan, Fold-Ergebnisse, Gesamtbewertung.
 
     Die Kette führt N-mal nacheinander „auf einem Zeitfenster optimieren → Sieger
     einfrieren → auf dem nächsten, ungesehenen Zeitfenster testen" aus. Der

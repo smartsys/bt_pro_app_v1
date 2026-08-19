@@ -17,7 +17,7 @@
           {{ run.strategy_name }}
           <span class="badge bg-azure-lt ms-2">{{ run.symbol }}</span>
           <span class="badge bg-green-lt ms-1">{{ run.timeframe }}</span>
-          {# GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs: Kennzeichnung, kein Ausblenden.
+          {# GEÄNDERT: Selbstauskunft des Laufs: Kennzeichnung, kein Ausblenden.
              Nur nicht-verwertbare Läufe (usability != 'usable') bekommen ein Badge. #}
           {% if run.usability and run.usability != 'usable' %}
           <span class="badge bg-danger-lt ms-1" title="{{ run.usability_note or '' }}">{{ run.usability }}</span>
@@ -25,7 +25,7 @@
           {% if run.warmup_bars is not none and run.warmup_required_bars and run.warmup_bars < run.warmup_required_bars %}
           <span class="badge bg-orange-lt ms-1" title="{{ run.warmup_note or '' }}">Vorlauf</span>
           {% endif %}
-          {# GEÄNDERT: Ticket 68 — explizite Metrik-Auswahl anzeigen (kern/voll/Liste).
+          {# GEÄNDERT: explizite Metrik-Auswahl anzeigen (kern/voll/Liste).
              Bei 'auto' (Default, kein Key gesetzt) erscheint kein Badge — die Kürzung
              steht dann ggf. im usability_note-Badge oben. #}
           {% if run.metrics_selection %}
@@ -100,7 +100,7 @@ function fmtNum(val, decimals) {
   return parseFloat(val).toFixed(decimals || 2);
 }
 
-// GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+// GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
 // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
 // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
 function fmtTrades(total, open) {
@@ -202,7 +202,7 @@ document.addEventListener("DOMContentLoaded", function() {
         data: "id",
         orderable: false,
         render: function(data) {
-          // GEÄNDERT: Ticket 42 — Playground-Button (flüchtig, kein Setup)
+          // GEÄNDERT: Playground-Button (flüchtig, kein Setup)
           return '<a href="/backtest/results/' + data + '/chart" class="btn btn-sm btn-outline-primary">Chart</a>'
                + ' <a href="/chart-playground?resultid=' + data + '" class="btn btn-sm btn-outline-success" title="Im Playground öffnen (flüchtig)">PG</a>';
         }
@@ -248,7 +248,7 @@ document.addEventListener("DOMContentLoaded", function() {
       .then(function() { table.ajax.reload(); });
   });
 
-  /* Speichern-Aktionen aus Result (Ticket 43) */
+  /* Speichern-Aktionen aus Result */
   function _saveFromResult(endpoint, label, id) {
     fetch('/api/' + endpoint + '/from-result/' + id, { method: 'POST' })
       .then(function(r) { return r.json(); })

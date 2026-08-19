@@ -1,4 +1,4 @@
-"""Ausführung der Signifikanztests eines Kandidaten (Ticket 79).
+"""Ausführung der Signifikanztests eines Kandidaten.
 
 Zwei Rechenwege, beide **ohne jedes Schreiben in ``backtest_results`` oder
 ``backtest_runs``** — geschrieben wird ausschließlich der eigene Datensatz in

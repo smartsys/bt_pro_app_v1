@@ -1,4 +1,4 @@
-"""Tests für enqueue_reindex.py (Ticket 33, Teil C).
+"""Tests für enqueue_reindex.py (Teil C).
 
 Prüft, dass main() genau einen reindex_vault_chunk_job mit trigger='scheduler'
 in die recompute-Queue einreiht und einen VaultReindexRun-Eintrag anlegt.

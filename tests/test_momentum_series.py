@@ -1,4 +1,4 @@
-"""Tests für die Momentum-Reihe (Positivkontrolle des Permutationstests, Ticket 80).
+"""Tests für die Momentum-Reihe (Positivkontrolle des Permutationstests).
 
 Sichert die Zusagen des Moduls `user_data/utils/analysis/momentum_series.py` ab:
 
@@ -9,7 +9,7 @@ Sichert die Zusagen des Moduls `user_data/utils/analysis/momentum_series.py` ab:
 5. Der eingebaute Vorteil ist **Reihenfolge** und nichts sonst: Die Trendstärke erzeugt
    Autokorrelation, und die Bar-Permutation des Nullmodells nimmt sie wieder weg,
    während die Randverteilung erhalten bleibt. Genau darauf beruht die Positivkontrolle
-   — und genau darin unterscheidet sie sich von der Orakel-Falle aus Ticket 79.
+   — und genau darin unterscheidet sie sich von der Orakel-Falle.
 """
 
 import numpy as np

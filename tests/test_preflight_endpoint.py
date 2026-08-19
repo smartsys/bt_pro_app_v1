@@ -1,4 +1,4 @@
-"""Tests für den Preflight-Endpoint (Ticket 60, Anforderung 5).
+"""Tests für den Preflight-Endpoint (Anforderung 5).
 
 /api/chart-playground/preflight rechnet EINE Kombination (Startwerte, kein
 DB-Schreiben) über gespeicherte Iteration + IndicatorConfig + BacktestConfig und
@@ -210,7 +210,7 @@ _RULES_JSON = {
 
 
 def _seed(test_session, iteration_type: str = 'generic', with_entry_rules: bool = True) -> dict:
-    concept = StrategyConcept(slug='ticket60-preflight', name='Preflight-Test', status='active',
+    concept = StrategyConcept(slug='Test-preflight', name='Preflight-Test', status='active',
                                created_at=datetime.now())
     test_session.add(concept)
     test_session.flush()

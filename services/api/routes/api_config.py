@@ -53,7 +53,7 @@ from user_data.utils.database.models import (
     StrategyConcept,
     StrategyIteration,
 )
-# GEÄNDERT: Ticket 15 — get_iteration_by_strategy_name-Import entfernt (nicht mehr benötigt)
+# GEÄNDERT: get_iteration_by_strategy_name-Import entfernt (nicht mehr benötigt)
 # GEÄNDERT: Schritt 3b — '_stops'-Helper, um beim Einfrieren aus Result die Stops
 # in die IndicatorConfig zu übernehmen (Snapshot führt sie nur im backtest_config).
 from user_data.strategies.generic.indicator_factory import stops_from_portfolio, describe_combos
@@ -69,7 +69,7 @@ from services.api.utils.symbol_correlation import (
     analyze_symbol_correlation,
 )
 from user_data.utils.ohlc.loader import load_ohlc_data
-# GEÄNDERT: Ticket 59 — Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
+# GEÄNDERT: Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
 from user_data.utils.portfolio_enums import validate_stop_exit_price, validate_stop_order_type
 
 logger = logging.getLogger(__name__)
@@ -94,14 +94,14 @@ class BacktestConfigIn(BaseModel):
     size_type: str = 'value'
     init_cash: float = 100
     fees: float = 0.001
-    # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter analog fees. slippage ist in der
+    # GEÄNDERT: drei Portfolio-Parameter analog fees. slippage ist in der
     # DB NOT NULL mit Default 0.0, daher hier ein echter Float-Default statt None;
     # die beiden Stop-Felder sind nullable, None bedeutet ausdrücklich „VBT-Default".
     slippage: float = 0.0
     stop_exit_price: Optional[str] = None
     stop_order_type: Optional[str] = None
 
-    # GEÄNDERT: Ticket 59 — Eingabegrenze 1 von 2. Ein ungültiger Enum-Wert wird hier
+    # GEÄNDERT: Eingabegrenze 1 von 2. Ein ungültiger Enum-Wert wird hier
     # mit klarer Meldung abgewiesen, statt später roh aus VBT als KeyError zu fallen.
     @field_validator('stop_exit_price')
     @classmethod
@@ -134,7 +134,7 @@ class BacktestConfigOut(BaseModel):
     size_type: str
     init_cash: float
     fees: float
-    # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter auch in der Ausgabe
+    # GEÄNDERT: drei Portfolio-Parameter auch in der Ausgabe
     slippage: float
     stop_exit_price: Optional[str] = None
     stop_order_type: Optional[str] = None
@@ -260,7 +260,7 @@ def create_config(data: BacktestConfigIn):
             size_type=data.size_type,
             init_cash=data.init_cash,
             fees=data.fees,
-            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitschreiben
+            # GEÄNDERT: drei Portfolio-Parameter mitschreiben
             slippage=data.slippage,
             stop_exit_price=data.stop_exit_price,
             stop_order_type=data.stop_order_type,
@@ -297,7 +297,7 @@ def update_config(config_id: int, data: BacktestConfigIn):
         config.size_type = data.size_type
         config.init_cash = data.init_cash
         config.fees = data.fees
-        # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitschreiben
+        # GEÄNDERT: drei Portfolio-Parameter mitschreiben
         config.slippage = data.slippage
         config.stop_exit_price = data.stop_exit_price
         config.stop_order_type = data.stop_order_type
@@ -348,7 +348,7 @@ def copy_config(config_id: int):
             size_type=original.size_type,
             init_cash=original.init_cash,
             fees=original.fees,
-            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter mitkopieren
+            # GEÄNDERT: drei Portfolio-Parameter mitkopieren
             slippage=original.slippage,
             stop_exit_price=original.stop_exit_price,
             stop_order_type=original.stop_order_type,
@@ -361,7 +361,7 @@ def copy_config(config_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 43 — BacktestConfig aus vollständigem Config-Snapshot eines Results anlegen
+# GEÄNDERT: BacktestConfig aus vollständigem Config-Snapshot eines Results anlegen
 @router.post('/backtest/from-result/{result_id}')
 def create_backtest_config_from_result(result_id: int):
     """Speichert eine BacktestConfig aus dem vollständigen Config-Snapshot eines Results.
@@ -397,7 +397,7 @@ def create_backtest_config_from_result(result_id: int):
                     status_code=422,
                 )
 
-        # GEÄNDERT: Ticket 59 — slippage ist NOT NULL. Alt-Snapshots ohne den Key
+        # GEÄNDERT: slippage ist NOT NULL. Alt-Snapshots ohne den Key
         # (oder mit ausdrücklichem null) bekommen den Spaltendefault 0.0, damit die
         # Config anlegbar bleibt und wie bisher rechnet.
         snapshot_slippage = bc.get('slippage')
@@ -418,7 +418,7 @@ def create_backtest_config_from_result(result_id: int):
             size_type=bc.get('size_type', 'value'),
             init_cash=bc.get('init_cash', 100),
             fees=bc.get('fees', 0.001),
-            # GEÄNDERT: Ticket 59 — drei Portfolio-Parameter aus dem Result-Snapshot ziehen.
+            # GEÄNDERT: drei Portfolio-Parameter aus dem Result-Snapshot ziehen.
             # Fehlender Stop-Key bleibt None ("nicht gesetzt" = VBT-Default).
             slippage=snapshot_slippage,
             stop_exit_price=bc.get('stop_exit_price'),
@@ -457,7 +457,7 @@ class IndicatorConfigIn(BaseModel):
     """Eingabe-Schema für Indicator-Config (Create/Update)."""
     name: str
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 22 — lose Verknüpfung zu Concept/Iteration (kein FK)
+    # GEÄNDERT: lose Verknüpfung zu Concept/Iteration (kein FK)
     strategy_concept_id: Optional[int] = None
     strategy_iteration_id: Optional[int] = None
     config_json: dict
@@ -500,10 +500,10 @@ class IndicatorConfigOut(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 22 — lose Verknüpfung zu Concept/Iteration (kein FK)
+    # GEÄNDERT: lose Verknüpfung zu Concept/Iteration (kein FK)
     strategy_concept_id: Optional[int] = None
     strategy_iteration_id: Optional[int] = None
-    # GEÄNDERT: Ticket 22 — Read-Only-Lookups; NULL wenn Ziel gelöscht
+    # GEÄNDERT: Read-Only-Lookups; NULL wenn Ziel gelöscht
     strategy_concept_name: Optional[str] = None
     strategy_iteration_version: Optional[str] = None
     # GEÄNDERT: Versionsnummer (Integer) zusätzlich zur Anzeige in der Liste
@@ -648,7 +648,7 @@ def create_indicator_config(data: IndicatorConfigIn):
         config = IndicatorConfig(
             name=data.name,
             description=data.description,
-            # GEÄNDERT: Ticket 22 — lose Verknüpfung Concept/Iteration
+            # GEÄNDERT: lose Verknüpfung Concept/Iteration
             strategy_concept_id=data.strategy_concept_id,
             strategy_iteration_id=data.strategy_iteration_id,
             config_json=data.config_json,
@@ -665,7 +665,7 @@ def create_indicator_config(data: IndicatorConfigIn):
         session.close()
 
 
-# GEÄNDERT: Ticket 43 — auf Snapshot umgestellt; kein Zugriff mehr auf Run/Iteration/Concept
+# GEÄNDERT: auf Snapshot umgestellt; kein Zugriff mehr auf Run/Iteration/Concept
 @router.post('/indicator/from-result/{result_id}')
 def create_indicator_config_from_result(result_id: int, body: IndicatorConfigFromResultIn = Body(default=None)):
     """Friert eine IndicatorConfig aus dem vollständigen Config-Snapshot eines Results ein.
@@ -758,7 +758,7 @@ def update_indicator_config(config_id: int, data: IndicatorConfigIn):
 
         config.name = data.name
         config.description = data.description
-        # GEÄNDERT: Ticket 22 — lose Verknüpfung Concept/Iteration
+        # GEÄNDERT: lose Verknüpfung Concept/Iteration
         config.strategy_concept_id = data.strategy_concept_id
         config.strategy_iteration_id = data.strategy_iteration_id
         config.config_json = data.config_json
@@ -944,7 +944,7 @@ def copy_indicator_config(config_id: int):
             description=original.description,
             config_json=original.config_json,
             is_default=0,
-            # GEÄNDERT: Ticket 22 — Concept/Iteration-Verknüpfung mitkopieren
+            # GEÄNDERT: Concept/Iteration-Verknüpfung mitkopieren
             strategy_concept_id=original.strategy_concept_id,
             strategy_iteration_id=original.strategy_iteration_id,
         )
@@ -1021,11 +1021,11 @@ class StrategyConfigIn(BaseModel):
     description: Optional[str] = None
     strategy_family: str
     strategy_name: str
-    # GEÄNDERT: Ticket 15 — Typ-Feld
+    # GEÄNDERT: Typ-Feld
     type: str = 'hardcoded'
-    # GEÄNDERT: Ticket 15 — nullable (nur bei hardcoded gefüllt)
+    # GEÄNDERT: nullable (nur bei hardcoded gefüllt)
     import_path: Optional[str] = None
-    # GEÄNDERT: Ticket 15 — Spec für generic
+    # GEÄNDERT: Spec für generic
     strategy_config_json: Optional[dict] = None
     is_default: int = 0
 
@@ -1039,7 +1039,7 @@ class StrategyConfigOut(BaseModel):
     description: Optional[str] = None
     strategy_family: str
     strategy_name: str
-    # GEÄNDERT: Ticket 15 — Typ-Feld + strategy_config_json
+    # GEÄNDERT: Typ-Feld + strategy_config_json
     type: str
     import_path: Optional[str] = None
     strategy_config_json: Optional[dict] = None
@@ -1100,7 +1100,7 @@ def get_strategy_config(config_id: int):
 @router.post('/strategy')
 def create_strategy_config(data: StrategyConfigIn):
     """Neue Strategy-Config anlegen."""
-    # GEÄNDERT: Ticket 15 — XOR-Validierung
+    # GEÄNDERT: XOR-Validierung
     err = _validate_strategy_config_xor(data.type, data.import_path, data.strategy_config_json)
     if err:
         return JSONResponse({'data': None, 'error': err}, status_code=400)
@@ -1131,7 +1131,7 @@ def create_strategy_config(data: StrategyConfigIn):
 @router.put('/strategy/{config_id}')
 def update_strategy_config(config_id: int, data: StrategyConfigIn):
     """Bestehende Strategy-Config aktualisieren."""
-    # GEÄNDERT: Ticket 15 — XOR-Validierung
+    # GEÄNDERT: XOR-Validierung
     err = _validate_strategy_config_xor(data.type, data.import_path, data.strategy_config_json)
     if err:
         return JSONResponse({'data': None, 'error': err}, status_code=400)
@@ -1151,7 +1151,7 @@ def update_strategy_config(config_id: int, data: StrategyConfigIn):
         config.description = data.description
         config.strategy_family = data.strategy_family
         config.strategy_name = data.strategy_name
-        # GEÄNDERT: Ticket 15 — type + nullable import_path + strategy_config_json
+        # GEÄNDERT: type + nullable import_path + strategy_config_json
         config.type = data.type
         config.import_path = data.import_path
         config.strategy_config_json = data.strategy_config_json
@@ -1447,7 +1447,7 @@ class OhlcDeleteIn(BaseModel):
     symbol: str
 
 
-# GEÄNDERT: Ticket 97 — kurze Wartezeit für die lesenden Datei-Sperren in dieser
+# GEÄNDERT: kurze Wartezeit für die lesenden Datei-Sperren in dieser
 # Route-Schicht. Der Worker-Default (6 Stunden, siehe ohlc_file_lock.py) ist für
 # einen synchronen HTTP-Request ungeeignet: Ein kurzer Blick auf die Symbolliste
 # soll bei einer gerade laufenden Schreib-Operation (wenige Sekunden je Symbol)
@@ -1550,7 +1550,7 @@ def create_update_job(payload: OhlcUpdateIn):
         )
     session = get_session()
     try:
-        # GEÄNDERT: alle Symbole der Datei in Einzel-Update-Jobs zerlegen. Ticket 97 —
+        # GEÄNDERT: alle Symbole der Datei in Einzel-Update-Jobs zerlegen.
         # derselbe lesende Zugriff wie im Worker steht unter der Datei-Sperre: ohne sie
         # kann ein data-update, das startet während ein anderer Job noch schreibt, in
         # denselben errno 11 laufen wie zwei parallele Schreiber.
@@ -1611,7 +1611,7 @@ def create_baseline_ohlc_jobs():
             path = os.path.join(Config.DATA_PATH, filename)
             already = False
             if os.path.exists(path):
-                # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre
+                # GEÄNDERT: lesender Zugriff unter derselben Datei-Sperre
                 # wie der Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
                 try:
                     with ohlc_file_lock(r['exchange'], r['timeframe'], wait=_OHLC_ROUTE_LOCK_WAIT):
@@ -1682,7 +1682,7 @@ def create_download_all_configs_jobs(
             path = os.path.join(Config.DATA_PATH, filename)
             already = False
             if os.path.exists(path):
-                # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre
+                # GEÄNDERT: lesender Zugriff unter derselben Datei-Sperre
                 # wie der Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
                 try:
                     with ohlc_file_lock(r['exchange'], r['timeframe'], wait=_OHLC_ROUTE_LOCK_WAIT):
@@ -1730,7 +1730,7 @@ def create_update_symbol_job(payload: OhlcUpdateSymbolIn):
             status_code=404,
         )
     sym = payload.symbol.strip().upper()
-    # GEÄNDERT: Ticket 97 — lesender Zugriff unter derselben Datei-Sperre wie der
+    # GEÄNDERT: lesender Zugriff unter derselben Datei-Sperre wie der
     # Worker (gleiche Fehlerquelle: errno 11 bei laufendem Schreiber).
     try:
         with ohlc_file_lock(payload.exchange, payload.timeframe, wait=_OHLC_ROUTE_LOCK_WAIT):

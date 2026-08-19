@@ -15,7 +15,7 @@ POST   /api/strategy/iterations/{id}/copy  — Iteration kopieren
 PUT    /api/strategy/iterations/{id}       — Iteration aktualisieren
 POST   /api/strategy/iterations/{id}/vault-create  — Iterations-Notiz im Vault anlegen
 
-POST   /api/strategy/iterations/{id}/logs  — Log-Eintrag anlegen (append-only, Ticket 67)
+POST   /api/strategy/iterations/{id}/logs  — Log-Eintrag anlegen (append-only)
 GET    /api/strategy/iterations/{id}/logs  — Log-Einträge chronologisch aufsteigend auflisten
 """
 
@@ -84,19 +84,19 @@ class StrategyConceptSchema(BaseModel):
     name: str
     category: Optional[str] = None
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 16 — obsidian_slug entfernt; vault_exists wird live aus Filesystem berechnet
+    # GEÄNDERT: obsidian_slug entfernt; vault_exists wird live aus Filesystem berechnet
     vault_exists: bool = False
     status: str
     # GEÄNDERT: High-Water-Mark der Iterations-Nummern (für "Speichern unter..."-Vorschau)
     iteration_counter: int = 0
     created_at: Optional[datetime] = None
     created_by: Optional[str] = None
-    # GEÄNDERT: Ticket 66 — Entwicklungsziel des Konzepts (kein Gate, reine Anzeige/Speicherung)
+    # GEÄNDERT: Entwicklungsziel des Konzepts (kein Gate, reine Anzeige/Speicherung)
     goal_json: Optional[Dict[str, Any]] = None
     goal_prompt: Optional[str] = None
-    # GEÄNDERT: Ticket 66 — abgeleitetes Flag, damit Listen-Clients nicht das volle goal_json brauchen
+    # GEÄNDERT: abgeleitetes Flag, damit Listen-Clients nicht das volle goal_json brauchen
     has_goal: bool = False
-    # GEÄNDERT: Ticket 92 — Zählerstand der Lite-Sondierungen (reiner Ausweis, keine Bewertung)
+    # GEÄNDERT: Zählerstand der Lite-Sondierungen (reiner Ausweis, keine Bewertung)
     probe_count: int = 0
 
 
@@ -106,10 +106,10 @@ class StrategyConceptCreateSchema(BaseModel):
     name: str
     category: Optional[str] = None
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 16 — obsidian_slug entfernt
+    # GEÄNDERT: obsidian_slug entfernt
     status: str = 'active'
     created_by: Optional[str] = None
-    # GEÄNDERT: Ticket 66 — Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
+    # GEÄNDERT: Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
     # (Dict[str, Any] lehnt String/Liste/Zahl bereits über die Pydantic-Validierung ab)
     goal_json: Optional[Dict[str, Any]] = None
     goal_prompt: Optional[str] = None
@@ -121,10 +121,10 @@ class StrategyConceptUpdateSchema(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 16 — obsidian_slug entfernt
+    # GEÄNDERT: obsidian_slug entfernt
     status: Optional[str] = None
     created_by: Optional[str] = None
-    # GEÄNDERT: Ticket 66 — Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
+    # GEÄNDERT: Entwicklungsziel; goal_json muss ein JSON-Objekt sein, wenn gesetzt
     goal_json: Optional[Dict[str, Any]] = None
     goal_prompt: Optional[str] = None
 
@@ -144,7 +144,7 @@ class StrategyIterationSchema(BaseModel):
     import_path: Optional[str] = None
     parent_iteration_id: Optional[int] = None
     status: str
-    # GEÄNDERT: Ticket 16 — obsidian_path entfernt; vault_exists wird live aus Filesystem berechnet
+    # GEÄNDERT: obsidian_path entfernt; vault_exists wird live aus Filesystem berechnet
     vault_exists: bool = False
     description: Optional[str] = None
     is_favorite: bool = False
@@ -166,7 +166,7 @@ class StrategyIterationCreateSchema(BaseModel):
     import_path: Optional[str] = None
     parent_iteration_id: Optional[int] = None
     status: str = 'active'
-    # GEÄNDERT: Ticket 16 — obsidian_path entfernt
+    # GEÄNDERT: obsidian_path entfernt
     description: Optional[str] = None
     created_by: Optional[str] = None
 
@@ -183,12 +183,12 @@ class StrategyIterationUpdateSchema(BaseModel):
     import_path: Optional[str] = None
     parent_iteration_id: Optional[int] = None
     status: Optional[str] = None
-    # GEÄNDERT: Ticket 16 — obsidian_path entfernt
+    # GEÄNDERT: obsidian_path entfernt
     description: Optional[str] = None
     created_by: Optional[str] = None
 
 
-# GEÄNDERT: Ticket 67 — Iterations-Log (append-only Denkprotokoll)
+# GEÄNDERT: Iterations-Log (append-only Denkprotokoll)
 class IterationLogSchema(BaseModel):
     """Ausgabe-Schema für einen Log-Eintrag."""
     model_config = ConfigDict(from_attributes=True)
@@ -240,7 +240,7 @@ def _concept_to_dict(concept) -> Dict[str, Any]:
     """
     data = StrategyConceptSchema.model_validate(concept).model_dump(mode='json')
     data['vault_exists'] = concept_md_path(concept.slug).exists()
-    # GEÄNDERT: Ticket 66 — has_goal rein anzeigend, keine Filterung/Bewertung
+    # GEÄNDERT: has_goal rein anzeigend, keine Filterung/Bewertung
     data['has_goal'] = bool(concept.goal_json) or bool(concept.goal_prompt)
     return data
 
@@ -297,7 +297,7 @@ def create_concept_endpoint(body: StrategyConceptCreateSchema):
     session = get_session()
     try:
         kwargs = body.model_dump(exclude_none=True)
-        # GEÄNDERT: Ticket 16 — Slug auto-normalisieren
+        # GEÄNDERT: Slug auto-normalisieren
         if 'slug' in kwargs:
             kwargs['slug'] = normalize_slug(kwargs['slug'])
         concept = create_concept(session, **kwargs)
@@ -734,7 +734,7 @@ def create_iteration_vault(iteration_id: int):
 def toggle_iteration_favorite(iteration_id: int):
     """Favoriten-Flag der Iteration toggeln (Stern an/aus).
 
-    Bleibt der reine Toggle für den manuellen Frontend-Stern (Ticket 89 rührt daran
+    Bleibt der reine Toggle für den manuellen Frontend-Stern (rührt daran
     nicht). Für idempotentes Setzen/Entfernen (z. B. aus der Toolbox) siehe
     /favorite/mark und /favorite/unmark direkt darunter.
 
@@ -756,7 +756,7 @@ def toggle_iteration_favorite(iteration_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den gelben
+# GEÄNDERT: idempotentes Gegenstück zum Toggle oben. Setzt den gelben
 # Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
 @router.post('/iterations/{iteration_id}/favorite/mark')
 def mark_iteration_favorite(iteration_id: int):
@@ -774,7 +774,7 @@ def mark_iteration_favorite(iteration_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+# GEÄNDERT: gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
 @router.post('/iterations/{iteration_id}/favorite/unmark')
 def unmark_iteration_favorite(iteration_id: int):
     """Entfernt das Favoriten-Flag der Iteration gezielt und idempotent (schaltet nie an)."""
@@ -799,7 +799,7 @@ def unmark_iteration_favorite(iteration_id: int):
 def toggle_iteration_doc_favorite(iteration_id: int):
     """Doku-Favoriten-Flag der Iteration toggeln (roter Stern an/aus).
 
-    Bleibt der reine Toggle (Ticket 89 rührt daran nicht); für idempotentes
+    Bleibt der reine Toggle (rührt daran nicht); für idempotentes
     Setzen/Entfernen siehe /doc_favorite/mark und /doc_favorite/unmark direkt darunter.
     """
     session = get_session()
@@ -814,7 +814,7 @@ def toggle_iteration_doc_favorite(iteration_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — idempotentes Gegenstück zum Toggle oben. Setzt den roten
+# GEÄNDERT: idempotentes Gegenstück zum Toggle oben. Setzt den roten
 # Doku-Stern (nie aus); changed zeigt, ob sich der Zustand tatsächlich geändert hat.
 @router.post('/iterations/{iteration_id}/doc_favorite/mark')
 def mark_iteration_doc_favorite(iteration_id: int):
@@ -832,7 +832,7 @@ def mark_iteration_doc_favorite(iteration_id: int):
         session.close()
 
 
-# GEÄNDERT: Ticket 89 — gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
+# GEÄNDERT: gezieltes, idempotentes Entfernen (nur über --off in der Toolbox).
 @router.post('/iterations/{iteration_id}/doc_favorite/unmark')
 def unmark_iteration_doc_favorite(iteration_id: int):
     """Entfernt das Doku-Favoriten-Flag der Iteration gezielt und idempotent (schaltet nie an)."""
@@ -850,7 +850,7 @@ def unmark_iteration_doc_favorite(iteration_id: int):
 
 
 # ============================================================================
-# Iterations-Log (Ticket 67) — append-only Denkprotokoll, kein Update/Delete
+# Iterations-Log — append-only Denkprotokoll, kein Update/Delete
 # ============================================================================
 
 @router.post('/iterations/{iteration_id}/logs')

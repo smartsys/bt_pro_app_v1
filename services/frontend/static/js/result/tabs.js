@@ -105,7 +105,7 @@
   /**
    * Rendert die erweiterten Metriken in einen Container.
    *
-   * GEÄNDERT: Ticket 64 — kein Berechnungsstufen-Parameter mehr. Jedes Result trägt
+   * GEÄNDERT: kein Berechnungsstufen-Parameter mehr. Jedes Result trägt
    * seit der Zusammenführung der Kennzahl-Funktionen denselben Satz Kennzahlen; es
    * gibt keine Felder mehr, die erst eine Vollanalyse nachliefern müsste.
    *
@@ -201,7 +201,7 @@
           ['Benchmark Return [%]', 'Benchmark Return [%]', fmtVal],
           ['Total Orders', 'Total Orders', fmtVal],
           ['Total Trades', 'Total Trades', fmtVal],
-          // GEÄNDERT: Ticket 60 — Nenner und Aufteilung der Trade-Zahl direkt daneben:
+          // GEÄNDERT: Nenner und Aufteilung der Trade-Zahl direkt daneben:
           // Open Trades (Nenner der Trefferquote), Long/Short-Aufteilung.
           ['Open Trades', 'Open Trades', fmtVal],
           ['Long Trades', 'Long Trades', fmtVal],
@@ -231,7 +231,7 @@
           ['Avg Winning Trade Duration', 'Avg Winning Trade Duration', fmtDuration],
           ['Start Index', 'Start Index', fmtDate],
           ['End Index', 'End Index', fmtDate],
-          // GEÄNDERT: Ticket 60 — Balkenzahl des tatsächlich gerechneten Handelsfensters.
+          // GEÄNDERT: Balkenzahl des tatsächlich gerechneten Handelsfensters.
           ['Bar Count', 'Bar Count', fmtVal],
         ];
 

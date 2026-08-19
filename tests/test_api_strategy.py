@@ -1,4 +1,4 @@
-"""Tests für repository_strategies.py und api_strategy.py — Ticket 09.
+"""Tests für repository_strategies.py und api_strategy.py.
 
 Repository-Tests: CRUD für StrategyConcept + StrategyIteration.
 version ist eine fortlaufende Integer-Nummer pro Konzept (High-Water-Mark
@@ -7,10 +7,10 @@ strategy_concepts.iteration_counter), die beim Anlegen automatisch vergeben wird
 API-Tests: FastAPI TestClient gegen echte PostgreSQL-DB.
 
 Verwendet PostgreSQL (JSONB-kompatibel), Test-DB via VBT_TEST_DATABASE_URL (Port 5562).
-db_engine und session kommen aus tests/conftest.py (Ticket 14).
+db_engine und session kommen aus tests/conftest.py.
 """
 
-# GEÄNDERT: Ticket 14 — Lokale db_engine/session-Fixtures entfernt, zentrale
+# GEÄNDERT: Lokale db_engine/session-Fixtures entfernt, zentrale
 # Fixtures aus conftest.py werden automatisch injiziert.
 import sys
 from pathlib import Path
@@ -468,7 +468,7 @@ def test_api_get_iteration_not_found(api_client):
 
 
 # ============================================================================
-# API-Tests: goal_json / goal_prompt (Ticket 66 — Zielvorgabe am Konzept)
+# API-Tests: goal_json / goal_prompt (Zielvorgabe am Konzept)
 # ============================================================================
 
 @pytest.mark.integration

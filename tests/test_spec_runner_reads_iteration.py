@@ -1,9 +1,9 @@
-"""Tests für Worker-Pfad: Rules aus iteration.spec_json (Ticket 12, bereinigt Ticket 21).
+"""Tests für Worker-Pfad: Rules aus iteration.spec_json (bereinigt .
 
 Prüft:
 - run_backtest_job lädt rules_json aus run.iteration.spec_json.
 - run_backtest_job leitet rules_json explizit an die Strategie-Funktion weiter.
-- Fehlende iteration -> ValueError (kein Legacy-Fallback mehr seit Ticket 21).
+- Fehlende iteration -> ValueError (kein Legacy-Fallback mehr seit der Umstellung).
 """
 
 import pytest
@@ -21,7 +21,7 @@ def _make_run(iteration_id=1, indicators_config=None, has_iteration=True, testse
     """Erstellt einen Mock-BacktestRun."""
     run = MagicMock()
     run.id = 42
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     run.backtest_config_json = {
         'strategy_family': 'playground',
         'strategy_name': 'pg_spec_20260525',
@@ -102,9 +102,9 @@ def test_worker_indicators_json_enthaelt_keinen_rules_key():
     """indicators_json an Strategie enthält keinen '_rules'-Key.
 
     Auch wenn indicators_config keine _rules enthält, darf das Ergebnis keinen
-    solchen Key haben (Ticket 21: kein Legacy-Key mehr in der DB).
+    solchen Key haben (kein Legacy-Key mehr in der DB).
     """
-    # GEÄNDERT: Ticket 21 — kein _rules in indicators_config, Rules kommen aus iteration.spec_json
+    # GEÄNDERT: kein _rules in indicators_config, Rules kommen aus iteration.spec_json
     run = _make_run(indicators_config={'fast_sma': {'length': 6}})
     received_indicators = {}
 
@@ -125,8 +125,8 @@ def test_worker_indicators_json_enthaelt_keinen_rules_key():
 
 
 def test_worker_ohne_iteration_wirft_exception():
-    """Fehlende Iteration -> ValueError (kein Legacy-Fallback mehr seit Ticket 21)."""
-    # GEÄNDERT: Ticket 21 — kein stilles False, sondern Exception
+    """Fehlende Iteration -> ValueError (kein Legacy-Fallback mehr seit der Umstellung)."""
+    # GEÄNDERT: kein stilles False, sondern Exception
     run = _make_run(iteration_id=None, has_iteration=False)
 
     import services.api.worker_tasks as wt

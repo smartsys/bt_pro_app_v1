@@ -4,7 +4,7 @@ Pydantic Response-Models
 API-Response-Format gemäß design-guide.md:
 {"data": {"items": [...], "total": N, "limit": N, "offset": N}, "error": null}
 
-GEÄNDERT: Ticket 28 — schemas/ ist jetzt ein Paket. Inhalte aus schemas.py hier
+GEÄNDERT: schemas/ ist jetzt ein Paket. Inhalte aus schemas.py hier
 re-exportiert damit bestehende Imports (from services.api.schemas import ...) weiter
 funktionieren. schemas.py bleibt als Referenz erhalten wird aber nicht mehr importiert
 (Paket hat Vorrang vor gleichnamigem Modul).
@@ -43,15 +43,15 @@ class BacktestRunOut(BaseModel):
     end_date: datetime
     n_combinations: int
     status: str
-    # GEÄNDERT: Ticket 34 — Fehlermeldung fehlgeschlagener Runs an die UI durchreichen
+    # GEÄNDERT: Fehlermeldung fehlgeschlagener Runs an die UI durchreichen
     error_message: Optional[str] = None
     # GEÄNDERT: Chunk-Fortschritt für laufende Runs (NULL bei ungechunkt/Alt-Runs)
     current_chunk: Optional[int] = None
     total_chunks: Optional[int] = None
-    # GEÄNDERT: Ticket 71 — Fortsetzungspunkt: Zahl der fertig gespeicherten Chunks.
+    # GEÄNDERT: Fortsetzungspunkt: Zahl der fertig gespeicherten Chunks.
     # > 0 heißt, ein abgebrochener Lauf trägt Teilergebnisse und ist fortsetzbar.
     completed_chunks: int = 0
-    # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs ('usable' | 'no_signals' |
+    # GEÄNDERT: Selbstauskunft des Laufs ('usable' | 'no_signals' |
     # 'insufficient_history') mit lesbarem Grund, plus Ergebnis der Vorlauf-Prüfung.
     usability: Optional[str] = None
     usability_note: Optional[str] = None
@@ -62,7 +62,7 @@ class BacktestRunOut(BaseModel):
     testset_run_id: Optional[int] = None
     # GEÄNDERT: Iteration-Verknüpfung (FK) ausgeben — Anker für "Runs zu Strategie+Version"
     iteration_id: Optional[int] = None
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     backtest_config_json: Optional[dict] = None
     indicators_config_json: Optional[dict] = None
     created_at: datetime
@@ -76,7 +76,7 @@ class BacktestResultOut(BaseModel):
 
     id: int
     run_id: int
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     actual_params_json: dict
 
     # Return-Metriken
@@ -94,10 +94,10 @@ class BacktestResultOut(BaseModel):
 
     # Trade-Metriken
     total_trades: Optional[int] = None
-    # GEÄNDERT: Ticket 58 — am Fensterende offene Positionen. Die Trefferquote rechnet
+    # GEÄNDERT: am Fensterende offene Positionen. Die Trefferquote rechnet
     # über total_trades - open_trades; der Nenner gehört überall dorthin, wo sie steht.
     open_trades: Optional[int] = None
-    # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung (long_trades + short_trades = total_trades)
+    # GEÄNDERT: Long/Short-Aufteilung (long_trades + short_trades = total_trades)
     # sowie der tatsächlich gerechnete Zeitraum und die Balkenzahl. NULL bei Alt-Results.
     long_trades: Optional[int] = None
     short_trades: Optional[int] = None

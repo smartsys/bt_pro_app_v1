@@ -1,4 +1,4 @@
-"""Tests für das aktive Warten auf ein Lauf-Ende (Ticket 60, Anforderung 6).
+"""Tests für das aktive Warten auf ein Lauf-Ende (Anforderung 6).
 
 Prüft die reine Funktion `run_wait` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff:
@@ -47,7 +47,7 @@ def test_run_wait_erfolgreicher_run_meldet_dauer_und_results(toolbox, capsys):
         "error_message": None,
     }
 
-    # GEÄNDERT: Ticket 70/C — --run pollt über den Einzel-GET (/runs/{id}, Antwort
+    # GEÄNDERT: --run pollt über den Einzel-GET (/runs/{id}, Antwort
     # ist das Run-Objekt direkt), nicht mehr über die Liste (items-Wrapper).
     def fake_fetch(path, timeout=None):
         if "results?limit=1" in path:
@@ -75,7 +75,7 @@ def test_run_wait_fehlgeschlagener_run_meldet_fehlermeldung(toolbox, capsys):
         "error_message": "OHLC-Daten laden fehlgeschlagen: No object named ZZZ in the file",
     }
 
-    # GEÄNDERT: Ticket 70/C — --run pollt über den Einzel-GET (/runs/{id}, Antwort
+    # GEÄNDERT: --run pollt über den Einzel-GET (/runs/{id}, Antwort
     # ist das Run-Objekt direkt), nicht mehr über die Liste (items-Wrapper).
     def fake_fetch(path, timeout=None):
         if "results?limit=1" in path:
@@ -99,7 +99,7 @@ def test_run_wait_timeout_wird_als_timeout_gemeldet_nicht_als_fehlschlag(toolbox
 
     # time.monotonic(): t0=0, erste Schleifenprüfung 0 (noch kein Timeout bei --timeout 5),
     # zweite Schleifenprüfung 200 (> 5 -> Timeout).
-    # GEÄNDERT: Ticket 70/C — --run pollt über den Einzel-GET, Antwort ist das
+    # GEÄNDERT: --run pollt über den Einzel-GET, Antwort ist das
     # Run-Objekt direkt (kein items-Wrapper).
     with patch.object(toolbox, "fetch", return_value={"data": run_row}), \
          patch("time.sleep"), \

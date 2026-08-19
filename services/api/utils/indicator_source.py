@@ -1,4 +1,4 @@
-"""Herkunft des Indikator-Rasters — gespeicherte IndicatorConfig oder inline (Ticket 102).
+"""Herkunft des Indikator-Rasters — gespeicherte IndicatorConfig oder inline.
 
 Testset-Lauf und Preflight nehmen das Parameter-Raster wahlweise über die ID einer
 gespeicherten IndicatorConfig oder inline als Dict. Genau eines von beiden ist Pflicht;

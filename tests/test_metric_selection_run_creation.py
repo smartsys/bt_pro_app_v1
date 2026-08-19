@@ -1,4 +1,4 @@
-"""Tests der Metrik-Auswahl-Durchreichung beim Run-Start (Ticket 68, Anforderung 2+4).
+"""Tests der Metrik-Auswahl-Durchreichung beim Run-Start (Anforderung 2+4).
 
 `create_backtest_run` ist die einzige Stelle, an der eine `metrics`-Rohangabe
 ('kern'/'voll'/'auto'/Liste/None) zur konkreten Gruppenmenge aufgelöst wird — hier ist
@@ -13,7 +13,7 @@
   ab der Schwelle nur noch 'kern', mit einer Notiz, die Rastergröße und Schwelle nennt.
 - Zwei unterschiedlich geformte Raster gleicher Kombinationszahl lösen identisch auf —
   die Auflösung hängt nur an n_combinations, nicht am Weg dorthin (Einzel- vs.
-  Multiparameterlauf-Unabhängigkeit, Erbe aus Ticket 64/65).
+  Multiparameterlauf-Unabhängigkeit, Erbe).
 - `assess_run_usability` hängt eine übergebene Metrik-Notiz an die sonst berechnete
   Note an, statt sie zu ersetzen; ohne Notiz bleibt die Note unverändert.
 

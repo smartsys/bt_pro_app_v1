@@ -1,6 +1,6 @@
 """backtest_runs.ann_factor dazu, alte Deflated-Sharpe-Werte leeren
 
-Ticket 54: Die Deflated Sharpe Ratio wird nicht mehr je Kombination aus VBT
+Die Deflated Sharpe Ratio wird nicht mehr je Kombination aus VBT
 gezogen, sondern als Nachlauf über den ganzen Lauf mit korrigierter Formel
 gerechnet (`user_data/utils/metrics/deflated_sharpe.py`).
 

@@ -1,4 +1,4 @@
-"""Integrationstests des Permutationstest-Jobs (Ticket 79).
+"""Integrationstests des Permutationstest-Jobs.
 
 Gerechnet wird mit **kleinem N** auf synthetischen Eingangsdaten (Muster
 ``_make_synthetic_ohlc_data`` aus test_combo_batching.py, hier als echtes

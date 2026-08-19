@@ -1,4 +1,4 @@
-"""Kandidat auflösen und nachrechnen — Grundlage der Signifikanztests (Ticket 79).
+"""Kandidat auflösen und nachrechnen — Grundlage der Signifikanztests.
 
 Ein Kandidat ist ein Result: Iteration × eingefrorene Parameterkombination ×
 BacktestConfig. Dieses Modul beantwortet genau zwei Fragen:

@@ -1,6 +1,6 @@
 """Tests für api_monitor._active_testset_runs — Karteileichen-Filter.
 
-Ticket 62: GET /api/monitor/overview führte fünf Testset-Läufe dauerhaft als
+GET /api/monitor/overview führte fünf Testset-Läufe dauerhaft als
 aktive Jobs, obwohl kein Backtest-Run mehr dahinterstand (weder in der DB noch
 in Redis). _active_testset_runs verlangt seitdem zusätzlich zum Status in
 ACTIVE_STATES, dass mindestens ein zugehöriger BacktestRun existiert —

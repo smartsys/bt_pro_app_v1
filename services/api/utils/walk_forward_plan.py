@@ -1,4 +1,4 @@
-"""Fold-Plan der Walk-Forward-Kette (Ticket 82).
+"""Fold-Plan der Walk-Forward-Kette.
 
 Der Plan ist die Vorregistrierung: Fold-Zahl, Fensterlängen, die konkreten
 Fold-Fenster als Datumsliste und das Auswahlkriterium stehen beim Anlegen der
@@ -25,7 +25,7 @@ SELECTION_DIRECTIONS: Tuple[str, ...] = ('max', 'min')
 
 # Fester Methodenhinweis, der an jeder abgeschlossenen Kette hängt. Er benennt die
 # bewusst in Kauf genommene Abweichung der Verkettung gegenüber einem
-# Signal-Splice-Portfolio (Ticket 82, Out of Scope).
+# Signal-Splice-Portfolio (Out of Scope).
 METHOD_NOTE: str = (
     'Die Gesamtbewertung entsteht aus den balkengenauen Kapitalkurven der '
     'Testfenster-Läufe, chronologisch aneinandergehängt und je Fold auf das '

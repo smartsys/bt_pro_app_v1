@@ -1,4 +1,4 @@
-"""Gelber Favoriten-Stern eines Results — setzend statt umschaltend (Ticket 89).
+"""Gelber Favoriten-Stern eines Results — setzend statt umschaltend.
 
 Verifiziert services/api/routes/api_backtest.py:
 - mark_favorite: setzt is_favorite idempotent (nie aus), changed-Flag korrekt

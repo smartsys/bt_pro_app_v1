@@ -32,21 +32,21 @@ werden, damit die neue VERSION in neue Runs/Results geschrieben wird.
 
 from typing import Any, Callable, Optional
 
-# GEÄNDERT: Versionskonstante für Reproduzierbarkeit von Backtests (Ticket 01)
-# GEÄNDERT: Ticket 34 — Patch-Bump: Run-Start-Validierung deaktivierter/fehlender
+# GEÄNDERT: Versionskonstante für Reproduzierbarkeit von Backtests
+# GEÄNDERT: Patch-Bump: Run-Start-Validierung deaktivierter/fehlender
 # Indikator-Referenzen. Keine Verhaltensänderung für korrekte Specs.
 # GEÄNDERT: Patch-Bump 1.0.2 — Multi-Indikator-Cross-Produkt im rules_engine.
 # Disjunkte Param-Level mehrerer Indikatoren (z.B. zwei Indikator-Ketten mit verschiedenen Param-Leveln)
 # werden jetzt kreuzproduktiert statt mit 'Cannot align indexes' abzubrechen.
 # Vorher gar nicht ausführbare Multi-Combo-Specs laufen nun durch; Single-Combo
 # unverändert.
-# GEÄNDERT: Ticket 46 — Minor-Bump 1.1.0: Short-Positionen im Masken-Pfad via
+# GEÄNDERT: Minor-Bump 1.1.0: Short-Positionen im Masken-Pfad via
 # is_short=True auf Entry/Exit-Blöcken. evaluate_rules gibt jetzt SignalMasks
 # (vier Masken) zurück; from_signals erhält short_entries/short_exits.
-# GEÄNDERT: Ticket 47 Bugfix — Patch-Bump 1.2.1: Multi-Combo im nativen Pfad jetzt
+# GEÄNDERT: Bugfix — Patch-Bump 1.2.1: Multi-Combo im nativen Pfad jetzt
 # vektorisiert (col % n_combo Mapping in der signal_func_nb) statt fehlerhaftem
 # Single-Combo-Pre-Expand. Spalten-Identität (Indikator-Param-Achse) wieder
-# vollständig; Ticket-44-Multi-Combo-Chunking reaktiviert. Korrekte Specs liefern
+# vollständig; Multi-Combo-Chunking reaktiviert. Korrekte Specs liefern
 # identische Werte UND korrekte Spalten-Labels.
 # GEÄNDERT: Paket B — Major-Bump 2.0.0: Per-Indikator-Timeframe (tf) im echten Runner
 # scharf geschaltet. Ein Indikator mit abweichendem (groeberem) 'tf' rechnet jetzt nativ
@@ -54,14 +54,14 @@ from typing import Any, Callable, Optional
 # (vorher wurde 'tf' im Runner still verworfen). Breaking: Specs, die ein nicht-Basis-'tf'
 # tragen, liefern nach dem Upgrade andere (jetzt korrekte) Ergebnisse. Specs ohne 'tf'
 # bzw. mit tf==Basis bleiben bit-identisch.
-# GEÄNDERT: Ticket 58 — Major-Bump 3.0.0: Kennzahlen laufen ausschließlich über das
+# GEÄNDERT: Major-Bump 3.0.0: Kennzahlen laufen ausschließlich über das
 # Handelsfenster start..end der BacktestConfig; der Vorlauf (ohlc_start..ohlc_end) wärmt
 # nur noch die Indikatoren auf. Breaking: Buy-and-Hold-Vergleichsmaßstab, Sharpe,
 # annualisierte Größen und alle benchmark-relativen Kennzahlen ändern sich für jede Spec
 # mit Vorlauf. Zusätzlich rechnen Trefferquote und Profitfaktor im Multi-Kombinations-Pfad
 # jetzt über geschlossene Trades (vorher inklusive einer am Fensterende offenen Position).
 #
-# HERKUNFT EINES RESULTS (Ticket 58, Anforderung 4): Die Konvention, nach der die
+# HERKUNFT EINES RESULTS (Anforderung 4): Die Konvention, nach der die
 # Kennzahlen eines Results gerechnet wurden, steht in backtest_results.spec_runner_version:
 #   < 3.0.0  — Kennzahlen über das volle Datenfenster ohlc_start..ohlc_end (inkl. Vorlauf);
 #              Trefferquote/Profitfaktor im Multi-Kombinations-Pfad inkl. offener Position;
@@ -88,7 +88,7 @@ from typing import Any, Callable, Optional
 # Fensterende hinaus), sind Trefferquote und Profitfaktor nicht bestimmbar und stehen
 # als NULL in der Datenbank — ausdrücklich nicht als 0, das wäre ein Totalausfall.
 #
-# GEÄNDERT: Ticket 59 — Minor-Bump 3.1.0: 'slippage' ist ein neuer optionaler
+# GEÄNDERT: Minor-Bump 3.1.0: 'slippage' ist ein neuer optionaler
 # Portfolio-Parameter im backtest_config_json['portfolio']-Block und geht als Anteil
 # vom Orderpreis an from_signals. Fehlt der Key oder ist er None/0.0, rechnet der
 # Runner bit-identisch zu 3.0.0 — es ist also opt-in, kein Verhaltenswechsel für
@@ -97,7 +97,7 @@ from typing import Any, Callable, Optional
 # abweichender Schreibweise ('close') laufen jetzt durch, statt mit AttributeError
 # abzubrechen. Für Werte, die vorher schon funktionierten, ändert sich nichts.
 #
-# GEÄNDERT: Ticket 54 — Major-Bump 4.0.0: Die Deflated Sharpe Ratio entsteht nicht mehr
+# GEÄNDERT: Major-Bump 4.0.0: Die Deflated Sharpe Ratio entsteht nicht mehr
 # hier. Der gechunkte Pfad sammelt keine DSR-Bausteine mehr und schreibt keine DSR in die
 # Metriken-Tabelle; die zweite, aus VBT abgeschriebene Formelkopie ist ersatzlos entfallen.
 # Stattdessen liefert der Runner den Annualisierungsfaktor des Laufs mit ('ann_factor',
@@ -115,7 +115,7 @@ from typing import Any, Callable, Optional
 # Breaking, weil dieselbe Spec nach dem Upgrade eine andere (jetzt korrekte) DSR liefert.
 # Alle übrigen Kennzahlen bleiben bit-identisch zu 3.1.0.
 #
-# GEÄNDERT: Ticket 71 — Minor-Bump 4.1.0: Zwei neue optionale Parameter, rein für die
+# GEÄNDERT: Minor-Bump 4.1.0: Zwei neue optionale Parameter, rein für die
 # Ausgabe der Ergebnisse — 'chunk_sink' (Senke, die jeden fertig gerechneten Chunk sofort
 # entgegennimmt) und 'completed_chunks' (Zahl der bereits gespeicherten führenden Chunks,
 # die übersprungen werden). Gerechnet wird unverändert: dieselbe Spec liefert dieselben
@@ -141,7 +141,7 @@ from user_data.strategies.generic.indicator_factory import (
 from user_data.strategies.generic.rules_engine import (
     evaluate_rules_native,
 )
-# GEÄNDERT: Ticket 58 — Handelsfenster (start..end) als einzige Bildungsvorschrift.
+# GEÄNDERT: Handelsfenster (start..end) als einzige Bildungsvorschrift.
 from user_data.utils.metrics.trading_window import (
     build_trading_window,
     slice_to_trading_window,
@@ -162,14 +162,14 @@ def run_spec_strategy(
     Args:
         ohlc_data: vbt.Data-Objekt (z.B. aus load_ohlc_data).
         indicators_json: Indikator-Spec (flat) mit 'indicator:<id>:<out>'-Chaining. Darf keinen '_rules'-Key
-            mehr enthalten (ab Ticket 12 in iteration.spec_json).
+            mehr enthalten (seit der Umstellung in iteration.spec_json).
         backtest_config_json: Backtest-Parameter inkl. 'portfolio'-Block.
-        rules_json: Entry-/Exit-Regeln. Pflichtparameter seit Ticket 12. Der Worker
+        rules_json: Entry-/Exit-Regeln. Pflichtparameter seit der Umstellung. Der Worker
             lädt Rules aus iteration.spec_json und übergibt sie explizit.
         progress_callback: Optionaler Callback (current_chunk, total_chunks), den der
             gechunkte Pfad einmal je Chunk aufruft. Hält den Spec-Runner DB-frei -
             der Worker injiziert das DB-Update. None = kein Fortschritts-Reporting.
-        chunk_sink: Optionale Senke (Ticket 71), die jeden fertig gerechneten Chunk
+        chunk_sink: Optionale Senke, die jeden fertig gerechneten Chunk
             sofort entgegennimmt: (chunk_index, metrics_table, columns, ann_factor).
             Der Worker hängt daran das Speichern in die Datenbank; der Spec-Runner
             bleibt DB-frei. Mit Senke sammelt der Runner nichts mehr im Speicher und
@@ -177,7 +177,7 @@ def run_spec_strategy(
             'chunks_saved'. Ohne Senke (save-freie Direktaufrufe) bleibt es beim
             bisherigen Sammeln.
         completed_chunks: Anzahl der von vorn her bereits gespeicherten Chunks eines
-            fortgesetzten Laufs (Ticket 71). Diese Chunks werden übersprungen. Die
+            fortgesetzten Laufs. Diese Chunks werden übersprungen. Die
             Chunk-Aufteilung ist deterministisch, der übersprungene Chunk k ist also
             derselbe wie im abgebrochenen Lauf. Nur im gechunkten Pfad wirksam.
 
@@ -192,28 +192,28 @@ def run_spec_strategy(
     """
     print("\nstart run_spec_strategy ..")
 
-    # GEÄNDERT: Ticket 12 — _rules-Fallback entfernt. Rules kommen jetzt immer explizit
+    # GEÄNDERT: _rules-Fallback entfernt. Rules kommen jetzt immer explizit
     # aus iteration.spec_json (Worker-Pfad) oder direkt vom Aufrufer.
     if rules_json is None:
         raise ValueError(
-            "rules_json fehlt. Ab Ticket 12 müssen Rules explizit übergeben werden. "
+            "rules_json fehlt. Seit der Umstellung müssen Rules explizit übergeben werden. "
             "Worker-Pfad: rules aus BacktestRun.iteration.spec_json['rules'] laden."
         )
 
-    # GEÄNDERT: Ticket 34 — Run-Start-Validierung. Referenziert eine Regel einen
+    # GEÄNDERT: Run-Start-Validierung. Referenziert eine Regel einen
     # Indikator, der in der Indikator-Config deaktiviert (enabled: false) ist oder
     # ganz fehlt, bricht der Run hier mit klarer Meldung ab — statt später still
     # in rules_engine._resolve_ref mit einer generischen Meldung zu crashen.
     _validate_rule_references(rules_json, indicators_json)
 
-    # GEÄNDERT: Ticket 58 (Anforderung 3, Audit-Befund 11) — Run-Start-Validierung der
+    # GEÄNDERT: (Anforderung 3, Audit-Befund 11) — Run-Start-Validierung der
     # Rastergröße. Ein enabled, gesweepter, nirgends referenzierter Indikator würde in
     # describe_combos/count_total_combos mitgezählt, ohne dass sich die Portfolio-Spalten
     # unterscheiden — Folge: kollidierende params_hash-Werte, still überschriebene
     # Ergebnisse, Ergebniszahl unter n_combinations.
     _validate_swept_indicators_referenced(rules_json, indicators_json)
 
-    # GEÄNDERT: Ticket 44 — Combo-Batching: große Grids werden chunk-weise verarbeitet
+    # GEÄNDERT: Combo-Batching: große Grids werden chunk-weise verarbeitet
     # um OOM-Crashes bei 36k+ Kombis zu vermeiden. Der recompute-Pfad setzt
     # '_disable_chunked': True in backtest_config_json um Chunking zu unterbinden.
     chunk_size = int(backtest_config_json.get('chunk_size', 5000))
@@ -225,7 +225,7 @@ def run_spec_strategy(
         chunks = [indicators_json]
 
     if len(chunks) > 1:
-        # GEÄNDERT: Ticket 47 Bugfix — Multi-Combo-Sub-Grid-Chunking (Ticket 44)
+        # GEÄNDERT: Bugfix — Multi-Combo-Sub-Grid-Chunking
         # wiederhergestellt. Der native Pfad verarbeitet jetzt Multi-Combo direkt
         # (col % n_combo Mapping), daher kein Single-Combo-Zwang mehr. Jeder Chunk
         # ist ein kartesisches Sub-Produkt von max. chunk_size Kombis und liefert
@@ -260,7 +260,7 @@ def run_spec_strategy(
     stop_kwargs = build_stop_kwargs(stops_cfg)
     stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
 
-    # GEÄNDERT: Ticket 59 — beide Stop-Enum-Felder werden roh an from_signals
+    # GEÄNDERT: beide Stop-Enum-Felder werden roh an from_signals
     # durchgereicht. VBT löst sie selbst case-insensitiv auf (map_enum_fields); der
     # frühere Custom-Resolver _resolve_stop_exit_price war case-sensitiv und hätte
     # gültige Schreibweisen wie 'close' abgewiesen. Die klare Meldung bei einem
@@ -269,7 +269,7 @@ def run_spec_strategy(
     stop_exit_price = pf_cfg.get('stop_exit_price')
     stop_order_type = pf_cfg.get('stop_order_type')
 
-    # GEÄNDERT: Ticket 59 — slippage als Anteil vom Orderpreis. Fehlender Key oder None
+    # GEÄNDERT: slippage als Anteil vom Orderpreis. Fehlender Key oder None
     # (Alt-Runs, Alt-Leaderboard-Snapshots) bedeutet 0.0 = VBT-Default, also
     # unverändertes Rechnen wie vor dem Ticket.
     slippage = pf_cfg.get('slippage')
@@ -281,11 +281,11 @@ def run_spec_strategy(
     high_series = ohlc_data.get('High')
     low_series = ohlc_data.get('Low')
 
-    # GEÄNDERT: Ticket 47 Phase 2 — Einheitlicher nativer Pfad. Alle Backtests laufen
+    # GEÄNDERT: Phase 2 — Einheitlicher nativer Pfad. Alle Backtests laufen
     # über evaluate_rules_native (signal_func_nb). Der Masken-Pfad (else-Zweig) wurde
     # entfernt. use_native-Flag und _rule_group_uses_state_refs-Check nicht mehr nötig.
     print(" - Nativer Pfad: signal_func_nb")
-    # GEÄNDERT: Ticket 58 — Fenstergrenzen kommen aus build_trading_window, damit
+    # GEÄNDERT: Fenstergrenzen kommen aus build_trading_window, damit
     # Entry-Maske und Kennzahlen-Zuschnitt garantiert dieselben Grenzen benutzen.
     start_date, end_date = build_trading_window(backtest_config_json)
 
@@ -332,7 +332,7 @@ def run_spec_strategy(
     # indicators_results in Format der bestehenden Strategien bringen
     indicators_results = _build_indicators_results(indicators, indicators_json, timeframe)
 
-    # GEÄNDERT: Ticket 46 — signals-Dict enthält jetzt vier Masken statt entries/exits
+    # GEÄNDERT: signals-Dict enthält jetzt vier Masken statt entries/exits
     return {
         'portfolios': portfolios,
         'indicators_results': indicators_results,
@@ -346,7 +346,7 @@ def run_spec_strategy(
     }
 
 
-# GEÄNDERT: Ticket 44 — Hilfsfunktion für chunk-weisen Multi-Combo-Backtest
+# GEÄNDERT: Hilfsfunktion für chunk-weisen Multi-Combo-Backtest
 def _run_chunked(
     chunks: list[dict],
     ohlc_data: Any,
@@ -364,14 +364,14 @@ def _run_chunked(
     Skalare) wird durch np.atleast_1d() in _vals() korrekt behandelt.
     Der Chunk-Speicher wird zwischen den Blöcken freigegeben.
 
-    GEÄNDERT: Ticket 71 — mit `chunk_sink` geht jeder fertige Chunk sofort an die
+    GEÄNDERT: mit `chunk_sink` geht jeder fertige Chunk sofort an die
     Senke (der Worker schreibt ihn in die Datenbank) und wird hier nicht mehr
     aufgehoben. Ein hart beendeter Lauf verliert damit höchstens den Chunk, an dem er
     gerade rechnete, statt seiner gesamten Arbeit. `completed_chunks` überspringt die
     beim Fortsetzen bereits gespeicherten führenden Chunks; die Chunk-Aufteilung ist
     deterministisch, Chunk k ist also derselbe wie im abgebrochenen Lauf.
 
-    Die deflated_sharpe_ratio wird hier NICHT gerechnet (Ticket 54). Sie ist
+    Die deflated_sharpe_ratio wird hier NICHT gerechnet. Sie ist
     rasterweit — var_sharpe und die Rastergröße N hängen von ALLEN Kombinationen ab —
     und entsteht deshalb erst als Nachlauf über den ganzen Lauf, nachdem die Results
     geschrieben sind (repository._calculate_deflated_sharpe). Damit ist der gechunkte
@@ -401,7 +401,7 @@ def _run_chunked(
     import gc
     from user_data.utils.database.repository import _extract_metrics
 
-    # GEÄNDERT: Ticket 71 — Überspringen ohne Senke wäre stiller Datenverlust: die
+    # GEÄNDERT: Überspringen ohne Senke wäre stiller Datenverlust: die
     # übersprungenen Chunks fehlten im Rückgabewert, und der Aufrufer würde ein
     # unvollständiges Raster für ein vollständiges halten.
     if completed_chunks > 0 and chunk_sink is None:
@@ -414,11 +414,11 @@ def _run_chunked(
     all_metrics: list[list[dict]] = []
     all_columns: list = []
     last_indicators_results = None
-    # GEÄNDERT: Ticket 71 — Zahl der an die Senke abgegebenen Kombinationen. Bleibt bei
+    # GEÄNDERT: Zahl der an die Senke abgegebenen Kombinationen. Bleibt bei
     # 0, wenn ein fortgesetzter Lauf gar keinen Chunk mehr rechnen musste.
     n_sunk = 0
 
-    # GEÄNDERT: Ticket 54 — Annualisierungsfaktor aus VBT (ReturnsAccessor.ann_factor).
+    # GEÄNDERT: Annualisierungsfaktor aus VBT (ReturnsAccessor.ann_factor).
     # Er hängt nur an Jahres- und Balkenfrequenz und ist deshalb über alle Blöcke
     # identisch; genommen wird der des ersten Blocks. Nicht nachgebaut, nicht aus einer
     # eigenen Timeframe-Tabelle abgeleitet — es muss der Wert sein, den VBT selbst für
@@ -429,7 +429,7 @@ def _run_chunked(
     sub_config = {**backtest_config_json, '_disable_chunked': True}
 
     for block_idx, sub_indicators_json in enumerate(chunks):
-        # GEÄNDERT: Ticket 71 — bereits gespeicherte Chunks eines fortgesetzten Laufs
+        # GEÄNDERT: bereits gespeicherte Chunks eines fortgesetzten Laufs
         # überspringen. Ihre Results stehen in der Datenbank; sie noch einmal zu rechnen
         # wäre genau die Arbeit, die das Ticket sparen soll.
         if block_idx < completed_chunks:
@@ -457,7 +457,7 @@ def _run_chunked(
             rules_json=rules_json,
         )
 
-        # GEÄNDERT: Ticket 58 — Zuschnitt auf das Handelsfenster gleich hier, damit die
+        # GEÄNDERT: Zuschnitt auf das Handelsfenster gleich hier, damit die
         # Kennzahlen auf dem Fenster rechnen und nicht auf den erzwungen flachen
         # Vorlauf-Balken. _extract_metrics schneidet zusätzlich selbst — der zweite
         # Schnitt ist auf einem bereits gefensterten Portfolio wirkungslos und hält die
@@ -469,12 +469,12 @@ def _run_chunked(
         n_block = len(block_columns)
 
         print(f"   -> {n_block} Kombis in Chunk {block_idx + 1}, Metriken extrahieren ...")
-        # GEÄNDERT: Ticket 44 Bugfix — _vals() in _extract_metrics verwendet nun
+        # GEÄNDERT: Bugfix — _vals() in _extract_metrics verwendet nun
         # np.atleast_1d(), sodass n_block==1 (VBT liefert Skalare statt Arrays) korrekt
         # behandelt wird. Kein gesonderter Workaround für n_block==1 mehr nötig.
-        # GEÄNDERT: Ticket 58 — Handelsfenster durchreichen. Der Zuschnitt greift je
+        # GEÄNDERT: Handelsfenster durchreichen. Der Zuschnitt greift je
         # Chunk, weil jeder Chunk sein eigenes Portfolio hat.
-        # GEÄNDERT: Ticket 68 — 'metrics_resolved' kommt aus create_backtest_run (einzige
+        # GEÄNDERT: 'metrics_resolved' kommt aus create_backtest_run (einzige
         # Auflösungsstelle, kennt die Gesamt-Rastergröße). Jeder Chunk bekommt dieselbe
         # bereits aufgelöste Gruppenmenge — sonst würde 'auto' hier gegen die kleinere
         # Chunk-Größe statt der Gesamtzahl entscheiden.
@@ -483,11 +483,11 @@ def _run_chunked(
             groups=backtest_config_json.get('metrics_resolved'),
         )
 
-        # GEÄNDERT: Ticket 54 — Annualisierungsfaktor einmal am ersten Block abgreifen.
+        # GEÄNDERT: Annualisierungsfaktor einmal am ersten Block abgreifen.
         if ann_factor is None:
             ann_factor = float(block_pf.returns_acc.ann_factor)
 
-        # GEÄNDERT: Ticket 71 — mit Senke wandert der Chunk sofort weiter (der Worker
+        # GEÄNDERT: mit Senke wandert der Chunk sofort weiter (der Worker
         # schreibt ihn in die Datenbank) und wird hier nicht mehr aufgehoben. Ein Fehler
         # der Senke darf NICHT verschluckt werden: er bedeutet, dass die Arbeit dieses
         # Chunks nicht gesichert ist — der Lauf bricht dann sichtbar ab.
@@ -504,8 +504,8 @@ def _run_chunked(
         gc.collect()
         print(f"   -> Chunk {block_idx + 1} abgeschlossen")
 
-    # GEÄNDERT: Ticket 46 — signals-Dict enthält jetzt vier Masken statt entries/exits
-    # GEÄNDERT: Ticket 54 — 'ann_factor' mitliefern: im gechunkten Pfad kommt beim
+    # GEÄNDERT: signals-Dict enthält jetzt vier Masken statt entries/exits
+    # GEÄNDERT: 'ann_factor' mitliefern: im gechunkten Pfad kommt beim
     # Speichern kein Portfolio an, aus dem er sich holen ließe. Ohne ihn kann der
     # DSR-Nachlauf den Sharpe je Balken nicht aus dem annualisierten rekonstruieren.
     common = {
@@ -589,7 +589,7 @@ def _validate_rule_references(rules_json: dict, indicators_json: dict) -> None:
     Raises:
         ValueError: Wenn referenzierte Indikatoren deaktiviert sind oder fehlen.
     """
-    # GEÄNDERT: Ticket 48 — nur aktive Blöcke (enabled: true / fehlendes enabled) in die
+    # GEÄNDERT: nur aktive Blöcke (enabled: true / fehlendes enabled) in die
     # Referenz-Prüfung einbeziehen. Deaktivierte Blöcke dürfen deaktivierte Indikatoren
     # referenzieren, ohne den Lauf zu blockieren. _collect_indicator_refs selbst bleibt unverändert.
     referenced: set[str] = set()

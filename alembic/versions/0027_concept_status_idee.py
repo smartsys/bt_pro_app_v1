@@ -1,4 +1,4 @@
-"""strategy_concepts.status erlaubt 'idee' (Ticket 66)
+"""strategy_concepts.status erlaubt 'idee'
 
 Anforderung 3 des Tickets ging davon aus, dass ``status`` ein freier String
 ohne Schema-Änderung ist. Das stimmt nicht: ``strategy_concepts`` trägt seit

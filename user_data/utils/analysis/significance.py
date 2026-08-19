@@ -1,4 +1,4 @@
-"""Statistische Auswertung eines einzelnen Kandidaten (Ticket 79).
+"""Statistische Auswertung eines einzelnen Kandidaten.
 
 Zwei Verfahren, die **verschiedene Fragen** beantworten — die Ausgabe sagt das
 jeweils selbst, damit die Zahlen nicht verwechselt werden:
@@ -14,7 +14,7 @@ jeweils selbst, damit die Zahlen nicht verwechselt werden:
    der Anteil der Resamples mit Profitfaktor <= 1 heißt darum
    ``share_pf_le_one`` und ist ausdrücklich ein Bootstrap-Anteil.
 
-Abgrenzung zur DSR (Ticket 54): Die ist eine **rasterweite**
+Abgrenzung zur DSR: Die ist eine **rasterweite**
 Mehrfachvergleichs-Korrektur — sie fragt „ist der beste Wert mehr als das
 erwartete Maximum aus N Versuchen?". Beide Verfahren hier betrachten dagegen
 genau **einen** Kandidaten.

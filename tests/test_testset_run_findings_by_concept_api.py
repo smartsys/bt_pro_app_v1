@@ -1,6 +1,6 @@
-"""Tests für GET /api/testset-run-findings/by-concept/{concept_id} (Ticket 85).
+"""Tests für GET /api/testset-run-findings/by-concept/{concept_id}.
 
-Deckt die Anforderungen aus Ticket 85, Anforderung 6 ab:
+Deckt die Anforderungen, Anforderung 6 ab:
   - chronologische Reihenfolge (created_at ASC, id ASC)
   - leere Liste bei einem Konzept ohne Befunde (kein Fehler)
   - Befunde eines gelöschten TestSetRun erscheinen weiterhin (lose Referenz)

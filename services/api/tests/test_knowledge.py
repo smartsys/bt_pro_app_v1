@@ -103,7 +103,7 @@ def client(knowledge_app: FastAPI, monkeypatch) -> Generator:
     )
 
     # rq via sys.modules mocken (lazy import in trigger_reindex)
-    # GEÄNDERT: Ticket 28 — uuid-basierte job_id verhindert UniqueViolation bei mehreren Test-Läufen
+    # GEÄNDERT: uuid-basierte job_id verhindert UniqueViolation bei mehreren Test-Läufen
     mock_job = MagicMock()
     mock_job.id = f'test-job-{uuid.uuid4().hex[:8]}'
     mock_queue_instance = MagicMock()
@@ -278,7 +278,7 @@ def test_reindex_with_path_returns_single_file(client):
     data = resp.json()
     assert data['scope'] == 'single-file'
     assert data['target_path'] == 'strategies/teststrategie-dws/STATUS.md'
-    # GEÄNDERT: Ticket 28 — job_id ist jetzt uuid-basiert, nur Präsenz prüfen
+    # GEÄNDERT: job_id ist jetzt uuid-basiert, nur Präsenz prüfen
     assert data['job_id']  # nicht leer
 
 

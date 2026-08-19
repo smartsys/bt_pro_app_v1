@@ -1,5 +1,5 @@
 """Tests für das Kreuzen disjunkter Entry-/Exit-Sweep-Achsen im nativen Pfad
-(Audit 2026-07-06 Befund 1, Ticket 51).
+(Audit 2026-07-06 Befund 1).
 
 Sweepen Entry- und Exit-Regeln verschiedene Parameter-Achsen, baut
 evaluate_rules_native die Combo-Achse als Kreuzprodukt der disjunkten Achsen
@@ -291,7 +291,7 @@ class TestDisjointAxesCrossed:
 # ============================================================================
 
 class TestSupportedConstellationsStillRun:
-    """Geteilte Achsen und Teilmengen-Exits laufen wie vor Ticket 51."""
+    """Geteilte Achsen und Teilmengen-Exits laufen wie vor der Umstellung."""
 
     def _indicators(self, ohlc_df: pd.DataFrame, axes: dict) -> dict:
         """Baut Fake-Indikatoren: axes = {ind_id: (level_name, werte_liste)}."""

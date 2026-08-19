@@ -1,6 +1,6 @@
 """Test für den 'Alle löschen'-Job: leer gewordene Testset-Läufe verschwinden mit.
 
-Ticket 61: _delete_all_non_favorites leert die Run-/Result-Tabellen. Danach darf kein
+_delete_all_non_favorites leert die Run-/Result-Tabellen. Danach darf kein
 Testset-Lauf ohne die Backtest-Runs zurückbleiben, aus denen er bestand.
 
 Läuft gegen die PostgreSQL-Test-DB (Fixtures aus tests/conftest.py). rq ist eine

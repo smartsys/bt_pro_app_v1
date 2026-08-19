@@ -1,16 +1,16 @@
 """backtest_results.skew/kurtosis dazu, metrics_level weg — eine Kennzahl-Funktion
 
-Ticket 64: Kennzahlen entstehen ab jetzt in genau einer Funktion
+Kennzahlen entstehen ab jetzt in genau einer Funktion
 (`_extract_metrics`), die für jeden Lauf denselben Satz liefert. Damit verliert
 `metrics_level` ('partial'/'chart'/'full') seinen Zweck: Es gibt keine
 Berechnungsstufen mehr, die man einem Result ansehen müsste.
 
 Neu dazu kommen `skew` und `kurtosis` je Kombination — die Bausteine, ohne die
-die Deflated Sharpe Ratio nicht nachrechenbar ist (Ticket 54). Gespeichert wird
+die Deflated Sharpe Ratio nicht nachrechenbar ist. Gespeichert wird
 die ROHE Wölbung (Normalverteilung rund 3), nicht die Excess-Wölbung.
 
 Bewusst nullable ohne Server-Default und ohne Backfill: NULL kennzeichnet
-Results, die vor Ticket 64 entstanden sind. Der Altbestand wird nicht
+Results, die vor der Umstellung entstanden sind. Der Altbestand wird nicht
 nachgerechnet — der Schnitt ist gewollt (markieren statt rechnen).
 
 `backtest_results` ist keine Baseline-Tabelle; der Daten-Load am Kettenende

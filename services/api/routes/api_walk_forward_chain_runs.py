@@ -1,4 +1,4 @@
-"""Läufe einer Walk-Forward-Fold-Kette (Ticket 82)
+"""Läufe einer Walk-Forward-Fold-Kette
 
 POST /api/backtest/walk-forward-chains/{id}/is-run  — Anker-Raster auf dem IS-Fenster
 POST /api/backtest/walk-forward-chains/{id}/oos-run — Sieger wählen, OOS-Lauf starten

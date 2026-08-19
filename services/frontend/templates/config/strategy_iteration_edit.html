@@ -21,7 +21,7 @@
           <div class="page-pretitle">Konfiguration / Strategie-Konzepte / {{ concept.name }}</div>
         </div>
       </div>
-      {# GEÄNDERT: Ticket 16 — Button "Obsidian-Dokumente anlegen" im Page-Header rechts #}
+      {# GEÄNDERT: Button "Obsidian-Dokumente anlegen" im Page-Header rechts #}
       <div class="col-auto ms-auto d-flex gap-2">
         {% if iteration %}
           {% if iteration.vault_exists %}
@@ -37,7 +37,7 @@
           {% endif %}
         {% endif %}
         {% if iteration %}
-          {# GEÄNDERT: Ticket 67 — Button zur read-only Log-Ansicht (Iterations-Denkprotokoll) #}
+          {# GEÄNDERT: Button zur read-only Log-Ansicht (Iterations-Denkprotokoll) #}
           <a href="/config/strategy-concepts/{{ concept.id }}/iterations/{{ iteration.id }}/log" class="btn btn-outline-secondary">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"/><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 12l6 0"/><path d="M9 16l6 0"/></svg>
             Log
@@ -105,7 +105,7 @@
           <label class="form-label" id="it-import-path-label">Import-Pfad (nur bei hardcoded)</label>
           <input type="text" class="form-control" id="it-import-path" value="{{ iteration.import_path if iteration and iteration.import_path else '' }}" placeholder="z.B. user_data.strategies.teststrategie.v1.teststrategie_4h_range.teststrategie_4h_range">
         </div>
-        {# GEÄNDERT: Ticket 16 — Obsidian-Pfad-Feld entfernt (wird deterministisch abgeleitet) #}
+        {# GEÄNDERT: Obsidian-Pfad-Feld entfernt (wird deterministisch abgeleitet) #}
         <div class="col-md-4">
           <label class="form-label">Erstellt von</label>
           <input type="text" class="form-control" id="it-created-by" value="{{ iteration.created_by if iteration and iteration.created_by else '' }}" placeholder="optional">
@@ -249,7 +249,7 @@ document.addEventListener("DOMContentLoaded", function() {
   {% endif %}
 
   {% if iteration %}
-  // GEÄNDERT: Ticket 16 — Vault-Button-State-Verwaltung (version ist immutable, nur is-exists matters)
+  // GEÄNDERT: Vault-Button-State-Verwaltung (version ist immutable, nur is-exists matters)
   var _vaultExists = {{ 'true' if iteration.vault_exists else 'false' }};
   var btnVault = document.getElementById("btn-vault-create");
 
@@ -424,7 +424,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var parentId = document.getElementById("it-parent-id").value;
     var itType = typeEl.value;
     var importPath = pathEl.value.trim();
-    // GEÄNDERT: Ticket 16 — obsidian_path entfernt aus payload
+    // GEÄNDERT: obsidian_path entfernt aus payload
     var payload = {
       version_name: nameEl.value.trim(),
       status: document.getElementById("it-status").value,

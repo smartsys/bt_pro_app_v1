@@ -1,7 +1,6 @@
 """Tests für die reine Entscheidungslogik des Run-Reapers (services/api/reap_run_logic.py).
 
-Deckt die Übersetzung eines toten RQ-Jobs in eine lesbare Abbruch-Begründung ab
-(Ticket 69). Keine DB, kein Redis — reine Logik mit festen exc_info-Texten.
+Deckt die Übersetzung eines toten RQ-Jobs in eine lesbare Abbruch-Begründung ab. Keine DB, kein Redis — reine Logik mit festen exc_info-Texten.
 """
 
 from services.api.reap_run_logic import build_abort_reason

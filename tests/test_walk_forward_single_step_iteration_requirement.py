@@ -1,7 +1,7 @@
-"""Tests der iteration_id-Durchreichung im Walk-Forward-Einzelschritt (Ticket 83).
+"""Tests der iteration_id-Durchreichung im Walk-Forward-Einzelschritt.
 
 POST /api/backtest/walk-forward kopiert einen Anker-Lauf ins nächste Zeitfenster.
-`worker_tasks.run_backtest_job` wirft seit Ticket 21 hart, wenn der neue Run keine
+`worker_tasks.run_backtest_job` wirft seit der Umstellung hart, wenn der neue Run keine
 `iteration_id` trägt — die Rules kommen ausschließlich aus `iteration.spec_json`.
 Geprüft wird:
 

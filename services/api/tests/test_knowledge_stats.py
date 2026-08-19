@@ -1,4 +1,4 @@
-"""Tests für GET /api/knowledge/stats Endpoint (Ticket 30).
+"""Tests für GET /api/knowledge/stats Endpoint.
 
 Prüft:
 - Grundlegendes Schema: 200, alle Felder vorhanden (index, runs, top_paths_by_chunks).

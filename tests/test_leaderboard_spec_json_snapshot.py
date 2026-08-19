@@ -1,4 +1,4 @@
-"""Tests für spec_json-Einbettung im LeaderboardEntry-Snapshot (Ticket 40).
+"""Tests für spec_json-Einbettung im LeaderboardEntry-Snapshot.
 
 Prüft:
 - Happy Path: spec_json (indicators + rules) wird nach einem Testset-Run in

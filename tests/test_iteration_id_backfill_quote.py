@@ -1,4 +1,4 @@
-"""Test: Backfill-Quote nach Migration (Ticket 10).
+"""Test: Backfill-Quote nach Migration.
 
 Prüft gegen die echte lokale DB, dass mindestens 95% der Records
 in indicator_configs, backtest_runs und backtest_results eine

@@ -1,4 +1,4 @@
-"""Tests für `--out`/`--full` an den Lese-Verben (GET) der TABLE_VERBS-Tabelle (Ticket 73).
+"""Tests für `--out`/`--full` an den Lese-Verben (GET) der TABLE_VERBS-Tabelle.
 
 Prüft `_run_table_verb` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff
@@ -136,7 +136,7 @@ def test_out_flag_on_write_verb_raises(toolbox):
     """--out/--full gibt es nur bei Lese-Verben (GET) — bei Schreib-Verben ein Fehler,
     kein stilles Verschlucken.
 
-    GEÄNDERT: Ticket 89 — result-favorite ist kein TABLE_VERBS-Eintrag mehr (jetzt
+    GEÄNDERT: result-favorite ist kein TABLE_VERBS-Eintrag mehr (jetzt
     eigenes, idempotent setzendes SINGLE_VERB); indicator-config-generate-labels bleibt
     als Schreib-Verb-Beispiel in TABLE_VERBS.
     """

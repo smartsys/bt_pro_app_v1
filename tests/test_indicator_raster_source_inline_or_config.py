@@ -1,4 +1,4 @@
-"""Raster-Quelle für Testset-Lauf und Preflight: gespeicherte Config oder inline (Ticket 102).
+"""Raster-Quelle für Testset-Lauf und Preflight: gespeicherte Config oder inline.
 
 Geprüft wird an drei Stellen dieselbe Regel:
   - Startroute ``POST /api/testset-runs``: beide Varianten rechnen, inline erzeugt keine

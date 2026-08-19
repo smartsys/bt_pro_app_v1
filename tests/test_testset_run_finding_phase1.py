@@ -1,4 +1,4 @@
-"""Unit-Tests für Phase 1 des Befunds am Testset-Lauf (Ticket 56).
+"""Unit-Tests für Phase 1 des Befunds am Testset-Lauf.
 
 Geprüft wird ausschließlich, was Phase 1 leistet:
   - Anlage mit Kontext und Soll aus dem Konzept-Schnappschuss
@@ -259,7 +259,7 @@ def test_schema_has_no_verdict_column():
 def test_payload_schema_has_no_manual_goal_input():
     """Das Start-Schema nimmt kein Soll entgegen — genau das wäre der Drift-Kanal."""
     fields = set(TestSetRunIn.model_fields)
-    # GEÄNDERT: Ticket 102 — 'indicators' ist das inline übergebene Indikator-Raster,
+    # GEÄNDERT: 'indicators' ist das inline übergebene Indikator-Raster,
     # kein Soll. Die Aussage des Tests bleibt: kein Feld trägt eine Zielvorgabe herein.
     assert fields == {'testset_id', 'iteration_id', 'indicator_config_id', 'indicators', 'metrics'}
 

@@ -1,5 +1,5 @@
 """
-Unit-Tests für services/vbt/knowledge/chunker.py (Ticket 25).
+Unit-Tests für services/vbt/knowledge/chunker.py.
 
 Prüft:
   - Heading-Split: H2/H3-Trennung, heading_path-Hierarchie

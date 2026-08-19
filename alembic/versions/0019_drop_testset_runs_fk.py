@@ -1,11 +1,11 @@
-"""testset_runs.testset_id — Fremdschlüssel entfernen (lose Kopplung, Ticket 62)
+"""testset_runs.testset_id — Fremdschlüssel entfernen (lose Kopplung)
 
-Ticket 62: `models.py` behauptet seit Ticket 03 „kein FK mehr" für
+`models.py` behauptet seit der Umstellung „kein FK mehr" für
 testset_runs.testset_id (lose Referenz wie LeaderboardEntry.testset_id, Snapshot
 ist Source of Truth). Die Datenbank widersprach dem bisher: `0001_baseline.sql`
 hatte `fk_testset_runs_testset_id` tatsächlich angelegt — ein Überbleibsel, das
-Ticket 03 laut eigenem Schema-Entwurf nie vorsah ("nur als Lookup, keine FK").
-Diese Drift war die Ursache des HTTP-500 aus Ticket 61.
+laut eigenem Schema-Entwurf nie vorsah ("nur als Lookup, keine FK").
+Diese Drift war die Ursache des HTTP-500.
 
 Der User hat entschieden (12.08.2026): Der Fremdschlüssel fällt weg. Architektur-
 Prinzip: Testset-Läufe müssen einzeln lauffähig bleiben, auch wenn ihr TestSet

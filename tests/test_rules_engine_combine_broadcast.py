@@ -264,7 +264,7 @@ class TestDisjointBlocksCross:
 
 
 # ============================================================================
-# Testfall (a2): disjunkte Achsen GLEICHER Breite — Ticket 49 Bug-1-Kernfall
+# Testfall (a2): disjunkte Achsen GLEICHER Breite — Die Umstellung Bug-1-Kernfall
 #
 # vbt.broadcast wirft bei gleich breiten, disjunkten Operanden KEINE Exception,
 # sondern zippt sie positionsweise (Diagonale). Der bisherige try/except-Gate
@@ -619,7 +619,7 @@ class TestEvaluateRulesIntegration:
             },
         }
 
-        # GEÄNDERT: Ticket 46 — SignalMasks statt (entries, exits)-Tupel
+        # GEÄNDERT: SignalMasks statt (entries, exits)-Tupel
         masks = evaluate_rules(rules_json, ohlc_data, indicators)
         entries = masks.long_entries
         assert entries is not None
@@ -663,7 +663,7 @@ class TestEvaluateRulesIntegration:
             },
         }
 
-        # GEÄNDERT: Ticket 46 — SignalMasks statt (entries, exits)-Tupel
+        # GEÄNDERT: SignalMasks statt (entries, exits)-Tupel
         masks = evaluate_rules(rules_json, ohlc_data, indicators)
         entries = masks.long_entries
         # Keine NaN nach fillna-Schritt in _evaluate_rule_group
@@ -709,7 +709,7 @@ class TestEvaluateRulesIntegration:
             },
         }
 
-        # GEÄNDERT: Ticket 46 — SignalMasks statt (entries, exits)-Tupel
+        # GEÄNDERT: SignalMasks statt (entries, exits)-Tupel
         masks = evaluate_rules(rules_json, ohlc_data, indicators)
         entries = masks.long_entries
 
@@ -729,7 +729,7 @@ class TestEvaluateRulesIntegration:
 
 
 # ============================================================================
-# Testfall (g): Ticket 53 — Reproduktions-Anker "72 vs 24 vs 9"
+# Testfall (g): Reproduktions-Anker "72 vs 24 vs 9"
 #
 # Belegter Befund (documentation/tickets/53-...): ein Indikator (fast_sma), der
 # zugleich Chain-Input eines anderen (vwma) UND direkt referenziert ist, blaeht das
@@ -739,11 +739,11 @@ class TestEvaluateRulesIntegration:
 # zusaetzlich zum eigentlichen Kreuzprodukt der drei Bloecke.
 #
 # Dieser Test fixiert exakt die im Ticket per VBT-MCP empirisch belegten Zahlen:
-#   Namen inkonsistent (IST vor Ticket 53):  72 Spalten (= 24 x 3, fast_sma kreuzt erneut)
+#   Namen inkonsistent (IST vor der Umstellung):  72 Spalten (= 24 x 3, fast_sma kreuzt erneut)
 #   Namen konsistent (fast_sma_* ueberall):   24 Spalten (fast_sma-Achse gefaltet)
 #   Zwei disjunkte Instanzen gleicher Breite:  9 Spalten (3 x 3, kein cross_indexes-Crash)
 #
-# WICHTIG: _combine_broadcast selbst wird von Ticket 53 NICHT angefasst (Anforderung 3)
+# WICHTIG: _combine_broadcast selbst wird von NICHT angefasst (Anforderung 3)
 # — dieser Test dokumentiert/fixiert lediglich den Broadcast-Mechanismus, auf dem der
 # eigentliche Fix (konsistente Level-Benennung in indicator_factory.build_indicators)
 # aufbaut. Der Fix selbst wird in tests/test_indicator_factory_id_naming.py verifiziert.
@@ -779,7 +779,7 @@ class TestCarriedChainAxisConsistency:
         return vwma_df, sma_df, fast_sma_direct_df
 
     def test_inconsistent_names_blow_up_to_72(self, time_idx: pd.DatetimeIndex) -> None:
-        """IST-Zustand (vor Ticket 53): fast_sma-Achse heisst in vwma 'dwsfastsma_length'
+        """IST-Zustand (vor der Umstellung): fast_sma-Achse heisst in vwma 'dwsfastsma_length'
         (Factory-Name) statt 'fast_sma_length' -> gilt als disjunkt -> kreuzt erneut.
 
         12 (vwma-privat) x 2 (sma) x 3 (fast_sma direkt, jetzt disjunkt) = 72.
@@ -791,7 +791,7 @@ class TestCarriedChainAxisConsistency:
         )
 
     def test_consistent_names_fold_to_24(self, time_idx: pd.DatetimeIndex) -> None:
-        """Nach Ticket 53: fast_sma-Achse heisst ueberall 'fast_sma_length' -> faltet.
+        """Nach fast_sma-Achse heisst ueberall 'fast_sma_length' -> faltet.
 
         12 (vwma-privat, inkl. fast_sma-Achse) x 2 (sma) = 24 — die direkt referenzierte
         fast_sma-Achse (Teilmenge von vwma) traegt KEINEN weiteren Faktor bei.
@@ -808,7 +808,7 @@ class TestCarriedChainAxisConsistency:
         self, time_idx: pd.DatetimeIndex
     ) -> None:
         """Zwei disjunkte Instanzen derselben Klasse (z.B. zweimal dwsConst), gleiche
-        Breite (3) -> volles Kreuzprodukt 3x3=9, kein cross_indexes-Crash (Ticket 49)."""
+        Breite (3) -> volles Kreuzprodukt 3x3=9, kein cross_indexes-Crash."""
         const_value_df = _make_multiindex_df(
             time_idx, level_names=['const_value'], level_values=[[1.0, 2.0, 3.0]], seed=110,
         )

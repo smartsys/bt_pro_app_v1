@@ -3,10 +3,10 @@ JSON-API Endpoints für Vault-Wissenssuche und Reindizierung
 
 GET  /api/knowledge/search       — Semantische Vektorsuche über vault_chunks
 POST /api/knowledge/reindex      — Manuellen Reindex-Job einreihen (async, 202)
-GET  /api/knowledge/runs         — Liste der Reindex-Läufe (Ticket 28)
-GET  /api/knowledge/runs/{id}    — Einzel-Lauf mit chunks_per_second (Ticket 28)
-GET  /api/knowledge/files        — Aggregierte Datei-Liste aus vault_chunks (Ticket 29)
-GET  /api/knowledge/stats        — Aggregierte Index- und Lauf-Statistiken (Ticket 30)
+GET  /api/knowledge/runs         — Liste der Reindex-Läufe
+GET  /api/knowledge/runs/{id}    — Einzel-Lauf mit chunks_per_second
+GET  /api/knowledge/files        — Aggregierte Datei-Liste aus vault_chunks
+GET  /api/knowledge/stats        — Aggregierte Index- und Lauf-Statistiken
 """
 
 import logging
@@ -22,12 +22,12 @@ from services.api.schemas_knowledge_runs import (
     KnowledgeRunDetailSchema,
     KnowledgeRunListSchema,
 )
-# GEÄNDERT: Ticket 29 — Datei-Listen-Schema importiert
+# GEÄNDERT: Datei-Listen-Schema importiert
 from services.api.schemas.knowledge_files import (
     KnowledgeFileSchema,
     KnowledgeFilesResponse,
 )
-# GEÄNDERT: Ticket 30 — Stats-Schema importiert
+# GEÄNDERT: Stats-Schema importiert
 from services.api.schemas.knowledge_stats import (
     KnowledgeIndexStats,
     KnowledgeRunsStats,
@@ -123,7 +123,7 @@ def search_knowledge(
         from sqlalchemy import text as sa_text
 
         # WHERE-Klauseln dynamisch aufbauen
-        # GEÄNDERT: Ticket 33 — Sentinel-Rows (embedding IS NULL) immer aus Suche ausschließen
+        # GEÄNDERT: Sentinel-Rows (embedding IS NULL) immer aus Suche ausschließen
         where_parts = ["embedding IS NOT NULL"]
         params: dict = {'vector': vector_str, 'k': k}
 
@@ -188,7 +188,7 @@ def trigger_reindex(body: Optional[KnowledgeReindexRequest] = None) -> Knowledge
 
     Antwortet sofort mit der Job-ID (Status 202). Der eigentliche Reindex
     läuft asynchron im Worker. Legt direkt nach dem Enqueue einen
-    VaultReindexRun-Eintrag mit status='queued' an (Ticket 28).
+    VaultReindexRun-Eintrag mit status='queued' an.
 
     Args:
         body: Optionaler Request-Body. Wenn path gesetzt, nur diese Datei reindizieren.
@@ -215,7 +215,7 @@ def trigger_reindex(body: Optional[KnowledgeReindexRequest] = None) -> Knowledge
         logger.error('Reindex-Job konnte nicht eingereiht werden: %s', exc)
         raise HTTPException(status_code=503, detail=f'Queue nicht erreichbar: {exc}') from exc
 
-    # GEÄNDERT: Ticket 28 — Pre-Insert: Run sofort sichtbar mit status='queued'
+    # GEÄNDERT: Pre-Insert: Run sofort sichtbar mit status='queued'
     with get_session() as session:
         run_entry = VaultReindexRun(
             job_id=job.id,
@@ -234,7 +234,7 @@ def trigger_reindex(body: Optional[KnowledgeReindexRequest] = None) -> Knowledge
 
 
 # ============================================================================
-# Endpoints: Reindex-Lauf-Historie (Ticket 28)
+# Endpoints: Reindex-Lauf-Historie
 # ============================================================================
 
 @router.get('/runs', response_model=KnowledgeRunListSchema)
@@ -290,7 +290,7 @@ def get_reindex_run(run_id: int) -> KnowledgeRunDetailSchema:
 
 
 # ============================================================================
-# Endpoint: Indizierte Dateien (Ticket 29)
+# Endpoint: Indizierte Dateien
 # ============================================================================
 
 @router.get('/files', response_model=KnowledgeFilesResponse)
@@ -317,7 +317,7 @@ def list_knowledge_files(
     """
     from sqlalchemy import text as sa_text
 
-    # GEÄNDERT: Ticket 33 — Sentinel-Rows (embedding IS NULL) aus Datei-Listing ausschließen
+    # GEÄNDERT: Sentinel-Rows (embedding IS NULL) aus Datei-Listing ausschließen
     where_parts: list[str] = ["embedding IS NOT NULL"]
     params: dict = {'limit': limit, 'offset': offset}
 
@@ -394,7 +394,7 @@ def list_knowledge_files(
 
 
 # ============================================================================
-# Endpoint: Knowledge-DB leeren (Ticket 33, Teil B)
+# Endpoint: Knowledge-DB leeren (Teil B)
 # ============================================================================
 
 class KnowledgeResetResponse(BaseModel):
@@ -440,7 +440,7 @@ def reset_knowledge_db() -> KnowledgeResetResponse:
 
 
 # ============================================================================
-# Endpoint: Index- und Lauf-Statistiken (Ticket 30)
+# Endpoint: Index- und Lauf-Statistiken
 # ============================================================================
 
 @router.get('/stats', response_model=KnowledgeStatsResponse)
@@ -458,7 +458,7 @@ def get_knowledge_stats() -> KnowledgeStatsResponse:
 
     with get_session() as session:
         # --- Index-Aggregat ---
-        # GEÄNDERT: Ticket 33 — Sentinel-Rows (embedding IS NULL) aus Statistik ausschließen
+        # GEÄNDERT: Sentinel-Rows (embedding IS NULL) aus Statistik ausschließen
         index_row = session.execute(sa_text("""
             SELECT
                 COUNT(*) FILTER (WHERE embedding IS NOT NULL)       AS chunk_count,
@@ -566,7 +566,7 @@ def get_knowledge_stats() -> KnowledgeStatsResponse:
         )
 
         # --- Top-10 Pfade nach Chunk-Anzahl (Sentinel-Rows ausschließen) ---
-        # GEÄNDERT: Ticket 33 — embedding IS NOT NULL filtert Sentinel-Rows heraus
+        # GEÄNDERT: embedding IS NOT NULL filtert Sentinel-Rows heraus
         top_rows = session.execute(sa_text("""
             SELECT vault_path, COUNT(*) AS chunks
             FROM vault_chunks

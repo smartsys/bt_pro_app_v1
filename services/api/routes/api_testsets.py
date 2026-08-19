@@ -8,7 +8,7 @@ PUT    /api/testsets/{id}            — TestSet aktualisieren
 POST   /api/testsets/{id}/favorite   — Favoriten-Stern umschalten
 DELETE /api/testsets/{id}            — TestSet löschen
 """
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf api_testsets, Prefix /api/testsets
+# GEÄNDERT: Naming-Cleanup auf api_testsets, Prefix /api/testsets
 
 from datetime import datetime
 from typing import List, Optional
@@ -57,7 +57,7 @@ class TestSetOut(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 15 Code-Sweep — API-Vertrag behält backtest_config_ids (kein _json),
+    # GEÄNDERT: Code-Sweep — API-Vertrag behält backtest_config_ids (kein _json),
     # validation_alias liest ORM-Attribut backtest_config_ids_json (from_attributes=True)
     backtest_config_ids: List[int] = Field(validation_alias='backtest_config_ids_json')
     leaderboard_enabled: bool
@@ -160,9 +160,9 @@ def toggle_testset_favorite_endpoint(testset_id: int):
 def delete_testset_endpoint(testset_id: int, force: bool = False):
     """TestSet löschen — nachgelagerte Läufe, Runs und Results bleiben bestehen.
 
-    GEÄNDERT: Ticket 61 — fing den Lösch-Konflikt ab, statt eine
+    GEÄNDERT: fing den Lösch-Konflikt ab, statt eine
     Fremdschlüsselverletzung als rohen HTTP-500 durchzureichen.
-    GEÄNDERT: Ticket 62 — der Fremdschlüssel ist per Migration entfernt; die
+    GEÄNDERT: der Fremdschlüssel ist per Migration entfernt; die
     HTTP-409-Ablehnung blieb dabei als harte Sperre stehen.
     GEÄNDERT: Aus der Sperre wird eine Rückfrage. Hängen noch Testset-Läufe am
     TestSet, antwortet der Endpunkt ohne ``force`` mit HTTP 409 und nennt die

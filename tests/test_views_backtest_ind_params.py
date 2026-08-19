@@ -1,6 +1,6 @@
-"""Tests fuer _resolve_ind_params in views_backtest.py (Ticket 53 — Dual-Praefix).
+"""Tests fuer _resolve_ind_params in views_backtest.py (Dual-Praefix).
 
-Seit Ticket 53 benennt indicator_factory.build_indicators die Param-Level jeder
+Seit der Umstellung benennt indicator_factory.build_indicators die Param-Level jeder
 Indikator-Instanz auf den Spec-ID-Namen um (z.B. 'fast_sma_length' statt
 'dwsfastsma_length'). Das Result-Chart-Param-Panel loeste die Zuordnung bisher rein
 klassenbasiert auf (Klassenname aus cfg['indicator']) — das matcht seit dem Fix nicht
@@ -22,15 +22,15 @@ from services.api.routes.views_backtest import _resolve_ind_params
 class TestResolveIndParams:
     """Dual-Praefix-Aufloesung: Klassenname UND Spec-Key werden geprueft."""
 
-    def test_class_based_prefix_matches_pre_ticket53_results(self) -> None:
-        """Alte Results (vor Ticket 53): Param-Namen tragen den Klassen-Praefix."""
+    def test_class_based_prefix_matches_legacy_results(self) -> None:
+        """Alte Results (vor der Umstellung): Param-Namen tragen den Klassen-Praefix."""
         ind_config = {'fast_sma': {'indicator': 'custom:dwsFastSMA'}}
         actual_params = {'dwsfastsma_length': 10, 'dwsfastsma_multiplier': 2}
         result = _resolve_ind_params(ind_config, actual_params)
         assert result == {'fast_sma': {'length': 10, 'multiplier': 2}}
 
-    def test_spec_key_based_prefix_matches_post_ticket53_results(self) -> None:
-        """Neue Results (ab Ticket 53): Param-Namen tragen den Spec-Key-Praefix."""
+    def test_spec_key_based_prefix_matches_current_results(self) -> None:
+        """Neue Results (seit der Umstellung): Param-Namen tragen den Spec-Key-Praefix."""
         ind_config = {'fast_sma': {'indicator': 'custom:dwsFastSMA'}}
         actual_params = {'fast_sma_length': 10, 'fast_sma_multiplier': 2}
         result = _resolve_ind_params(ind_config, actual_params)
@@ -38,7 +38,7 @@ class TestResolveIndParams:
 
     def test_directly_referenced_custom_indicator_pre_existing_defect_healed(self) -> None:
         """Bestandsdefekt: direkt referenzierte Custom-Indikatoren (z.B. vwma) wurden
-        schon vor Ticket 53 von _uniquify_param_levels auf den Spec-Key umbenannt —
+        schon vor der Umstellung von _uniquify_param_levels auf den Spec-Key umbenannt —
         das rein klassenbasierte Praefix matchte dort nie. Dual-Praefix heilt das mit."""
         ind_config = {'vwma': {'indicator': 'custom:dwsVWMA'}}
         actual_params = {'vwma_length': 15, 'vwma_below_pct': 3}

@@ -1,7 +1,6 @@
 """
 Konverter-Funktionen zwischen BacktestConfig-Tabellenzeile und JSON-Format.
-
-Ticket 15 — Block 6: Konverter-Paar für BacktestConfig-Vorlage <-> JSON.
+Block 6: Konverter-Paar für BacktestConfig-Vorlage <-> JSON.
 Das JSON-Format entspricht exakt dem, was in backtest_runs.backtest_config_json liegt.
 """
 

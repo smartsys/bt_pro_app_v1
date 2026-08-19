@@ -65,7 +65,7 @@ def warmup_span(backtest_config: dict) -> timedelta:
 def set_backtest_window(backtest_config: dict, start: str, end: str) -> dict:
     """Setzt ein explizites Handelsfenster; der Indikator-Vorlauf bleibt erhalten.
 
-    Gegenstück zu :func:`shift_backtest_window` für die Fold-Kette (Ticket 82):
+    Gegenstück zu :func:`shift_backtest_window` für die Fold-Kette:
     dort sind die Fenstergrenzen aus dem Plan vorgegeben und dürfen nicht aus einer
     Monatslänge hergeleitet werden — sonst driftet der gerechnete Lauf vom
     vorregistrierten Fenster ab.

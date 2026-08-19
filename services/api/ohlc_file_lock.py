@@ -1,4 +1,4 @@
-"""Schreibsperre je OHLC-Datei (Ticket 97).
+"""Schreibsperre je OHLC-Datei.
 
 Die Kursdaten liegen als genau **eine** HDF5-Datei je Timeframe und Börse
 (`ohlcv_{timeframe}_{exchange}.h5`). HDF5 lässt nur einen Schreiber zu: Zwei

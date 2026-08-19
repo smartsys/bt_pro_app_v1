@@ -1,4 +1,4 @@
-"""Ticket 22 — IndicatorConfig: lose Verknüpfung Concept/Iteration + 3-Bucket-Sortierung.
+"""IndicatorConfig: lose Verknüpfung Concept/Iteration + 3-Bucket-Sortierung.
 
 Verifiziert:
 - IndicatorConfig akzeptiert strategy_concept_id und strategy_iteration_id (Integer, nullable, kein FK).

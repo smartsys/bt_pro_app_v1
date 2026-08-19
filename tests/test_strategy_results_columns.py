@@ -1,4 +1,4 @@
-"""Tests für Ticket 11 — Zweistufige Strategie-UI + sprechende Results-Spalte.
+"""Zweistufige Strategie-UI + sprechende Results-Spalte.
 
 Abdeckung:
 - API: /api/backtest/results/dt liefert concept_name + iteration_version (über echten Container)
@@ -29,7 +29,7 @@ load_dotenv(_ROOT / '.env')
 
 # DB-Verbindung kommt aus den Umgebungsvariablen (.env), kein Fallback
 
-# GEÄNDERT (Nachtrag Ticket 88): Adresse der laufenden App aus der Umgebung. Im
+# GEÄNDERT (Nachtrag): Adresse der laufenden App aus der Umgebung. Im
 # Test-Container ist 'localhost' der Container selbst — dort gilt der Dienstname
 # (http://app:8000), vom Host aus der gemappte Port.
 BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:5570')

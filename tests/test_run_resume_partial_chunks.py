@@ -1,4 +1,4 @@
-"""Teilergebnisse gechunkter Läufe sichern und fortsetzen (Ticket 71).
+"""Teilergebnisse gechunkter Läufe sichern und fortsetzen.
 
 Zwei Ebenen:
 

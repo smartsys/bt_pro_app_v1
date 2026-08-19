@@ -1,4 +1,4 @@
-"""Tests für die Konzept-Detailseite GET /config/strategy-concepts/{concept_id} (Ticket 85).
+"""Tests für die Konzept-Detailseite GET /config/strategy-concepts/{concept_id}.
 
 Deckt Anforderung 6 (View-Tests) ab: 200 mit Ziel, 200 ohne Ziel (inkl. "keine
 Befunde"), 404 bei unbekanntem Konzept. Läuft über einen eigenen TestClient mit

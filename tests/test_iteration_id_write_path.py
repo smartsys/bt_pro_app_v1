@@ -5,7 +5,7 @@ Stellt sicher, dass:
 2. Wird keine iteration_id übergeben, bleibt sie NULL (kein Crash, kein Fallback).
 3. BacktestRun/BacktestResult akzeptieren die iteration_id-Spalte.
 
-GEÄNDERT: Der frühere Ticket-10-Auto-Lookup (get_iteration_by_strategy_name)
+GEÄNDERT: Der frühere Auto-Lookup (get_iteration_by_strategy_name)
 ist entfernt — iteration_id wird ausschließlich vom Aufrufer mitgegeben.
 """
 
@@ -95,7 +95,7 @@ def test_backtest_run_has_iteration_id_column(db_session, seed_iteration):
         timeframe='4h',
         start_date=datetime(2024, 1, 1),
         end_date=datetime(2024, 12, 31),
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={},
         indicators_config_json={},
         n_combinations=1,
@@ -114,7 +114,7 @@ def test_backtest_result_has_iteration_id_column(db_session, seed_iteration):
     result = BacktestResult(
         run_id=999,
         params_hash='abc123',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'x': 1},
         is_favorite=0,
         iteration_id=seed_iteration.id,
@@ -127,9 +127,9 @@ def test_backtest_result_has_iteration_id_column(db_session, seed_iteration):
 
 
 def test_indicator_config_has_strategy_concept_iteration_columns(db_session, seed_iteration):
-    """IndicatorConfig akzeptiert und speichert strategy_concept_id + strategy_iteration_id (Ticket 22, lose Verknüpfung)."""
+    """IndicatorConfig akzeptiert und speichert strategy_concept_id + strategy_iteration_id (lose Verknüpfung)."""
     from user_data.utils.database.models import IndicatorConfig
-    # GEÄNDERT: Ticket 22 — zwei Integer-Spalten ohne FK; alte String-iteration_id entfernt
+    # GEÄNDERT: zwei Integer-Spalten ohne FK; alte String-iteration_id entfernt
     ic = IndicatorConfig(
         name='Test-Config',
         config_json={},

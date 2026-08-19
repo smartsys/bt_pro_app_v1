@@ -59,7 +59,7 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py backtest-config-list
   python3 toolbox.py indicator-config-list 1 41  # optional: concept_id iteration_id
   python3 toolbox.py result-list --run 1812 --limit 20   # optional: --symbol --timeframe
-  python3 toolbox.py run-list --strategy vwma --version 1 # Runs zu Strategie+Version, nach Testset gruppiert
+  python3 toolbox.py run-list --strategy teststrategie --version 1 # Runs zu Strategie+Version, nach Testset gruppiert
                                                           #   alt: --iteration <id> | --testset-run <id>
   python3 toolbox.py testset-list
   python3 toolbox.py leaderboard-list 293        # optional: testset_id
@@ -73,13 +73,13 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py run-top-results 1812 sharpe_ratio 20 desc # run_id [metric] [limit] [direction]
   python3 toolbox.py run-best 1812 profit_factor 30 1         # run_id metrik [min_trades=30] [limit=1] — bester Metrik-Wert mit >= min_trades Trades
   python3 toolbox.py run-bestwerte --run 1812                 # vier feste Bestwerte je Run ziehen + als Doku-Favorit (roter Stern) markieren (idempotent)
-                                                              #   mehrere Runs: --strategy vwma [--version 1] | --iteration <id> | --testset-run <id>
+                                                              #   mehrere Runs: --strategy teststrategie [--version 1] | --iteration <id> | --testset-run <id>
   python3 toolbox.py run-favorites-reset --testset-run 6      # Favoriten einer Run-Menge zuruecksetzen; ohne Flag beide Sterne, sonst --doc (rot) und/oder --user (gelb)
                                                               #   Selektoren wie run-bestwerte: --run | --strategy [--version] | --iteration | --testset-run
-  python3 toolbox.py vergleichstabelle --strategy vwma        # Iterations-Vergleichstabelle je Testset aus roten Doku-Favoriten (purge-fest);
+  python3 toolbox.py vergleichstabelle --strategy teststrategie        # Iterations-Vergleichstabelle je Testset aus roten Doku-Favoriten (purge-fest);
                                                               #   optional --save <pfad> schreibt sie als Vault-Notiz (z.B. .../strategies/<slug>/iterationen-vergleich.md)
   python3 toolbox.py run-favorites-list --testset-run 6       # markierte Favoriten-Results ausgeben (reiner Read); Selektoren/Flags wie run-favorites-reset
-  python3 toolbox.py result-lookup --run 1812 --params "vwma_length=20,atr_mult=2.5"    # Result(s) per Parameter-Werten nachschlagen (Subset, serverseitig)
+  python3 toolbox.py result-lookup --run 1812 --params "supertrend_period=10,supertrend_multiplier=3.0"    # Result(s) per Parameter-Werten nachschlagen (Subset, serverseitig)
                                                               #   [--tolerance 1] = skalare Nachbarschaft (±t je Parameter) | [--tolerance-steps 1] = ±N Raster-Schritte je Achse, [--limit 20]
                                                               #   [--summary] = Plateau-Score (Median/Mittel/Streuung/Anteil profitabel) statt Trefferliste
   python3 toolbox.py result-query --run 1812 --where "sharpe_ratio>=1.5,total_trades>=100"  # kombinierte Metrik-Filter (nur >= und <=, UND-verknüpft)
@@ -88,7 +88,7 @@ Listen-Reads (kompaktes Markdown, eigene Verben):
   python3 toolbox.py kreuztest --from-run 10 --to-run 11      # Bestwerte (rote Doku-Favoriten) aus Run A in Run B nachschlagen, Vergleichstabelle
                                                               #   [--user] = gelbe Sterne zusätzlich, [--tolerance <t> | --tolerance-steps <N>] wie result-lookup
   python3 toolbox.py kreuztest --from-testset-run 2 --to-testset-run 3  # ganze Testset-Läufe: Runs werden per Symbol+Timeframe gepaart (Walk-Forward)
-  python3 toolbox.py combo-trace --testset-run 3 --params "vwma_length=2,…"  # eine Kombination über eine Run-Menge verfolgen (1:N); Selektoren wie
+  python3 toolbox.py combo-trace --testset-run 3 --params "supertrend_period=10,…"  # eine Kombination über eine Run-Menge verfolgen (1:N); Selektoren wie
                                                               #   run-bestwerte (--run | --strategy [--version] | --iteration | --testset-run)
   --json (bei result-list, run-top-results, run-best, run-favorites-list, result-lookup,
           result-query, kreuztest, combo-trace, symbol-correlation, iteration-log-list,
@@ -2166,7 +2166,7 @@ def vergleichstabelle(args: list) -> int:
     """
     f = _parse_flags(args)
     if not f.get("strategy") or f.get("strategy") is True:
-        raise ValueError("vergleichstabelle braucht --strategy <slug> (z.B. --strategy vwma)")
+        raise ValueError("vergleichstabelle braucht --strategy <slug> (z.B. --strategy teststrategie)")
     slug = str(f["strategy"])
     runs, _scope = _resolve_runs({"strategy": slug, "limit": f.get("limit", 10000)}, "vergleichstabelle")
     ts_runs = [r for r in runs if r.get("testset_run_id")]

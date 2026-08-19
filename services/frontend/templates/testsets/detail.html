@@ -259,7 +259,7 @@
   if (btnDelete) {
     btnDelete.addEventListener('click', function() {
       if (!confirm('TestSet wirklich löschen?')) return;
-      // GEÄNDERT: Ticket 61 — Antwort auswerten statt blind umzuleiten.
+      // GEÄNDERT: Antwort auswerten statt blind umzuleiten.
       // GEÄNDERT: HTTP 409 ist keine Ablehnung mehr, sondern die Rückfrage. Hängen
       // noch Testset-Läufe dran, nennt der Endpunkt die Anzahlen; bestätigt der User,
       // wird mit force=true erneut gelöscht. Läufe, Runs und Results bleiben stehen.

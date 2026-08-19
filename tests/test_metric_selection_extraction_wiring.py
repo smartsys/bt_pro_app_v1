@@ -1,5 +1,5 @@
 """Tests, dass die aufgelöste Metrik-Auswahl tatsächlich bei `_extract_metrics` ankommt
-(Ticket 68, Anforderung 2).
+(Anforderung 2).
 
 Die Auflösung selbst sitzt in `create_backtest_run` (siehe
 test_metric_selection_run_creation.py) und schreibt das Ergebnis als
@@ -83,7 +83,7 @@ def _backtest_config(chunk_size: int, metrics_resolved) -> dict:
         'end': '2020-12-31',
         'timeframe': '4h',
         'chunk_size': chunk_size,
-        # GEÄNDERT: Ticket 68 — so, wie create_backtest_run es persistiert: bereits
+        # GEÄNDERT: so, wie create_backtest_run es persistiert: bereits
         # aufgelöste Gruppenmenge, kein 'metrics'-Rohwert mehr.
         'metrics_resolved': sorted(metrics_resolved),
         'portfolio': {
@@ -195,7 +195,7 @@ def test_save_strategy_results_persists_null_for_groups_the_portfolios_path_skip
 
 def test_chunked_run_applies_the_resolved_groups_in_every_chunk():
     """Gechunkter Lauf (mehrere Chunks): jeder Chunk bekommt dieselbe aufgelöste
-    Gruppenmenge — nicht nur der erste (Chunk-Erbschaft, Ticket 68 Anforderung 2/8).
+    Gruppenmenge — nicht nur der erste (Chunk-Erbschaft).
     """
     from user_data.strategies.generic.indicator_factory import split_indicators_json_chunks
     from user_data.strategies.generic.spec_runner import run_spec_strategy

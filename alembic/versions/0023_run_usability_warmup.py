@@ -1,6 +1,6 @@
 """backtest_runs: usability + Vorlauf-Prüfung — der Lauf sagt, ob man ihm glauben darf
 
-Ticket 60 (Anforderungen 3+4): Ein Lauf ohne Signale endete bisher als 'completed'
+Ein Lauf ohne Signale endete bisher als 'completed'
 mit null Trades und wanderte als gültiges Ergebnis in die Auswertung. Die Spalte
 `usability` macht das ohne JSON-Auspacken abfragbar ('usable' / 'no_signals' /
 'insufficient_history'), `usability_note` trägt den lesbaren Grund dazu. Der Lauf
@@ -10,7 +10,7 @@ Die drei Vorlauf-Spalten halten fest, wie viel Vorlauf zwischen `ohlc_start` und
 `start` tatsächlich zur Verfügung stand und wie viel die längste konfigurierte
 Indikator-Periode gebraucht hätte (`warmup_note` als lesbare Meldung).
 
-Bewusst nullable ohne Server-Default: NULL kennzeichnet Runs, die vor Ticket 60
+Bewusst nullable ohne Server-Default: NULL kennzeichnet Runs, die vor der Umstellung
 entstanden sind (und fehlgeschlagene Runs, die nie bis zur Bewertung kamen). Der
 Altbestand wird nicht nachgerechnet.
 

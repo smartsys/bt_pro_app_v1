@@ -1,6 +1,6 @@
-"""Regressionstests fuer Ticket 53 — Getragene Ketten-Param-Level id-benennen.
+"""Getragene Ketten-Param-Level id-benennen.
 
-Kernbefund (Ticket 53): Ein Indikator, der einen anderen als Chain-Input traegt,
+Kernbefund: Ein Indikator, der einen anderen als Chain-Input traegt,
 fuehrte dessen Param-Level bisher unter dem Factory-Namen (z.B. 'dwsfastsma_length')
 statt dem Spec-ID-Namen ('fast_sma_length') mit. Wird derselbe Indikator zugleich
 direkt referenziert (dort von rules_engine._uniquify_param_levels bereits auf den
@@ -167,7 +167,7 @@ class TestDeepChainPropagation:
 
 # ============================================================================
 # Robustheitstestfall (ii): zwei verschiedene Instanzen derselben Klasse,
-# BEIDE als Chain-Input in denselben Downstream getragen (Ticket-49-Crash-Schutz)
+# BEIDE als Chain-Input in denselben Downstream getragen (Crash-Schutz)
 # ============================================================================
 
 class TestTwoInstancesSameClassAsChainInputs:
@@ -175,7 +175,7 @@ class TestTwoInstancesSameClassAsChainInputs:
     kreuzen ueber _combine_broadcast korrekt — anders als der 9-Spalten-Fall in
     test_rules_engine_combine_broadcast.py (dort direkt referenziert), hier ERST ueber
     eine Kettenstufe (sma_a/sma_b) getragen. Deckt ab, dass die id-Umbenennung des
-    CARRIED Levels (nicht nur des direkt referenzierten) die Ticket-49-Instanz-
+    CARRIED Levels (nicht nur des direkt referenzierten) die Instanz-
     Eindeutigkeit nicht bricht.
     """
 
@@ -208,7 +208,7 @@ class TestTwoInstancesSameClassAsChainInputs:
 
     def test_both_carried_axes_cross_correctly_via_rule_no_crash(self, base_data, spec):
         """Regel referenziert sma_a UND sma_b -> _combine_broadcast kreuzt die getragenen
-        thr_a-/thr_b-Achsen (3x3=9), kein cross_indexes-Crash (Ticket 49 bleibt geschuetzt)."""
+        thr_a-/thr_b-Achsen (3x3=9), kein cross_indexes-Crash (bleibt geschuetzt)."""
         results = build_indicators(spec, base_data, base_tf="5min")
         rules_json = {
             "entry": {

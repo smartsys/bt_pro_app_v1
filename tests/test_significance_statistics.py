@@ -1,4 +1,4 @@
-"""Tests der Rechenkerne des Signifikanztests (Ticket 79).
+"""Tests der Rechenkerne des Signifikanztests.
 
 Reine Numerik, kein DB- und kein vectorbtpro-Bezug. Abgesichert wird:
 

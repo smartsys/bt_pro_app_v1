@@ -1,4 +1,4 @@
-"""Tests für recovery_oneshot.py (Ticket 33, Teil C).
+"""Tests für recovery_oneshot.py (Teil C).
 
 Prüft, dass recover_stale_runs() hängende BacktestRuns korrekt auf 'queued'
 zurücksetzt und neu in die RQ-Queue einreiht.
@@ -22,7 +22,7 @@ sys.path.insert(0, str(_ROOT))
 
 # rq via sys.modules mocken bevor recovery_oneshot importiert wird
 # (rq ist nur im Docker/WSL-venv verfügbar, nicht im Windows-venv)
-# GEÄNDERT: Ticket 70/E — bewusst überschreiben statt setdefault. Andere Testdateien
+# GEÄNDERT: bewusst überschreiben statt setdefault. Andere Testdateien
 # legen beim Import einen minimalen rq-Stub in sys.modules ab (z.B.
 # tests/test_doc_favorite_criteria.py setzt StartedJobRegistry = object). Wurde der
 # zuerst gesetzt, übernahm setdefault ihn, und recover_stale_runs() scheiterte an

@@ -1,6 +1,6 @@
 """Tests für spec_runner.VERSION-Tracking in BacktestRun und BacktestResult.
 
-Ticket 01: Stellt sicher, dass spec_runner_version beim Anlegen von Runs
+Stellt sicher, dass spec_runner_version beim Anlegen von Runs
 und beim Speichern von Results korrekt befüllt wird.
 """
 
@@ -88,7 +88,7 @@ def test_backtest_run_spec_runner_version_column_exists(db_session):
         timeframe='4h',
         start_date=_START_DATE,
         end_date=_END_DATE,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={},
         indicators_config_json={},
         n_combinations=1,
@@ -112,7 +112,7 @@ def test_backtest_run_spec_runner_version_nullable(db_session):
         timeframe='4h',
         start_date=_START_DATE,
         end_date=_END_DATE,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={},
         indicators_config_json={},
         n_combinations=1,
@@ -139,7 +139,7 @@ def test_backtest_result_spec_runner_version_column_exists(db_session):
         timeframe='4h',
         start_date=_START_DATE,
         end_date=_END_DATE,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={},
         indicators_config_json={},
         n_combinations=1,
@@ -151,7 +151,7 @@ def test_backtest_result_spec_runner_version_column_exists(db_session):
     result = BacktestResult(
         run_id=run.id,
         params_hash='abc123',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'test': 1},
         spec_runner_version='1.0.0',
     )
@@ -172,7 +172,7 @@ def test_backtest_result_spec_runner_version_nullable(db_session):
         timeframe='4h',
         start_date=_START_DATE,
         end_date=_END_DATE,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json={},
         indicators_config_json={},
         n_combinations=1,
@@ -184,7 +184,7 @@ def test_backtest_result_spec_runner_version_nullable(db_session):
     result = BacktestResult(
         run_id=run.id,
         params_hash='def456',
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         actual_params_json={'test': 2},
     )
     db_session.add(result)
@@ -211,7 +211,7 @@ def test_create_backtest_run_writes_spec_runner_version(db_engine, db_session):
         timeframe='4h',
         start_date=_START_DATE,
         end_date=_END_DATE,
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         backtest_config_json=_minimal_backtest_config(),
         indicators_config_json={},
         n_combinations=1,

@@ -1,4 +1,4 @@
-"""Tests für das Toolbox-Verb `befund` (Ticket 56, Teilaufgabe 3).
+"""Tests für das Toolbox-Verb `befund` (Teilaufgabe 3).
 
 Prüft `befund_read`/`_print_befund` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff
@@ -142,7 +142,7 @@ def test_befund_read_by_id_calls_correct_route(toolbox, capsys):
 
 
 def test_befund_read_by_testset_run_calls_correct_route_and_reports_total(toolbox, capsys):
-    """Ticket 77/A: --testset-run löst serverseitig zum jüngsten Befund auf und
+    """--testset-run löst serverseitig zum jüngsten Befund auf und
     nennt die Gesamtzahl der Befunde dieses Testset-Laufs."""
     payload = {"finding": _OPEN_FINDING, "total_for_testset_run": 3}
     with patch.object(toolbox, "fetch", return_value={"data": payload}) as mock_fetch:
@@ -156,7 +156,7 @@ def test_befund_read_by_testset_run_calls_correct_route_and_reports_total(toolbo
 
 
 def test_befund_read_id_and_testset_run_together_raises(toolbox):
-    """--id und --testset-run schließen sich aus (Ticket 77/A)."""
+    """--id und --testset-run schließen sich aus."""
     with pytest.raises(ValueError, match="--id und --testset-run schließen sich aus"):
         toolbox.befund_read(["--id", "42", "--testset-run", "100"])
 

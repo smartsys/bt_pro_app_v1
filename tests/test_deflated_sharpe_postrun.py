@@ -1,4 +1,4 @@
-"""Tests für den DSR-Nachlauf über den ganzen Lauf (Ticket 54, Anforderung 2/3/6).
+"""Tests für den DSR-Nachlauf über den ganzen Lauf (Anforderung 2/3/6).
 
 Der Nachlauf `repository._calculate_deflated_sharpe` liest die Bausteine aus der
 Datenbank statt aus einem Portfolio. Geprüft wird genau das, was diesen Schritt von

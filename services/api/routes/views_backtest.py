@@ -18,22 +18,22 @@ from user_data.utils.database.models import BacktestRun, BacktestResult
 router = APIRouter(prefix='/backtest', tags=['views'])
 
 
-# GEÄNDERT: Ticket 53 — Dual-Präfix (Klasse UND Spec-Key), analog zur bereits
+# GEÄNDERT: Dual-Präfix (Klasse UND Spec-Key), analog zur bereits
 # robusten Logik in repository.py:_build_resolved_config (Zeile ~563-565). Seit
-# Ticket 53 benennt indicator_factory.build_indicators die Param-Level jeder
+# Die Umstellung benennt indicator_factory.build_indicators die Param-Level jeder
 # Indikator-Instanz auf den Spec-ID-Namen um (z.B. 'fast_sma_length' statt
 # 'dwsfastsma_length'). Ein rein klassenbasiertes Präfix (Klassenname aus
 # cfg['indicator']) matcht bei Custom-Indikatoren (Spec-Key != Klasse) dann nicht
 # mehr — das Panel zeigt still keine Werte (kein Crash). Beide Präfixe parallel
 # zu prüfen heilt zugleich einen Bestandsdefekt: direkt referenzierte Custom-
-# Indikatoren wurden schon vor Ticket 53 von _uniquify_param_levels (rules_engine)
+# Indikatoren wurden schon vor der Umstellung von _uniquify_param_levels (rules_engine)
 # auf den Spec-Key umbenannt, das Klassen-Präfix matchte also auch dort nie.
 def _resolve_ind_params(ind_config: dict, actual_params: dict) -> dict:
     """Ordnet persistierte Parameter (actual_params) den Indikatoren im Chart-Panel zu.
 
     actual_params trägt flache Keys im Schema `<präfix>_<param>`. Das Präfix ist je
     nach Alter des Results entweder der Klassenname (z.B. `dwsfastsma_`, alte/getragene
-    Results vor Ticket 53) oder der Spec-Key (z.B. `fast_sma_`/`vwma_`, seit Ticket 53
+    Results vor der Umstellung) oder der Spec-Key (z.B. `fast_sma_`/`vwma_`, seit der Umstellung
     bzw. schon vorher bei direkt referenzierten Custom-Indikatoren). Beide Präfixe
     werden geprüft, damit das Panel für jeden Indikator unabhängig vom Alter des
     Results Werte anzeigt.
@@ -102,13 +102,13 @@ def run_detail_page(request: Request, run_id: int) -> HTMLResponse:
             'end_date': run.end_date,
             'n_combinations': run.n_combinations,
             'status': run.status,
-            # GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs im Page-Header sichtbar machen.
+            # GEÄNDERT: Selbstauskunft des Laufs im Page-Header sichtbar machen.
             'usability': run.usability,
             'usability_note': run.usability_note,
             'warmup_bars': run.warmup_bars,
             'warmup_required_bars': run.warmup_required_bars,
             'warmup_note': run.warmup_note,
-            # GEÄNDERT: Ticket 68 — explizite Metrik-Auswahl ist die Quelle der Wahrheit
+            # GEÄNDERT: explizite Metrik-Auswahl ist die Quelle der Wahrheit
             # im backtest_config_json; ohne explizite Angabe (Default 'auto') bleibt der
             # Key leer und es wird kein Badge angezeigt.
             'metrics_selection': (run.backtest_config_json or {}).get('metrics'),
@@ -148,7 +148,7 @@ def run_analyse_page(request: Request, run_id: int) -> HTMLResponse:
             'end_date': run.end_date,
             'n_combinations': run.n_combinations,
             'result_count': result_count,
-            # GEÄNDERT: Ticket 15 Code-Sweep — _json-Suffix
+            # GEÄNDERT: Code-Sweep — _json-Suffix
             'indicators_config': run.indicators_config_json,
         }
     finally:
@@ -196,7 +196,7 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
         result_data = {
             'id': result.id,
             'run_id': result.run_id,
-            # GEÄNDERT: Ticket 15 Code-Sweep — _json-Suffix
+            # GEÄNDERT: Code-Sweep — _json-Suffix
             'actual_params': result.actual_params_json if isinstance(result.actual_params_json, dict) else {},
             'total_return_pct': result.total_return_pct,
             'profit_factor': result.profit_factor,
@@ -204,9 +204,9 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
             'max_drawdown_pct': result.max_drawdown_pct,
             'total_trades': result.total_trades,
             'win_rate_pct': result.win_rate_pct,
-            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            # GEÄNDERT: Nenner der Trefferquote mitliefern.
             'open_trades': result.open_trades,
-            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung, gerechneter Zeitraum und
+            # GEÄNDERT: Long/Short-Aufteilung, gerechneter Zeitraum und
             # Balkenzahl direkt im Result-Detail sichtbar machen.
             'long_trades': result.long_trades,
             'short_trades': result.short_trades,
@@ -217,7 +217,7 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
         }
         # GEÄNDERT: K2 — keine Supertrend-Spezialwerte mehr; alle Indikatoren werden
         # generisch über ind_config/ind_params an das Template gereicht.
-        # GEÄNDERT: Ticket 15 Code-Sweep — _json-Suffix
+        # GEÄNDERT: Code-Sweep — _json-Suffix
         ind_config = run.indicators_config_json or {}
 
         run_data = {
@@ -230,7 +230,7 @@ def result_chart_page(request: Request, result_id: int) -> HTMLResponse:
             'end_date': run.end_date,
         }
 
-        # GEÄNDERT: Ticket 53 — aufgelöste Parameter je Indikator generisch zuordnen,
+        # GEÄNDERT: aufgelöste Parameter je Indikator generisch zuordnen,
         # damit die generischen Chart-Panels die vollständige Konfiguration anzeigen
         # können. Dual-Präfix (Klasse UND Spec-Key), siehe _resolve_ind_params.
         actual_params = result_data['actual_params']

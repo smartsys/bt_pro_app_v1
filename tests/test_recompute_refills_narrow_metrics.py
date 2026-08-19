@@ -1,4 +1,4 @@
-"""Der Recompute füllt ein schmal gerechnetes Result wieder vollständig (Ticket 68).
+"""Der Recompute füllt ein schmal gerechnetes Result wieder vollständig.
 
 Ein Lauf mit der Auswahl `kern` lässt die drei `tail_risk`-Spalten leer. Der
 Recompute (`services/api/recompute.py`) ist der festgelegte Weg, einem Sieger-Result

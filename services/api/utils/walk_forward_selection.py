@@ -1,4 +1,4 @@
-"""Siegerwahl je Fold der Walk-Forward-Kette (Ticket 82).
+"""Siegerwahl je Fold der Walk-Forward-Kette.
 
 Die Auswahl trifft der Agent beim Start der Kette (Metrik, Richtung,
 Trade-Floor) — dieses Modul vollzieht sie nur. Es bringt **kein eigenes**
@@ -19,7 +19,7 @@ from user_data.utils.database.models import BacktestResult
 from user_data.utils.metrics.metric_sets import ALL_METRIC_FIELDS
 
 # Zusätzlich wählbar, obwohl nicht Teil der im Lauf gerechneten Kennzahl-Gruppen:
-# die Deflated Sharpe Ratio entsteht im Nachlauf am selben Result (Ticket 54).
+# die Deflated Sharpe Ratio entsteht im Nachlauf am selben Result.
 _EXTRA_SELECTABLE_FIELDS: Tuple[str, ...] = ('deflated_sharpe_ratio',)
 
 

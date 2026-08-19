@@ -1,4 +1,4 @@
-"""Tests der Ketten-Aggregation (Ticket 82, Anforderung 4).
+"""Tests der Ketten-Aggregation (Anforderung 4).
 
 Die Gesamtbewertung entsteht aus den balkengenauen Kapitalkurven der
 Testfenster-Läufe, chronologisch verkettet und je Fold auf das Startkapital

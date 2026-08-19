@@ -1,5 +1,5 @@
 """Tests der `metrics`-Parameter-Validierung an den beiden Run-Start-Endpunkten
-(Ticket 68, Anforderung 2).
+(Anforderung 2).
 
 Zwei Strategien, je nach Endpunkt:
 
@@ -24,7 +24,7 @@ import requests
 
 from services.api.routes.api_testset_runs import TestSetRunIn, start_testset_run
 
-# GEÄNDERT (Nachtrag Ticket 88): Adresse der laufenden App aus der Umgebung. Im
+# GEÄNDERT (Nachtrag): Adresse der laufenden App aus der Umgebung. Im
 # Test-Container ist 'localhost' der Container selbst — dort gilt der Dienstname
 # (http://app:8000), vom Host aus der gemappte Port.
 BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:5570')
@@ -45,7 +45,7 @@ def _container_available() -> bool:
 def test_start_testset_run_rejects_unknown_metrics_group_before_any_db_access():
     """POST /api/testset-runs mit unbekanntem Gruppen-Key -> 400, kein DB-Zugriff.
 
-    testset_id=0 würde ohne die Ticket-68-Prüfung eine DB-Abfrage auslösen und mit
+    testset_id=0 würde ohne die Prüfung eine DB-Abfrage auslösen und mit
     einem 'nicht gefunden'-Fehler enden — die Prüfung muss also VOR dem ersten
     get_session()-Aufruf greifen.
     """

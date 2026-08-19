@@ -1,7 +1,7 @@
 """Namenskonventions-Test: Stellt sicher, dass veraltete test_set-Bezeichner
 nicht mehr im aktiven Code vorkommen.
 
-Ticket 13: Nach dem Naming-Cleanup darf 'test_set' (mit Unterstrich) nicht mehr
+Nach dem Naming-Cleanup darf 'test_set' (mit Unterstrich) nicht mehr
 als DB-Spaltenname, ORM-Attribut, API-Parameter oder Variablenname in
 services/ und user_data/ auftauchen.
 
@@ -44,7 +44,7 @@ _COMMENT_LINE_RE = re.compile(
     r'^\s*(?:#|//|<!--|\*)',
 )
 
-# GEÄNDERT: Ticket 13 — Namenskonventions-Test neu erstellt
+# GEÄNDERT: Namenskonventions-Test neu erstellt
 
 
 def _iter_source_files():

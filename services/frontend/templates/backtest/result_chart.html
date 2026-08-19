@@ -18,18 +18,18 @@
   <div class="d-flex align-items-center gap-1 me-3">
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Return</div><div class="metric-value {% if result.total_return_pct and result.total_return_pct >= 0 %}val-pos{% else %}val-neg{% endif %}" style="font-size:0.85em">{{ "%.2f"|format(result.total_return_pct or 0) }}%</div></div></div>
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Benchmark</div><div class="metric-value" id="benchmark-value" style="font-size:0.85em">—</div></div></div>
-    {# GEÄNDERT: Ticket 58 — Profitfaktor rechnet über geschlossene Trades. Ohne einen
+    {# GEÄNDERT: Profitfaktor rechnet über geschlossene Trades. Ohne einen
        einzigen geschlossenen Trade ist er nicht bestimmbar und wird als „—" gezeigt,
        nicht als 0 — sonst sähe er aus wie ein echter Totalausfall. #}
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Profitfaktor</div><div class="metric-value" style="font-size:0.85em" {% if result.profit_factor is none %}title="nicht bestimmbar — kein geschlossener Trade im Handelsfenster"{% endif %}>{% if result.profit_factor is none %}—{% else %}{{ "%.2f"|format(result.profit_factor) }}{% endif %}</div></div></div>
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Sharpe</div><div class="metric-value {% if result.sharpe_ratio and result.sharpe_ratio >= 0 %}val-pos{% else %}val-neg{% endif %}" style="font-size:0.85em">{{ "%.2f"|format(result.sharpe_ratio or 0) }}</div></div></div>
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Max DD</div><div class="metric-value val-neg" style="font-size:0.85em">{{ "%.2f"|format(result.max_drawdown_pct or 0) }}%</div></div></div>
-    {# GEÄNDERT: Ticket 58 — Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
+    {# GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
        Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die
        offenen Positionen stehen deshalb direkt neben der Trade-Anzahl. #}
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Trades</div><div class="metric-value" style="font-size:0.85em" {% if result.open_trades %}title="{{ result.open_trades }} davon am Ende des Handelsfensters offen — Trefferquote und Profitfaktor rechnen über die {{ (result.total_trades or 0) - result.open_trades }} geschlossenen"{% endif %}>{{ result.total_trades or 0 }}{% if result.open_trades %} <span class="text-muted">({{ result.open_trades }} offen)</span>{% endif %}</div></div></div>
-    {# GEÄNDERT: Ticket 60 — Long/Short-Aufteilung neben der Trade-Anzahl; long_trades +
-       short_trades = total_trades. NULL bei Alt-Results (vor Ticket 60), dann '-'. #}
+    {# GEÄNDERT: Long/Short-Aufteilung neben der Trade-Anzahl; long_trades +
+       short_trades = total_trades. NULL bei Alt-Results (vor der Umstellung), dann '-'. #}
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Long/Short</div><div class="metric-value" style="font-size:0.85em">{% if result.long_trades is none %}<span class="text-muted">-</span>{% else %}{{ result.long_trades }}/{{ result.short_trades }}{% endif %}</div></div></div>
     <div class="card card-sm mb-0"><div class="card-body py-1 px-2 text-center"><div class="text-muted" style="font-size:0.7rem">Win Rate</div><div class="metric-value" style="font-size:0.85em" {% if result.win_rate_pct is none %}title="nicht bestimmbar — kein geschlossener Trade im Handelsfenster"{% elif result.open_trades %}title="über {{ (result.total_trades or 0) - result.open_trades }} geschlossene Trades; {{ result.open_trades }} offene Position(en) zählen nicht mit"{% endif %}>{% if result.win_rate_pct is none %}—{% else %}{{ "%.1f"|format(result.win_rate_pct) }}%{% endif %}</div></div></div>
   </div>
@@ -1406,7 +1406,7 @@ document.addEventListener("DOMContentLoaded", function() {
   // ========================================================================
   // Tab 2 + 3: Werden per ResultTabs-Modul geladen (result/tabs.js)
   // ========================================================================
-  // GEÄNDERT: Ticket 17 — Inline-Duplikate durch Modul-Aufrufe ersetzt
+  // GEÄNDERT: Inline-Duplikate durch Modul-Aufrufe ersetzt
   var statsTabLoaded = false;
   var resultId_rc = {{ result.id }};
 

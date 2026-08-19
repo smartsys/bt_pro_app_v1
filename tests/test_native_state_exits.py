@@ -1,4 +1,4 @@
-"""Tests für Ticket 35: Native State-Exits per signal_func_nb.
+"""Tests für Native State-Exits per signal_func_nb.
 
 Prüft die neuen Funktionen in rules_engine.py:
   - evaluate_rules_native()
@@ -543,7 +543,7 @@ class TestMultiCombo:
     """Prüft Multi-Combo-Verhalten mit stateful Conditions.
 
     GEÄNDERT 2026-07-12: Überschrift korrigiert. Der frühere N5-Hard-Reject
-    ("Multi-Combo mit stateful Series-Ops wird abgewiesen") fiel mit Ticket 47 —
+    ("Multi-Combo mit stateful Series-Ops wird abgewiesen") ist entfallen —
     diese Klasse prüft heute das Gegenteil, nämlich dass solche Konstellationen
     laufen UND je Spalte richtig rechnen.
     """
@@ -585,7 +585,7 @@ class TestMultiCombo:
     def test_multi_combo_with_series_op_runs(self, spike_ohlc_df: pd.DataFrame) -> None:
         """Multi-Combo mit Series-Operand in stateful Condition läuft jetzt vektorisiert.
 
-        GEÄNDERT: Ticket 47 Bugfix — der frühere N5-Hard-Reject ist entfernt. Series-
+        GEÄNDERT: Bugfix — der frühere N5-Hard-Reject ist entfernt. Series-
         Operanden in stateful Conditions werden bei Multi-Combo über das combo-major
         series_bundle + series_col_map (col % n_combo) korrekt aufgelöst. Ein globaler
         OHLCV-Operand (hier close) broadcastet auf alle Combos.
@@ -1181,7 +1181,7 @@ class TestOldPathRegression:
                 ],
             },
         }
-        # GEÄNDERT: Ticket 46 — SignalMasks statt (entries, exits)-Tupel
+        # GEÄNDERT: SignalMasks statt (entries, exits)-Tupel
         masks = evaluate_rules(rules_json, ohlc, {})
         assert masks.long_entries is not None
         assert masks.long_exits is not None

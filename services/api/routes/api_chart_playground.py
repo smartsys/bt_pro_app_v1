@@ -34,7 +34,7 @@ from services.api.redis_conn import (
     BACKTEST_QUEUE_NAME,
     get_redis_connection,
 )
-# GEÄNDERT: Ticket 102 — Genau-eines-Regel für die Raster-Quelle des Preflights
+# GEÄNDERT: Genau-eines-Regel für die Raster-Quelle des Preflights
 from services.api.utils.indicator_source import require_exactly_one_indicator_source
 from user_data.strategies.generic.indicator_factory import (
     STOP_PARAM_KEYS,
@@ -57,15 +57,15 @@ from user_data.utils.database.models import (
     StrategyIteration,
 )
 from user_data.utils.database.repository import create_backtest_run
-# GEÄNDERT: Ticket 92 — Sondierungs-Zähler am Konzept (atomare Erhöhung)
+# GEÄNDERT: Sondierungs-Zähler am Konzept (atomare Erhöhung)
 from user_data.utils.database.repository_strategies import increment_concept_probe_count
-# GEÄNDERT: Ticket 58 — Kennzahlen des Schnellbacktests laufen über das Handelsfenster.
+# GEÄNDERT: Kennzahlen des Schnellbacktests laufen über das Handelsfenster.
 from user_data.utils.metrics.trading_window import (
     count_open_trades,
     slice_to_trading_window,
 )
 from user_data.utils.ohlc.loader import EXCHANGE_DATA_CLASS
-# GEÄNDERT: Ticket 59 — Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
+# GEÄNDERT: Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
 from user_data.utils.portfolio_enums import validate_portfolio_enums
 
 
@@ -620,7 +620,7 @@ class SetupIn(BaseModel):
     """Eingabe-Schema für Playground-Setup (Create/Update)."""
     name: str
     description: Optional[str] = None
-    # GEÄNDERT: Ticket 15 — vier Felder statt config_json
+    # GEÄNDERT: vier Felder statt config_json
     backtest_config_json: dict
     indicators_config_json: dict
     strategy_config_json: dict
@@ -632,7 +632,7 @@ class SetupOut(BaseModel):
     id: int
     name: str
     description: Optional[str]
-    # GEÄNDERT: Ticket 15 — vier Felder statt config_json
+    # GEÄNDERT: vier Felder statt config_json
     backtest_config_json: dict
     indicators_config_json: dict
     strategy_config_json: dict
@@ -675,7 +675,7 @@ def create_setup(data: SetupIn) -> dict:
         row = ChartPlaygroundSetup(
             name=data.name,
             description=data.description,
-            # GEÄNDERT: Ticket 15 — vier Felder statt config_json
+            # GEÄNDERT: vier Felder statt config_json
             backtest_config_json=data.backtest_config_json,
             indicators_config_json=data.indicators_config_json,
             strategy_config_json=data.strategy_config_json,
@@ -699,7 +699,7 @@ def update_setup(setup_id: int, data: SetupIn) -> dict:
             raise HTTPException(status_code=404, detail='Setup nicht gefunden')
         row.name = data.name
         row.description = data.description
-        # GEÄNDERT: Ticket 15 — vier Felder statt config_json
+        # GEÄNDERT: vier Felder statt config_json
         row.backtest_config_json = data.backtest_config_json
         row.indicators_config_json = data.indicators_config_json
         row.strategy_config_json = data.strategy_config_json
@@ -744,7 +744,7 @@ def bulk_delete_setups(request_body: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Playground-Config aus Result-Snapshot (flüchtig, kein Setup-Eintrag)
 # ---------------------------------------------------------------------------
-# GEÄNDERT: Ticket 42 — neuer GET-Endpunkt für flüchtiges Laden aus Result-Snapshot
+# GEÄNDERT: neuer GET-Endpunkt für flüchtiges Laden aus Result-Snapshot
 @router.get('/result-config/{result_id}')
 def get_result_config(result_id: int) -> dict:
     """Liefert Playground-Config aus dem Result-Snapshot — OHNE Setup-Eintrag anzulegen.
@@ -827,9 +827,9 @@ def get_result_config(result_id: int) -> dict:
             },
         }
 
-        # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter nur übernehmen, wenn sie im
+        # GEÄNDERT: die drei Portfolio-Parameter nur übernehmen, wenn sie im
         # Snapshot tatsächlich stehen. Ein fehlender Key ist etwas anderes als ein
-        # gesetzter Nullwert: Alt-Results (vor Ticket 59) dürfen im Playground nicht als
+        # gesetzter Nullwert: Alt-Results (vor der Umstellung) dürfen im Playground nicht als
         # "slippage = 0" erscheinen. Das Prefill prüft die Felder per hasOwnProperty und
         # lässt sie unangetastet, solange sie fehlen.
         for portfolio_key in ('slippage', 'stop_exit_price', 'stop_order_type'):
@@ -903,12 +903,12 @@ class RunBacktestIn(BaseModel):
     # GEÄNDERT: Herkunfts-Referenzen der im Playground gewählten Configs (lose, optional)
     backtest_config_id: Optional[int] = None
     indicator_config_id: Optional[int] = None
-    # GEÄNDERT: Ticket 92 — Konzept, dem eine Lite-Sondierung zugerechnet wird.
+    # GEÄNDERT: Konzept, dem eine Lite-Sondierung zugerechnet wird.
     # Nur /run-backtest-lite wertet das Feld aus (Sondierungs-Zähler am Konzept).
     concept_id: Optional[int] = None
 
 
-# GEÄNDERT: Ticket 59 — Eingabegrenze 2 von 2. Der Playground-Portfolio-Block kommt
+# GEÄNDERT: Eingabegrenze 2 von 2. Der Playground-Portfolio-Block kommt
 # direkt aus dem Request-Body und passiert keine BacktestConfig; ein Phantom-Wert würde
 # sonst erst tief in VBT als roher KeyError auffallen.
 def _check_portfolio_enums(portfolio: dict) -> None:
@@ -993,7 +993,7 @@ def _reduce_to_start_values(indicators: dict) -> dict:
 def _count_concept_probe(concept_id: Optional[int]) -> Optional[int]:
     """Zählt eine Lite-Sondierung am Konzept mit und liefert den neuen Stand.
 
-    GEÄNDERT: Ticket 92 — ohne `concept_id` passiert nichts (None zurück, kein
+    GEÄNDERT: ohne `concept_id` passiert nichts (None zurück, kein
     DB-Zugriff); mit `concept_id` wird der Zähler atomar erhöht. Ein unbekanntes
     Konzept endet als 404, statt still nicht zu zählen.
 
@@ -1021,15 +1021,15 @@ def _count_concept_probe(concept_id: Optional[int]) -> Optional[int]:
 def run_backtest_lite(req: RunBacktestIn) -> dict:
     """Lite-Backtest: EINE Kombination (Startwerte), kein DB-Schreiben.
 
-    GEÄNDERT: Ticket 91 — Docstring nachgezogen. Antwort enthält total_return,
+    GEÄNDERT: Docstring nachgezogen. Antwort enthält total_return,
     benchmark_return, profit_factor, max_drawdown, sharpe_ratio,
     position_coverage_pct, trades, open_trades, duration_ms, equity und
     trades_data (siehe Rückgabe-Dict unten) — nicht mehr nur Total Return +
-    Trade-Anzahl (seit Ticket 90).
+    Trade-Anzahl (seit der Umstellung).
     Kein create_backtest_run, kein save_strategy_results.
     Wird genutzt für den Schnellbacktest-Button im Chart-Playground.
 
-    GEÄNDERT: Ticket 92 — optionales `concept_id`: ist es gesetzt, zählt der
+    GEÄNDERT: optionales `concept_id`: ist es gesetzt, zählt der
     Aufruf als Sondierung am Konzept (`strategy_concepts.probe_count`, atomar
     erhöht) und die Antwort trägt den neuen Stand als `concept_probe_count`.
     Gezählt wird der Aufruf, nicht sein Ausgang — die Erhöhung passiert vor der
@@ -1044,7 +1044,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
 
     concept_probe_count = _count_concept_probe(req.concept_id)
 
-    # GEÄNDERT: Ticket 23 — gemeinsame Helper-Funktion nutzen (DRY)
+    # GEÄNDERT: gemeinsame Helper-Funktion nutzen (DRY)
     backtest_config = _build_backtest_config(req)
 
     try:
@@ -1161,7 +1161,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
                     'return_pct': return_pct,
                     'size': size_val,
                 }
-                # GEÄNDERT: Ticket 46 — TP/SL-Preise richtungsabhängig berechnen
+                # GEÄNDERT: TP/SL-Preise richtungsabhängig berechnen
                 trade_direction = str(row.get('Direction', 'Long'))
                 if entry_price and tp_stop:
                     if trade_direction == 'Short':
@@ -1182,7 +1182,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
     # GEÄNDERT: Zusätzliche Kennzahlen für den Schnellbacktest-Badge — billige
     # Portfolio-Properties (kein teures pf.stats(), passt zum Lite-Charakter).
     # total_market_return = Benchmark-Buy-and-Hold-Rendite als Fraction (z.B. 0.25 = 25 %).
-    # GEÄNDERT: Ticket 58 — die Kennzahlen rechnen auf dem Handelsfenster start..end,
+    # GEÄNDERT: die Kennzahlen rechnen auf dem Handelsfenster start..end,
     # nicht auf dem geladenen Datenfenster inkl. Vorlauf. Equity-Kurve und Trade-Marker
     # oben bleiben bewusst am vollen pf: der Chart soll den Vorlauf weiter zeigen.
     # Profitfaktor über geschlossene Trades — dieselbe Konvention wie im gespeicherten
@@ -1204,7 +1204,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
         open_trades = int(count_open_trades(pf_window))
     except (TypeError, ValueError):
         open_trades = None
-    # GEÄNDERT: Ticket 90 — risikoadjustierte Kennzahl + Marktpräsenz aus dem bereits
+    # GEÄNDERT: risikoadjustierte Kennzahl + Marktpräsenz aus dem bereits
     # gerechneten Portfolio (Attribute wie in repository.py._extract_metrics: sharpe_ratio,
     # position_coverage), keine Ersatzrechnung aus der Kapitalkurve. Naming an
     # 'position_coverage_pct' aus dem Result-Modell angelehnt.
@@ -1228,7 +1228,7 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
             'trades': int(pf_window.trades.count()),
             'open_trades': open_trades,
             'duration_ms': duration_ms,
-            # GEÄNDERT: Ticket 92 — neuer Zählerstand des Konzepts (None ohne concept_id)
+            # GEÄNDERT: neuer Zählerstand des Konzepts (None ohne concept_id)
             'concept_probe_count': concept_probe_count,
             'equity': equity,
             'trades_data': trades_data,
@@ -1347,7 +1347,7 @@ def run_backtest(req: RunBacktestIn) -> dict:
     finally:
         session.close()
 
-    # GEÄNDERT: Ticket 59 — auch der volle Playground-Run prüft die Enum-Werte, bevor
+    # GEÄNDERT: auch der volle Playground-Run prüft die Enum-Werte, bevor
     # der Job in die Queue geht (sonst scheitert er erst im Worker).
     _check_portfolio_enums(req.portfolio)
 
@@ -1496,7 +1496,7 @@ def entry_signals(req: RunBacktestIn) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Preflight (Ticket 60, Anforderung 5) — billiger Vorlauf auf EINER Kombination,
+# Preflight (Anforderung 5) — billiger Vorlauf auf EINER Kombination,
 # adressiert über gespeicherte Objekte (Iteration + IndicatorConfig + BacktestConfig)
 # statt über einen Playground-Request. Rechnet auf `_reduce_to_start_values` und
 # denselben Bausteinen wie /run-backtest-lite und /entry-signals — kein zweiter
@@ -1504,7 +1504,7 @@ def entry_signals(req: RunBacktestIn) -> dict:
 # ---------------------------------------------------------------------------
 class PreflightIn(BaseModel):
     iteration_id: int
-    # GEÄNDERT: Ticket 102 — dieselbe Alternative wie beim Testset-Lauf: Raster
+    # GEÄNDERT: dieselbe Alternative wie beim Testset-Lauf: Raster
     # entweder als gespeicherte IndicatorConfig oder inline (Inhalt von config_json
     # inklusive '_stops'). Genau eines von beiden ist Pflicht.
     indicator_config_id: Optional[int] = None
@@ -1627,7 +1627,7 @@ def _preflight_nan_ratios(indicators: dict) -> dict:
 def preflight(req: PreflightIn) -> dict:
     """Billiger Vorlauf auf einer Kombination — gespeicherte Iteration + BacktestConfig
     statt Playground-Request; das Raster kommt aus einer gespeicherten IndicatorConfig
-    oder inline (Ticket 102, genau eines von beiden).
+    oder inline (genau eines von beiden).
 
     Rechnet exakt EINE Kombination (Startwerte aller Sweep-Achsen, über
     `_reduce_to_start_values` — derselbe Baustein wie /run-backtest-lite) und meldet:
@@ -1645,7 +1645,7 @@ def preflight(req: PreflightIn) -> dict:
     from user_data.utils.ohlc.loader import load_ohlc_data
     import time as _time
 
-    # GEÄNDERT: Ticket 102 — Raster-Quelle prüfen, bevor irgendetwas geladen wird.
+    # GEÄNDERT: Raster-Quelle prüfen, bevor irgendetwas geladen wird.
     try:
         require_exactly_one_indicator_source(req.indicator_config_id, req.indicators)
     except ValueError as exc:
@@ -1673,7 +1673,7 @@ def preflight(req: PreflightIn) -> dict:
                 detail=f'Iteration #{req.iteration_id} hat keine Entry-Regeln in spec_json.rules.',
             )
 
-        # GEÄNDERT: Ticket 102 — bei inline übergebenem Raster entfällt der Lookup.
+        # GEÄNDERT: bei inline übergebenem Raster entfällt der Lookup.
         if req.indicator_config_id is not None:
             ind_cfg = session.query(IndicatorConfig).filter(
                 IndicatorConfig.id == req.indicator_config_id

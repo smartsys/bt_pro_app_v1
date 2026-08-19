@@ -1,12 +1,12 @@
 """
-API-Endpunkte für den Befund eines Testset-Laufs (Ticket 56)
+API-Endpunkte für den Befund eines Testset-Laufs
 
 GET   /api/testset-run-findings/{finding_id}                  — ein Befund
 GET   /api/testset-run-findings/by-iteration/{iteration_id}    — Befund-Historie einer Iteration
 GET   /api/testset-run-findings/by-concept/{concept_id}        — Befund-Historie eines Konzepts
-                                                                   (Ticket 85, Konzept-Detailseite)
+                                                                   (Konzept-Detailseite)
 GET   /api/testset-run-findings/by-testset-run/{testset_run_id} — jüngster Befund eines
-                                                                   Testset-Laufs + Gesamtzahl (Ticket 77/A)
+                                                                   Testset-Laufs + Gesamtzahl
 PATCH /api/testset-run-findings/{finding_id}/interpretation    — Deutung nachtragen
 
 Der Befund entsteht zweiphasig (Kontext+Soll beim Start, Ist-Werte beim Abschluss,
@@ -53,7 +53,7 @@ class TestSetRunFindingOut(BaseModel):
     """Ausgabe-Schema für einen Befund.
 
     Bewusst **kein** Verdict-Feld: kein `passed`, kein Gesamtscore, keine Ampel, kein
-    Sortier-Rang (Ticket 56, Anforderung 7). Die fünf Ist-Gruppen bleiben als JSON-Blöcke
+    Sortier-Rang (Anforderung 7). Die fünf Ist-Gruppen bleiben als JSON-Blöcke
     erhalten, wie sie `finding_aggregation.build_ist_groups` gebaut hat — die DSR steht
     darin immer zusammen mit `N` und `SR0` in einem Objekt, nie allein.
     """
@@ -160,7 +160,7 @@ def list_findings_for_iteration(iteration_id: int):
 
 @router.get('/by-concept/{concept_id}')
 def list_findings_for_concept(concept_id: int):
-    """Befund-Historie eines Konzepts (Ticket 85) — chronologisch, ohne Sortier-
+    """Befund-Historie eines Konzepts — chronologisch, ohne Sortier-
     oder Filteroption. Befunde überleben einen gelöschten TestSetRun (lose
     Referenz) und erscheinen weiterhin; ein Konzept ohne Befunde liefert eine
     leere Liste statt eines Fehlers."""
@@ -175,7 +175,7 @@ def list_findings_for_concept(concept_id: int):
 
 @router.get('/by-testset-run/{testset_run_id}')
 def get_finding_for_testset_run_route(testset_run_id: int):
-    """Jüngster Befund eines Testset-Laufs plus Gesamtzahl (Ticket 77/A).
+    """Jüngster Befund eines Testset-Laufs plus Gesamtzahl.
 
     `testset-run-start` gibt die Testset-Lauf-Nummer zurück, nicht die Befund-ID —
     dieser Endpunkt löst das serverseitig auf, statt den Umweg über

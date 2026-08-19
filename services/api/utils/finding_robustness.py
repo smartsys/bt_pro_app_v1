@@ -1,13 +1,13 @@
-"""Robustheits-Gruppe des Befunds: DSR mit N und SR0, Plateau, Streuung (Ticket 56).
+"""Robustheits-Gruppe des Befunds: DSR mit N und SR0, Plateau, Streuung.
 
 Drei Blöcke, die alle drei dieselbe Frage beantworten — „trägt der Kandidat oder ist
 er ein Zufallsfund?":
 
-* **Deflated Sharpe Ratio** aus der korrigierten Eigenrechnung (Ticket 54). Sie steht
+* **Deflated Sharpe Ratio** aus der korrigierten Eigenrechnung. Sie steht
   hier grundsätzlich zusammen mit der Rastergröße `N` und der Rauschlatte `SR0` in
-  **einem** Objekt. Eine DSR ohne die beiden ist nicht lesbar: bei 371.943
-  Kombinationen liegt die Latte bei annualisiert 2,80, während der beste je real
-  erreichte Sharpe 2,26 war. Genau deshalb wird die Zahl nirgends allein ausgewiesen.
+  **einem** Objekt. Eine DSR ohne die beiden ist nicht lesbar: bei grossen Rastern
+  steigt die Rauschlatte so weit, dass sie ueber real erreichbaren Sharpe-Werten
+  liegen kann. Genau deshalb wird die Zahl nirgends allein ausgewiesen.
 * **Plateau-Score der Nachbarschaft** über die vorhandene Serverlogik
   (`lookup_result_rows_by_params` / `get_run_param_steps`), also dieselbe Mechanik wie
   das Toolbox-Verb `result-lookup --summary --tolerance-steps`.
@@ -26,9 +26,9 @@ from user_data.utils.database.repository import lookup_result_rows_by_params
 from user_data.utils.metrics.deflated_sharpe import noise_floor_sr0
 
 # Grund für jedes Feld, das N_eff bräuchte. N_eff ist am Testset noch nicht ausgewiesen
-# (Ticket 56, Out of Scope — zurückgestellt bis zum Testset-Neuaufbau).
+# (Out of Scope — zurückgestellt bis zum Testset-Neuaufbau).
 N_EFF_MISSING_REASON = (
-    'N_eff ist am Testset nicht ausgewiesen (Ticket 56, ausdrücklich Out of Scope). '
+    'N_eff ist am Testset nicht ausgewiesen (ausdrücklich Out of Scope). '
     'Die Symbolzahl ist kein Ersatz: gemessen entsprechen vier Symbole rund zwei '
     'unabhängigen Tests.'
 )
@@ -88,7 +88,7 @@ def _sr0_for_run(conn: Connection, run_id: int, n_combinations: int) -> Dict[str
 
 
 def _dsr_for_results(conn: Connection, result_ids: List[int]) -> Dict[int, Optional[float]]:
-    """Liest die gespeicherte DSR mehrerer Results (Nachlauf aus Ticket 54)."""
+    """Liest die gespeicherte DSR mehrerer Results (Nachlauf)."""
     if not result_ids:
         return {}
     rows = conn.execute(

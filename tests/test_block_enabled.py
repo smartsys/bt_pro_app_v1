@@ -1,4 +1,4 @@
-"""Tests für Ticket 48: Block-enabled-Filter in evaluate_rules_native + Referenz-Validierung.
+"""Tests für Block-enabled-Filter in evaluate_rules_native + Referenz-Validierung.
 
 Prüft:
   1. Alle Entry-Blöcke deaktiviert → 0 Trades, kein ValueError

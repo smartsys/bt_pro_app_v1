@@ -1,4 +1,4 @@
-"""Metrik-Gruppen — die einzige Stelle, an der die Kennzahl-Zuordnung steht (Ticket 68).
+"""Metrik-Gruppen — die einzige Stelle, an der die Kennzahl-Zuordnung steht.
 
 Die 46 Kennzahl-Felder eines Results (`_extract_metrics` in
 `user_data/utils/database/repository.py`) sind hier in benannte Gruppen geteilt.
@@ -11,11 +11,11 @@ vervielfacht nur die Kombinatorik der Auswahl.
 
 **Pflichtgruppen sind in keiner Aufruf-Form abwählbar:**
 
-* `scope` ist die Selbstauskunft des Laufs (Ticket 60),
+* `scope` ist die Selbstauskunft des Laufs,
 * `returns` und `trades` sind das Basisergebnis samt Vergleichsanker und Trade-Floor,
 * `risk_ratios` liefert `sharpe_ratio`, `moments` liefert `skew`/`kurtosis` — zusammen
   mit `bar_count` aus `scope` sind das genau die Eingänge des Nachlaufs für die
-  Deflated Sharpe Ratio (`repository._calculate_deflated_sharpe`, Ticket 54). Wären
+  Deflated Sharpe Ratio (`repository._calculate_deflated_sharpe`). Wären
   sie abwählbar, fiele die Deflated Sharpe Ratio aus.
 
 Die 47. Spalte `deflated_sharpe_ratio` steht bewusst in keiner Gruppe: Sie entsteht
@@ -131,25 +131,21 @@ ALL_METRIC_FIELDS: tuple[str, ...] = tuple(
 # Unterhalb dieser Rastergröße rechnet `auto` voll, ab ihr nur noch `kern` — die drei
 # `tail_risk`-Kennzahlen entfallen dann, weil sie mit der Kombinationszahl skalieren.
 #
-# GEMESSEN am 13.08.2026 (Ticket 68, FETUSDT 4h, Container mit 18 CPUs, vier Worker).
-# Derselbe Lauf je einmal 'voll' und 'kern'; die Differenz ist der Preis der drei
-# Kennzahlen. Vollständige Messreihe und Herleitung:
+# Hergeleitet aus einer Laufzeit-Messreihe (derselbe Lauf je einmal 'voll' und 'kern';
+# die Differenz ist der Preis der drei Kennzahlen). Messreihe und Herleitung:
 # `documentation/knowledge/metriken-architektur.md`, Abschnitt 7.
-#
-#   allein          5.000: 274 s / 219 s -> 55 s   (20,1 % der Laufzeit)
-#                  10.000: 395 s / 312 s -> 83 s   (21,0 %)
-#                  25.000: 887 s / 698 s -> 189 s  (21,3 %)
-#   vier Läufe      5.000: 460 s / 288 s -> 172 s  (37,4 %)
 #
 # Zwei Befunde tragen die Zahl:
 #
 # 1. Die Kosten sind **linear** und der Anteil bleibt konstant — es gibt keinen Knick,
 #    an dem sich eine Schwelle ablesen ließe. Sie ist deshalb eine ausgesprochene
 #    Budget-Entscheidung, keine Bruchstelle der Messkurve.
-# 2. Unter Last verdreifacht sich der Aufpreis (3,1x), während der Rest des Laufs nur
-#    um 1,31x langsamer wird: Die Parallelisierung der drei Kennzahlen lebt davon,
-#    alle Kerne zu bekommen, und vier gleichzeitige Läufe nehmen sie ihr weg.
-#    Maßgeblich ist deshalb der Wert unter Last — rund 34 ms je Kombination.
+# 2. Unter Last steigt der Aufpreis deutlich stärker als der Rest des Laufs: Die
+#    Parallelisierung der drei Kennzahlen lebt davon, alle Kerne zu bekommen, und
+#    gleichzeitige Läufe nehmen sie ihr weg. Maßgeblich ist deshalb der Wert unter
+#    Last. Der konkrete Aufpreis hängt an der Kernzahl der Maschine — die Schwelle
+#    unten ist auf einer vielkernigen Entwicklungsmaschine gesetzt und passt auf
+#    kleinerer Hardware womöglich nicht.
 #
 # Budget: Was 'auto' ungefragt zusätzlich ausgibt, soll im Normalzustand der Maschine
 # (vier Worker) unter etwa drei Minuten bleiben. Das sind 5.000 Kombinationen; jede
@@ -260,7 +256,7 @@ def fields_for_groups(groups: Iterable[str]) -> tuple[str, ...]:
 def validate_metrics_selection(
     selection: Union[str, Iterable[str], None],
 ) -> Union[str, list[str], None]:
-    """Prüft eine `metrics`-Angabe aus einem Request-Body syntaktisch (Ticket 68).
+    """Prüft eine `metrics`-Angabe aus einem Request-Body syntaktisch.
 
     Läuft am Rand des Systems (API-Route), bevor irgendein Run angelegt wird. Anders
     als `resolve_metric_groups` braucht diese Prüfung keine Rastergröße: `"auto"`

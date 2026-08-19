@@ -2,7 +2,7 @@
 
 Liest ausschließlich die Index-Ränder aus der HDF5-Datei (erste und letzte Kerze)
 — ohne die OHLC-Werte zu laden. Grundlage der Plan-Validierung der
-Walk-Forward-Kette (Ticket 82): ein Fold-Fenster außerhalb der vorhandenen Daten
+Walk-Forward-Kette: ein Fold-Fenster außerhalb der vorhandenen Daten
 muss auffallen, bevor der erste Lauf startet.
 """
 

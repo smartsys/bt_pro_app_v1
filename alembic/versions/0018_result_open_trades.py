@@ -1,6 +1,6 @@
 """backtest_results.open_trades — am Fensterende offene Positionen
 
-Ticket 58: Kennzahlen laufen ausschließlich über das Handelsfenster start..end
+Kennzahlen laufen ausschließlich über das Handelsfenster start..end
 der BacktestConfig. Eine Position, die über `end` hinausläuft, wird zur
 Fenstergrenze marktbewertet und geht damit in total_return_pct und end_value
 ein, nicht aber in win_rate_pct und profit_factor (die rechnen über
@@ -9,7 +9,7 @@ total_trades - open_trades ist die Grundgesamtheit von Trefferquote und
 Profitfaktor.
 
 Bewusst nullable ohne Server-Default: NULL kennzeichnet Results, die vor
-Ticket 58 entstanden sind (spec_runner_version < 3.0.0) und deren Kennzahlen
+der Umstellung entstanden sind (spec_runner_version < 3.0.0) und deren Kennzahlen
 noch über das volle Datenfenster inklusive Vorlauf gerechnet wurden. Der
 Altbestand wird nicht nachgerechnet.
 

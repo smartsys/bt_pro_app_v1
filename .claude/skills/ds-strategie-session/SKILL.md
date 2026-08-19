@@ -52,8 +52,8 @@ konfiguriert — dann ohne Vault weiterarbeiten und das im Bericht ausweisen.
 
 > **WICHTIG — die Version ist eine reine Integer-Zahl, KEIN `v`-Präfix.** Iterations-Ordner
 > und Notiz heißen `iterations/<version>/<slug>-<version>.md`. Richtig:
-> `iterations/1/teststrategie-1.md`, `iterations/12/vwma-12.md`. **Falsch (gibt es nicht):**
-> `iterations/v1/...`, `vwma-v1.md`. Die App baut ihre Obsidian-Links exakt aus dieser
+> `iterations/1/teststrategie-1.md`, `iterations/12/teststrategie-12.md`. **Falsch (gibt es nicht):**
+> `iterations/v1/...`, `teststrategie-v1.md`. Die App baut ihre Obsidian-Links exakt aus dieser
 > Integer-Form — ein `v` im Pfad bricht den Link.
 
 ---

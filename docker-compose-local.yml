@@ -1,6 +1,6 @@
 name: bt_pro_app_v1
 
-# Besitzrechte in den Bind-Mounts (Ticket 81)
+# Besitzrechte in den Bind-Mounts
 # ------------------------------------------
 # Alle Container, die ./data/ohlc_data, ./user_data oder ./services beschreiben, laufen
 # hier als uid/gid 1000:1000 — also als der Host-Benutzer, dem das Projektverzeichnis
@@ -18,7 +18,7 @@ x-worker-base: &worker-base
   build:
     context: .
     dockerfile: services/api/Dockerfile
-    # GEÄNDERT (Ticket 88): Ausdrückliches Stage-Ziel. Das Dockerfile hat seitdem ein
+    # GEÄNDERT: Ausdrückliches Stage-Ziel. Das Dockerfile hat seitdem ein
     # zweites Stage "test"; ohne target würde Docker das letzte Stage bauen und pytest
     # ins Laufzeit-Image ziehen.
     target: runtime
@@ -46,7 +46,7 @@ x-worker-base: &worker-base
     VAULT_ROOT: /obsidian_vault
     EMBEDDING_BACKEND_URL: ${EMBEDDING_BACKEND_URL}
     # GEÄNDERT: Numba-Cache-Verzeichnis wie beim app-Dienst. Seit der Worker als
-    # uid 1000 läuft (Ticket 81), ist site-packages für ihn nicht mehr schreibbar;
+    # uid 1000 läuft, ist site-packages für ihn nicht mehr schreibbar;
     # ohne dieses Ziel bricht bereits `import vectorbtpro` mit
     # "cannot cache function ...: no locator available" ab und JEDER Backtest-Job
     # stirbt beim Import.
@@ -75,8 +75,8 @@ services:
     env_file:
       - .env
     environment:
-      # GEÄNDERT (Ticket 87): Numba-Cache-Verzeichnis wie beim app-Dienst. Seit der
-      # Container als uid 1000 läuft (Ticket 81), ist site-packages nicht mehr schreibbar;
+      # GEÄNDERT: Numba-Cache-Verzeichnis wie beim app-Dienst. Seit der
+      # Container als uid 1000 läuft, ist site-packages nicht mehr schreibbar;
       # ohne dieses Ziel bricht `import vectorbtpro` mit "cannot cache function ...:
       # no locator available" ab.
       NUMBA_CACHE_DIR: /tmp/numba_cache
@@ -92,7 +92,7 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
-      # GEÄNDERT (Ticket 88): siehe x-worker-base — Laufzeit-Stage ohne Test-Pakete.
+      # GEÄNDERT: siehe x-worker-base — Laufzeit-Stage ohne Test-Pakete.
       target: runtime
     container_name: frontend_bt_pro_v1
     restart: unless-stopped
@@ -119,7 +119,7 @@ services:
       PROJECT_ROOT: /app
       OBSIDIAN_VAULT_PATH: /obsidian_vault
       NUMBA_CACHE_DIR: /tmp/numba_cache
-      # GEÄNDERT (Ticket 100): Adressen für die Analyse-Screenshot-Route.
+      # GEÄNDERT: Adressen für die Analyse-Screenshot-Route.
       # RENDERER_BASE_URL — der Screenshot-Dienst im selben Netz (kein Port nach aussen).
       # APP_INTERNAL_BASE_URL — unter dieser Adresse ruft der Renderer die Analyse-Seite
       # auf; "localhost" wäre dort der Renderer-Container selbst.
@@ -169,7 +169,7 @@ services:
       - "python"
       - "services/api/recovery_oneshot.py"
 
-  # GEÄNDERT (Ticket 88): Test-Runner. Baut das Stage "test" desselben Dockerfiles und
+  # GEÄNDERT: Test-Runner. Baut das Stage "test" desselben Dockerfiles und
   # fährt damit pytest in genau der Umgebung, in der die App rechnet (gleiche Python-
   # und vectorbtpro-Version). Läuft nie bei `up` mit — das Profil "test" schaltet den
   # Dienst nur für den ausdrücklichen Aufruf frei:
@@ -236,7 +236,7 @@ services:
     networks:
       - bt_pro_network
 
-  # GEÄNDERT (Ticket 100): Screenshot-Renderer für die Analyse-Seite.
+  # GEÄNDERT: Screenshot-Renderer für die Analyse-Seite.
   # Bewusst nur im lokalen Stack: Screenshots entstehen beim Entwickeln am
   # Arbeitsplatz; die übrigen Umgebungen laufen ohne Chromium-Image.
   # Kein Port-Mapping: Der Dienst ist ausschließlich über bt_pro_network erreichbar und

@@ -1,4 +1,4 @@
-"""Gleichheits-Test: Einzellauf- gegen Multiparameterlauf-Kennzahlen (Ticket 64).
+"""Gleichheits-Test: Einzellauf- gegen Multiparameterlauf-Kennzahlen.
 
 Rechnet **denselben** Backtest zweimal — einmal als einzelne Kombination (das,
 was ein Einzellauf und der Recompute rechnen) und einmal als Spalte 0 eines
@@ -7,7 +7,7 @@ vergleicht jede Kennzahl.
 
 **War beim ersten Lauf rot, mit Absicht.** Er hat die Feldmengen-Lücke aus
 `documentation/knowledge/metriken-architektur.md` sichtbar gemacht (34 gegen 24
-Felder, 18 Befunde, davon keine einzige Wertabweichung), bevor Ticket 64
+Felder, 18 Befunde, davon keine einzige Wertabweichung), bevor die Umstellung
 Anforderung 3 sie mit einer gemeinsamen `_extract_metrics`-Funktion geschlossen
 hat. Das Protokoll des ersten Laufs steht im Abnahme-Vermerk des Tickets.
 
@@ -52,7 +52,7 @@ def _build_portfolio(close: pd.Series, sweep: bool):
     — Spalte 0 (fees=0.0) ist dann exakt dieselbe Kombination wie das
     Einzel-Kombinations-Portfolio (`sweep=False`, fees defaultet ebenfalls auf 0.0).
     Dasselbe Muster wie `_portfolio_with_long_and_short_entries` in
-    `tests/test_trading_window_slice.py` (Ticket 58/60).
+    `tests/test_trading_window_slice.py`.
     """
     start, end = build_trading_window(_config())
     idx = close.index
@@ -118,7 +118,7 @@ def test_edge_ratio_equal_for_every_column_of_a_sweep():
     """Die edge_ratio jeder Spalte stimmt mit dem einzeln gerechneten Portfolio überein.
 
     Pinnt einen gemessenen Formfehler in VBT, der erst auffiel, als die edge_ratio
-    mit Ticket 64 in jeden Lauf wanderte: `Trades.get_edge_ratio` baut ohne
+    mit der Umstellung in jeden Lauf wanderte: `Trades.get_edge_ratio` baut ohne
     ausdrückliche Volatilität einen ATR über
     `atr_nb(high=to_2d_array(self._high), ..., close=to_2d_array(self._close))`, und
     `atr_nb` greift dort mit `high[:, col]` unmittelbar auf die Spalte zu, statt sie
@@ -216,7 +216,7 @@ def test_same_backtest_single_vs_multi_run_all_metrics_equal():
     und einmal als Spalte 0 eines Zwei-Kombinationen-Sweeps (Multiparameterlauf,
     fees=0.0 wie im Einzellauf) und vergleicht jedes Feld beider Extraktionspfade.
 
-    **Ohne Ausnahme.** Bis Ticket 54 war die `deflated_sharpe_ratio` hier
+    **Ohne Ausnahme.** Bis dahin war die `deflated_sharpe_ratio` hier
     ausgenommen: Sie ist rasterweit und musste für N=1 und N=2 verschieden
     ausfallen. Seit sie nicht mehr aus `_extract_metrics` kommt, sondern als
     Nachlauf über den ganzen Lauf entsteht, ist die Ausnahme gegenstandslos — die
@@ -243,7 +243,7 @@ def test_same_backtest_single_vs_multi_run_all_metrics_equal():
 
 
 def test_same_backtest_single_vs_multi_run_equal_under_every_metric_selection():
-    """Auch mit Metrik-Auswahl bleiben Einzel- und Multiparameterlauf gleich (Ticket 68).
+    """Auch mit Metrik-Auswahl bleiben Einzel- und Multiparameterlauf gleich.
 
     Die Auswahl darf die Gleichheit nicht wieder aufmachen: Sie entscheidet, **ob** ein
     Abschnitt gerechnet wird, nie **wie**. Geprüft über alle drei Formen, in denen eine

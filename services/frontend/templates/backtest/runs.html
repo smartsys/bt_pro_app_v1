@@ -128,10 +128,10 @@ document.addEventListener("DOMContentLoaded", function() {
   function formatDetails(data) {
     var val = data.remarks || '';
     var escaped = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // GEÄNDERT: Ticket 15 Code-Sweep — API liefert _json-Suffix
+    // GEÄNDERT: Code-Sweep — API liefert _json-Suffix
     var btConfig = data.backtest_config_json ? JSON.stringify(data.backtest_config_json) : '-';
     var indConfig = data.indicators_config_json ? JSON.stringify(data.indicators_config_json) : '-';
-    // GEÄNDERT: Ticket 34 — Fehlermeldung fehlgeschlagener Runs in der Child-Row anzeigen
+    // GEÄNDERT: Fehlermeldung fehlgeschlagener Runs in der Child-Row anzeigen
     var errBox = '';
     if (data.status === 'failed' && data.error_message) {
       var errEsc = String(data.error_message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -153,7 +153,7 @@ document.addEventListener("DOMContentLoaded", function() {
       '<div class="card-body py-2" style="word-break:break-all;font-size:1.1rem;">' + indConfig + '</div></div>';
   }
 
-  /* GEÄNDERT: Ticket 60 — Text für ein title-Attribut escapen (usability_note/warmup_note) */
+  /* GEÄNDERT: Text für ein title-Attribut escapen (usability_note/warmup_note) */
   function escAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -295,7 +295,7 @@ document.addEventListener("DOMContentLoaded", function() {
           if (data === 'running' && row.total_chunks) {
             badge += ' <small class="text-muted">Chunk ' + row.current_chunk + '/' + row.total_chunks + '</small>';
           }
-          // GEÄNDERT: Ticket 60 — Selbstauskunft des Laufs: ein Lauf ohne Signale oder mit
+          // GEÄNDERT: Selbstauskunft des Laufs: ein Lauf ohne Signale oder mit
           // unzureichender Historie ist gekennzeichnet, nicht ausgeblendet — die Results
           // bleiben in jedem Fall vollständig sichtbar. Ausreichend verwertbare Läufe
           // (usability === 'usable') tragen bewusst kein zusätzliches Badge.
@@ -375,7 +375,7 @@ document.addEventListener("DOMContentLoaded", function() {
         orderable: false,
         render: function(data, type, row) {
           /* Fortsetzen nur anbieten, wenn es etwas fortzusetzen gibt: abgebrochener
-             Lauf mit bereits gespeicherten Chunks (Ticket 71). */
+             Lauf mit bereits gespeicherten Chunks. */
           var resumeBtn = '';
           if (row.status === 'failed' && row.completed_chunks > 0) {
             resumeBtn = '<button class="btn btn-sm btn-outline-success btn-resume-run me-1" data-id="' + data + '" title="Run fortsetzen (' + row.completed_chunks + ' Chunk(s) bereits gespeichert)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 4v16l13 -8z"/></svg></button>';
@@ -649,7 +649,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
   });
 
-  /* Run fortsetzen (Ticket 71) — behält die Teilergebnisse, rechnet ab dem
+  /* Run fortsetzen — behält die Teilergebnisse, rechnet ab dem
      ersten noch nicht gespeicherten Chunk weiter. */
   document.getElementById("runs-table").addEventListener("click", function(e) {
     var btn = e.target.closest(".btn-resume-run");

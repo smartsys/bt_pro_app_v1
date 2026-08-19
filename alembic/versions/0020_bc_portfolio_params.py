@@ -1,8 +1,8 @@
 """backtest_configs.slippage/stop_exit_price/stop_order_type ergänzen
 
-Ticket 59: Drei Portfolio-Parameter, die bisher entweder gar nicht existierten
-(`slippage`, Ticket 55) oder nur transient im Playground-Formular lebten
-(`stop_exit_price`/`stop_order_type`, Ticket 52), werden reguläre Spalten der
+Drei Portfolio-Parameter, die bisher entweder gar nicht existierten
+(`slippage`) oder nur transient im Playground-Formular lebten
+(`stop_exit_price`/`stop_order_type`), werden reguläre Spalten der
 BacktestConfig — persistiert, in jedem Rechenpfad wirksam.
 
 - `slippage`: Float, NOT NULL, Default `0.0` — entspricht dem bisherigen

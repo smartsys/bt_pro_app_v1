@@ -34,7 +34,7 @@
 <!-- Toast-Container -->
 <div id="toast-container" style="position:fixed;top:1.5rem;right:1.5rem;z-index:9999;min-width:280px;"></div>
 
-<!-- GEÄNDERT: Ticket 33 — Bestätigungs-Modal für Knowledge-DB-Reset (Tabler-Modal) -->
+<!-- GEÄNDERT: Bestätigungs-Modal für Knowledge-DB-Reset (Tabler-Modal) -->
 <div class="modal modal-blur fade" id="modal-reset" tabindex="-1" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
     <div class="modal-content">
@@ -231,7 +231,7 @@ document.addEventListener("DOMContentLoaded", function() {
     table.ajax.reload(null, false);
   });
 
-  // GEÄNDERT: Ticket 33 — Reset-Button öffnet Bestätigung-Modal (Tabler-Modal)
+  // GEÄNDERT: Reset-Button öffnet Bestätigung-Modal (Tabler-Modal)
   var resetModal = new tabler.Modal(document.getElementById('modal-reset'));
 
   document.getElementById('btn-reset').addEventListener('click', function() {

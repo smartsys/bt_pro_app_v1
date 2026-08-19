@@ -13,14 +13,14 @@ Ein Result trägt **46 Kennzahl-Felder** plus die 47. Spalte `deflated_sharpe_ra
 - Die 46 entstehen in **einer** Funktion: `_extract_metrics(portfolios, columns,
   backtest_config, groups=None)` in `user_data/utils/database/repository.py` — derselbe Weg
   für Einzellauf, Multiparameterlauf und Recompute. Es gibt kein `metrics_level` und keine
-  Verzweigung nach Rastergröße mehr (Ticket 64).
+  Verzweigung nach Rastergröße mehr.
 - Die 47. Spalte `deflated_sharpe_ratio` ist **rasterweit** und entsteht als Nachlauf über
   den ganzen Lauf (`_calculate_deflated_sharpe`), nachdem alle Results geschrieben sind.
   Sie steht in **keiner** Gruppe und läuft bei jeder Auswahl mit.
 
 Maßgeblich ist immer der Code, nicht diese Tabelle.
 
-## Die Auswahl beim Run-Start (Ticket 68)
+## Die Auswahl beim Run-Start
 
 Beim Start eines Laufs ist wählbar, welche Kennzahl-Gruppen gerechnet werden. Die Auswahl
 lebt **am Lauf**, nicht an der BacktestConfig: dieselbe Config dient mal der Grobsuche, mal
@@ -153,7 +153,7 @@ Die Zuordnung steht als Single Source in `user_data/utils/metrics/metric_sets.py
 | DB-Feld | Herkunft | Beschreibung |
 |---|---|---|
 | `skew` | `scipy.stats.skew(returns, bias=True)` | Schiefe der Renditeverteilung; Eingang der Deflated Sharpe Ratio |
-| `kurtosis` | `scipy.stats.kurtosis(returns, bias=True, fisher=False)` | **Rohe** Wölbung (Normalverteilung rund 3), nicht die Excess-Wölbung — die Formel der Deflated Sharpe Ratio erwartet die rohe (Ticket 54) |
+| `kurtosis` | `scipy.stats.kurtosis(returns, bias=True, fisher=False)` | **Rohe** Wölbung (Normalverteilung rund 3), nicht die Excess-Wölbung — die Formel der Deflated Sharpe Ratio erwartet die rohe |
 
 > Beide werden auf der Renditematrix mit `NaN -> 0` gerechnet, exakt so, wie VBT es intern
 > für die DSR tut. Dass sie nie gespeichert wurden, ist der Grund, warum der Altbestand die
@@ -198,7 +198,7 @@ schon Arbeit und entsteht nur, wenn `trade_quality` oder `sqn_edge` aktiv ist.
 > die Spalte zu. In diesem System trägt ein Portfolio aber genau **eine** OHLC-Spalte für
 > beliebig viele Kombinationen — ab Spalte 1 liest numba versetzt weiter und die
 > `edge_ratio` wird falsch. Spalte 0 blieb dabei immer richtig; ein Vergleich, der nur die
-> erste Spalte prüft, sieht den Fehler nie (Ticket 64).
+> erste Spalte prüft, sieht den Fehler nie.
 
 ### `tail_risk` — Extremrisiko (abwählbar, die drei teuren)
 
@@ -227,7 +227,7 @@ diese drei lässt `kern` weg, und genau sie überspringt `auto` ab der Schwelle.
 |---|---|---|
 | `deflated_sharpe_ratio` | `_calculate_deflated_sharpe(conn, run_id)` | Für Mehrfachtestung korrigierter Sharpe — läuft **nach** allen Chunks über das ganze Raster |
 
-> **Seit Ticket 54 (13.08.2026) nicht mehr aus VBT.** `ReturnsAccessor.deflated_sharpe_ratio`
+> **Seit der Umstellung (13.08.2026) nicht mehr aus VBT.** `ReturnsAccessor.deflated_sharpe_ratio`
 > trug zwei Formelfehler (der bewertete Kandidat kürzte sich aus dem Zähler heraus, und im
 > Nenner stand die Excess- statt der rohen Wölbung). Die Kennzahl ist außerdem **rasterweit**
 > — ihr Wert hängt davon ab, wie viele andere Kombinationen mitgelaufen sind — und gehört

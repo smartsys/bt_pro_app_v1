@@ -1,4 +1,4 @@
-"""Tests der Toolbox-Verben zur Walk-Forward-Fold-Kette (Ticket 82, Anforderung 3).
+"""Tests der Toolbox-Verben zur Walk-Forward-Fold-Kette (Anforderung 3).
 
 Geprüft werden `walk_forward_chain_start`, `walk_forward_chain_read`,
 `walk_forward_chain_list` und die Ausgabe-Helfer aus

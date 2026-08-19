@@ -5,7 +5,7 @@ GET /testsets          — TestSets Übersicht
 GET /testsets/new      — Neues TestSet anlegen (gleiche Maske wie Bearbeiten)
 GET /testsets/{id}     — TestSet Detail/Bearbeiten
 """
-# GEÄNDERT: Ticket 13 — Naming-Cleanup auf views_testsets / Prefix /testsets
+# GEÄNDERT: Naming-Cleanup auf views_testsets / Prefix /testsets
 
 from typing import Any, Dict, List
 
@@ -88,7 +88,7 @@ def testset_detail_page(request: Request, testset_id: int) -> HTMLResponse:
             'id': ts.id,
             'name': ts.name,
             'description': ts.description,
-            # GEÄNDERT: Ticket 15 Code-Sweep — _json-Suffix
+            # GEÄNDERT: Code-Sweep — _json-Suffix
             'backtest_config_ids': ts.backtest_config_ids_json,
             'leaderboard_enabled': ts.leaderboard_enabled,
             'created_at': ts.created_at.strftime('%Y-%m-%d %H:%M') if ts.created_at else '',

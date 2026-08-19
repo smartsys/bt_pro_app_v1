@@ -1,4 +1,4 @@
-"""Artefakt-Routen der Walk-Forward-Fold-Kette (Ticket 82)
+"""Artefakt-Routen der Walk-Forward-Fold-Kette
 
 POST /api/backtest/walk-forward-chains            — Kette mit vollem Plan anlegen
 POST /api/backtest/walk-forward-chains/{id}/folds — abgeschlossenen Fold anhängen

@@ -1,13 +1,12 @@
 """Deflated Sharpe Ratio (DSR) nach Bailey/López de Prado — korrigierte Eigenrechnung.
 
 Reine Rechenlogik auf numpy/scipy — keine FastAPI-, DB- oder VBT-Abhängigkeit, damit
-sie eigenständig testbar bleibt und aus jedem Worker-Kontext heraus aufrufbar ist
-(Ticket 54). VBTs `ReturnsAccessor.deflated_sharpe_ratio` wird nicht mehr verwendet:
+sie eigenständig testbar bleibt und aus jedem Worker-Kontext heraus aufrufbar ist. VBTs `ReturnsAccessor.deflated_sharpe_ratio` wird nicht mehr verwendet:
 ihr Quelltext enthält zwei Formelfehler (siehe unten) und ist zudem je Block/Spalte
 verdrahtet, obwohl die DSR eine rasterweite Kennzahl ist. Der VBT-Quelltext selbst
 wird nicht angefasst — er ist eine installierte Fremdbibliothek.
 
-Korrigierte Formel (Ticket 54, Anforderung 1):
+Korrigierte Formel (Anforderung 1):
 
     SR0 = sqrt(var_sharpe) * ((1-γ)·Φ⁻¹(1 - 1/N) + γ·Φ⁻¹(1 - 1/(N·e)))
     DSR = Φ( (SR - SR0)·sqrt(T-1) / sqrt(1 - skew·SR + ((kurt_roh - 1)/4)·SR²) )
@@ -53,7 +52,7 @@ def noise_floor_sr0(var_sharpe: float, n: int) -> float:
     """Rauschlatte SR0 eines Rasters — der Sharpe, den reines Rauschen erwarten lässt.
 
     Eigene Funktion, weil die Latte auch **ohne** die DSR gebraucht wird: eine DSR
-    ohne `N` und `SR0` daneben ist nicht lesbar (Ticket 56), und der Befund eines
+    ohne `N` und `SR0` daneben ist nicht lesbar, und der Befund eines
     Testset-Laufs weist die drei Werte deshalb gemeinsam aus. Damit es nur eine
     Definition der Latte gibt, rechnet `deflated_sharpe_ratio` sie über genau diese
     Funktion.
@@ -112,7 +111,7 @@ def deflated_sharpe_ratio(
         `NaN`, wenn `n <= 1` (siehe unten) oder wenn die Eingaben selbst schon `NaN`
         enthalten (NaN propagiert durch alle Rechenschritte).
 
-    Randfälle (Anforderung 7 aus Ticket 54 — kommentiert, kein stummer Auffang):
+    Randfälle (Anforderung 7 — kommentiert, kein stummer Auffang):
         - `n <= 1`: Kein Mehrfachvergleich möglich. `Φ⁻¹(1 - 1/n)` würde für `n = 1`
           `Φ⁻¹(0) = -inf` liefern und die Formel unbrauchbar machen. Die Kennzahl ist in
           diesem Fall fachlich nicht definiert (es gibt nichts, wogegen der Kandidat

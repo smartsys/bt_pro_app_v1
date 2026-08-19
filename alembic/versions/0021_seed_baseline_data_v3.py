@@ -3,13 +3,13 @@
 Übernimmt den Grundausstattungs-Load von ``0009_seed_baseline_data_at_end``
 (dort jetzt No-op, siehe dortiger Docstring) ans neue Kettenende. Lädt die
 neutrale Grundausstattung, die jede Neuinstallation von Anfang an mitbringen
-soll: alle ``backtest_configs`` (inkl. der in Ticket 59 ergänzten Spalten
+soll: alle ``backtest_configs`` (inkl. der ergänzten Spalten
 ``slippage``/``stop_exit_price``/``stop_order_type``), alle ``testsets`` sowie
 die Demo-Strategie (``strategy_concepts`` id 1 "teststrategie",
 ``strategy_iterations`` id 1, ``indicator_configs`` id 1+2). Keine privaten
 Strategien, Runs oder Leaderboard-Einträge.
 
-Grund (Ticket 59): ``0020_bc_portfolio_params`` fügt drei Spalten zu
+Grund: ``0020_bc_portfolio_params`` fügt drei Spalten zu
 ``backtest_configs`` hinzu - einer Baseline-Tabelle. Der Load muss am ECHTEN
 Ende der Schema-Kette laufen, damit das SQL alle Spalten trägt.
 

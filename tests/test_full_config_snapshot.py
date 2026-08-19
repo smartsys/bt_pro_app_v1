@@ -1,4 +1,4 @@
-"""Ticket 41 — Unit-Tests für full_config_snapshot_json in BacktestResult.
+"""Unit-Tests für full_config_snapshot_json in BacktestResult.
 
 Prüft:
 1. Snapshot-Inhalt nach save_strategy_results: alle drei Teile inkl. Stops
@@ -78,7 +78,7 @@ def test_snapshot_backtest_config_fields():
     assert bc['timeframe'] == '4h'
     assert bc['start'] == '2022-01-01'
     assert bc['end'] == '2023-01-01'
-    # Kritisch für Reproduktion (Ticket 43)
+    # Kritisch für Reproduktion
     assert bc['ohlc_start'] == '2021-12-01'
     assert bc['ohlc_end'] == '2023-01-31'
     # Sizing

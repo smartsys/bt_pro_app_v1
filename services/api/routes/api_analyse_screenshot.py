@@ -1,10 +1,10 @@
 """
-Analyse-Screenshot (Ticket 100)
+Analyse-Screenshot
 
 GET /api/backtest/runs/{run_id}/analyse/screenshot — Vollseiten-PNG der Analyse-Seite.
 
 Die Route baut aus den Parametern die Analyse-URL (dieselben Query-Parameter, die die Seite
-seit Ticket 99 liest), lässt den Renderer-Dienst die echte Seite fotografieren und gibt das
+seit der Umstellung liest), lässt den Renderer-Dienst die echte Seite fotografieren und gibt das
 PNG als ``image/png`` zurück. Fehler des Renderers — Zeitüberschreitung oder ein von der
 Seite gemeldeter Grund (``window.__analyseError``) — werden als Fehlerantwort mit
 Klartext-Grund durchgereicht, nie als leeres oder halbes Bild.

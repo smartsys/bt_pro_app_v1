@@ -1,6 +1,6 @@
 """
 Test: Leerer ``metric``-Query-Parameter fällt in der Analyse-Screenshot-Route auf die
-Standard-Metrik zurück (Ticket 100, Nachtrag).
+Standard-Metrik zurück (Nachtrag).
 
 ``metric=`` ist ein gesetzter leerer String, nicht ein fehlender Parameter — der
 Query-Default von FastAPI greift dann nicht. Ohne Normalisierung landet der leere Wert

@@ -98,7 +98,7 @@
             <label class="form-label">Beschreibung</label>
             <textarea class="form-control" id="cfg-description" rows="3">{{ config.description if config and config.description else '' }}</textarea>
           </div>
-          <!-- GEÄNDERT: Ticket 22 — Lose Verknüpfung zu Strategy-Concept und Iteration -->
+          <!-- GEÄNDERT: Lose Verknüpfung zu Strategy-Concept und Iteration -->
           <div class="mb-3">
             <label class="form-label">Konzept (optional)</label>
             <select class="form-select" id="cfg-strategy-concept">
@@ -399,7 +399,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
-  /* GEÄNDERT: Ticket 22 — Concept/Iteration-Dropdowns (lose Verknüpfung) */
+  /* GEÄNDERT: Concept/Iteration-Dropdowns (lose Verknüpfung) */
   var conceptSel = document.getElementById("cfg-strategy-concept");
   var iterationSel = document.getElementById("cfg-strategy-iteration");
   var preselectConcept = document.getElementById("cfg-preselect-concept").value;
@@ -1064,7 +1064,7 @@ document.addEventListener("DOMContentLoaded", function() {
       description: document.getElementById("cfg-description").value || null,
       config_json: JSON.parse(jsonField.value),
       is_default: document.getElementById("cfg-is-default").checked ? 1 : 0,
-      // GEÄNDERT: Ticket 22 — lose Verknüpfung Concept/Iteration
+      // GEÄNDERT: lose Verknüpfung Concept/Iteration
       strategy_concept_id: conceptVal ? parseInt(conceptVal) : null,
       strategy_iteration_id: iterationVal ? parseInt(iterationVal) : null,
     };

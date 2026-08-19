@@ -1,8 +1,8 @@
-"""Gesamtbewertung einer Walk-Forward-Fold-Kette (Ticket 82).
+"""Gesamtbewertung einer Walk-Forward-Fold-Kette.
 
 Die Rechnung lebt **einmal** und **serverseitig** — hier. Weder die Toolbox noch
 eine Auswertung daneben rechnet sie nach: eine zweite Kopie würde unbemerkt
-auseinanderlaufen (Drift-Warnung aus den Ticket-56-Notizen).
+auseinanderlaufen (Drift-Warnung aus den Notizen).
 
 Grundlage sind die balkengenauen Kapitalkurven der Testfenster-Läufe
 (``backtest_result_equity``, entsteht beim Recompute eines

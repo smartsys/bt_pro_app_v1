@@ -19,7 +19,7 @@
 <div class="row justify-content-center">
   <div class="col-md-8">
 
-    <!-- GEÄNDERT: Tab-Navigation Einzel-Lauf / TestSet-Lauf (Ticket 05) -->
+    <!-- GEÄNDERT: Tab-Navigation Einzel-Lauf / TestSet-Lauf -->
     <ul class="nav nav-tabs mb-3" id="start-tabs">
       <li class="nav-item">
         <a class="nav-link active" id="tab-single" href="#" data-tab="single">Einzel-Lauf</a>
@@ -42,7 +42,7 @@
             <a href="/config/strategy-concepts" class="btn btn-sm btn-ghost-secondary">Verwalten</a>
           </div>
         </div>
-        <!-- GEÄNDERT: Ticket 11 — zweistufiges Concept/Iteration-Dropdown -->
+        <!-- GEÄNDERT: zweistufiges Concept/Iteration-Dropdown -->
         <div class="card-body">
           <div class="mb-2">
             <label class="form-label small mb-1">Konzept</label>
@@ -127,7 +127,7 @@
     </div><!-- /panel-single -->
 
     <!-- ================================================================== -->
-    <!-- Panel: TestSet-Lauf (GEÄNDERT: Ticket 05)                          -->
+    <!-- Panel: TestSet-Lauf (GEÄNDERT)                          -->
     <!-- ================================================================== -->
     <div id="panel-testset" style="display:none;">
 
@@ -238,7 +238,7 @@ document.addEventListener("DOMContentLoaded", function() {
   // Einzel-Lauf
   // =========================================================================
   var selBt = document.getElementById("sel-backtest-config");
-  // GEÄNDERT: Ticket 11 — zweistufiges Concept/Iteration-Dropdown
+  // GEÄNDERT: zweistufiges Concept/Iteration-Dropdown
   var selConcept = document.getElementById("sel-concept");
   var selIteration = document.getElementById("sel-iteration");
   var selInd = document.getElementById("sel-indicator-config");
@@ -293,7 +293,7 @@ document.addEventListener("DOMContentLoaded", function() {
       updateStartButton();
     });
 
-  /* GEÄNDERT: Ticket 22 — Label "Name — Concept/Iteration" + serverseitige Sortierung
+  /* GEÄNDERT: Label "Name — Concept/Iteration" + serverseitige Sortierung
      nach optional gewähltem Concept/Iteration. */
   function _buildIndLabel(c) {
     // GEÄNDERT: ID immer zuerst (ohne Raute), dann Name
@@ -358,7 +358,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("bt-period").textContent = c.start + ' - ' + c.end;
     document.getElementById("bt-size").textContent = c.size + ' (' + c.size_type + ')';
     document.getElementById("bt-fees").textContent = c.fees;
-    // GEÄNDERT: Ticket 59 — Slippage/Stop-Felder analog Fees; NULL = „VBT-Default", nie leer/0
+    // GEÄNDERT: Slippage/Stop-Felder analog Fees; NULL = „VBT-Default", nie leer/0
     document.getElementById("bt-slippage").textContent = c.slippage;
     document.getElementById("bt-stop-exit-price").textContent = c.stop_exit_price || 'VBT-Default';
     document.getElementById("bt-stop-order-type").textContent = c.stop_order_type || 'VBT-Default';
@@ -473,7 +473,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   selConcept.addEventListener("change", function() {
     loadIterations(selConcept.value);
-    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept neu sortieren
+    // GEÄNDERT: Indicator-Configs nach Concept neu sortieren
     loadIndConfigs(selConcept.value || null, null);
   });
 
@@ -484,7 +484,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var iterations = iterationsCache[conceptId] || [];
     var iteration = iterations.find(function(it) { return it.id == itId; });
     showStrategyDetails(concept, iteration);
-    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept+Iteration neu sortieren
+    // GEÄNDERT: Indicator-Configs nach Concept+Iteration neu sortieren
     loadIndConfigs(conceptId || null, itId || null);
     updateStartButton();
   });
@@ -501,7 +501,7 @@ document.addEventListener("DOMContentLoaded", function() {
     btnStart.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Wird gestartet...';
     statusEl.innerHTML = '';
 
-    // GEÄNDERT: Ticket 11 — iteration_id statt strategy_config_id
+    // GEÄNDERT: iteration_id statt strategy_config_id
     fetch('/api/backtest/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -548,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function() {
   var tsIterationsCache = {};  // concept_id -> iterations[]
 
   function _fillTsIndicators(configs) {
-    // GEÄNDERT: Ticket 22 — Label "Name — Concept/Iteration", vorherige Auswahl beibehalten
+    // GEÄNDERT: Label "Name — Concept/Iteration", vorherige Auswahl beibehalten
     var prev = tsSelIndicator.value;
     tsSelIndicator.innerHTML = '<option value="">-- Indicator-Config wählen --</option>';
     configs.forEach(function(c) {
@@ -564,7 +564,7 @@ document.addEventListener("DOMContentLoaded", function() {
     _updateTsStartButton();
   }
 
-  // GEÄNDERT: Ticket 22 — TestSet-eigener Re-Fetch nach Concept/Iteration
+  // GEÄNDERT: TestSet-eigener Re-Fetch nach Concept/Iteration
   function loadTsIndConfigs(conceptId, iterationId) {
     var qs = [];
     if (conceptId) qs.push('concept_id=' + encodeURIComponent(conceptId));
@@ -703,7 +703,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   tsSelConcept.addEventListener('change', function() {
     _loadTsIterations(tsSelConcept.value);
-    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept neu sortieren
+    // GEÄNDERT: Indicator-Configs nach Concept neu sortieren
     loadTsIndConfigs(tsSelConcept.value || null, null);
   });
 
@@ -714,7 +714,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var iterations = tsIterationsCache[conceptId] || [];
     var iteration = iterations.find(function(it) { return it.id == itId; });
     _showTsStrategyDetails(concept, iteration);
-    // GEÄNDERT: Ticket 22 — Indicator-Configs nach Concept+Iteration neu sortieren
+    // GEÄNDERT: Indicator-Configs nach Concept+Iteration neu sortieren
     loadTsIndConfigs(conceptId || null, itId || null);
     _updateTsStartButton();
   });

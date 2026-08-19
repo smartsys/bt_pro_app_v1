@@ -8,7 +8,7 @@
   .page-body { padding-top: 0; margin-top: 0.5rem; }
   #chartMain { width: 100%; height: 400px; }
   .subplot-chart { width: 100%; height: 160px; border-top: 1px solid rgba(128,128,128,0.25); }
-  /* GEÄNDERT: Ticket 46 — Short-Blöcke optisch als Short-Position kennzeichnen */
+  /* GEÄNDERT: Short-Blöcke optisch als Short-Position kennzeichnen */
   .cp-rule-block--short { border-left: 3px solid #d63939 !important; background: rgba(214, 57, 57, 0.08); }
   /* GEÄNDERT: Indikator-Konfig-Dropdown — Zeile zeigt nur den Namen; Beschreibung als schwebender Tooltip (verschiebt nichts) */
   #cpIndCfgTip {
@@ -484,7 +484,7 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
-<!-- GEÄNDERT: Ticket 17 — gemeinsame Result-Module einbinden -->
+<!-- GEÄNDERT: gemeinsame Result-Module einbinden -->
 <script src="/static/js/result/tabs.js"></script>
 <script src="/static/js/result/overlay.js"></script>
 <script>
@@ -946,7 +946,7 @@
     return state.catalog;
   }
 
-  // GEÄNDERT: Ticket 15 — Lookup im Katalog (paramsMeta/inputNames/outputNames werden beim Setup-Laden aus dem Katalog rekonstruiert)
+  // GEÄNDERT: Lookup im Katalog (paramsMeta/inputNames/outputNames werden beim Setup-Laden aus dem Katalog rekonstruiert)
   // GEÄNDERT: Toleranter Lookup — Legacy-Configs speichern teils nur den Kurznamen
   //   ohne Prefix (z.B. 'supertrend' statt 'vbt:SUPERTREND'). Sonst schlägt der
   //   exakte Vergleich fehl → paramsMeta/outputNames leer → Parameter und Output-
@@ -1587,7 +1587,7 @@
         if (ind.chartVisible) renderIndRespectingTf(ind);
       };
     });
-    // GEÄNDERT: Ticket 48 — logik-wirksamer enabled-Schalter; invalidateLiteResult direkt verdrahtet
+    // GEÄNDERT: logik-wirksamer enabled-Schalter; invalidateLiteResult direkt verdrahtet
     // (liegt bewusst außerhalb cp-ind-advanced-body, damit der Invalidierungs-Listener greift)
     panel.querySelectorAll('[data-ind-enabled]').forEach(inp => {
       inp.onchange = () => {
@@ -2029,7 +2029,7 @@
       color: nextColor(),
       plot_type: meta.plot_type || 'subplot',
       chartVisible: true,
-      // GEÄNDERT: Ticket 48 — enabled: true als State-Default beim Anlegen
+      // GEÄNDERT: enabled: true als State-Default beim Anlegen
       enabled: true,
       outputs: null,
     });
@@ -2040,7 +2040,7 @@
 
   // ========= Rules (disjunktive Normalform: Block intern UND, Blöcke ODER) =========
   function defaultRules() {
-    // GEÄNDERT: Ticket 48 — enabled: true explizit am Block; kein Auto-Leer-Exit-Block (B).
+    // GEÄNDERT: enabled: true explizit am Block; kein Auto-Leer-Exit-Block (B).
     // Ein leerer Entry-Block ist vorgemerkt, damit "+ Bedingung" sofort verfügbar ist.
     return { entry: { blocks: [{ conditions: [], enabled: true }] }, exit: null };
   }
@@ -2048,7 +2048,7 @@
     return { lhs: 'close', lhs_shift: 0, op: '<', rhs: 0, rhs_shift: 0 };
   }
   // Liest eine Rule-Gruppe ({blocks:[...]}) aus einem geladenen Objekt; fehlt sie, leere Blockliste.
-  // GEÄNDERT: Ticket 48 — block.enabled laden (Default true); Alt-Specs ohne Feld bleiben bit-genau.
+  // GEÄNDERT: block.enabled laden (Default true); Alt-Specs ohne Feld bleiben bit-genau.
   function _loadRuleGroup(grp) {
     if (!grp || !Array.isArray(grp.blocks)) return { blocks: [] };
     return {
@@ -2065,13 +2065,13 @@
   }
   // Entfernt leere Blöcke (ohne Conditions) für das Speichern/Ausführen — die Engine
   // weist leere Blöcke ab. Liefert eine neue Struktur, mutiert state.rules nicht.
-  // GEÄNDERT: Ticket 46 — is_short pro Block wird mitgenommen
-  // GEÄNDERT: Ticket 48 — enabled pro Block mitschreiben (deaktivierte Blöcke bleiben erhalten, aber leer-Blöcke werden gefiltert)
+  // GEÄNDERT: is_short pro Block wird mitgenommen
+  // GEÄNDERT: enabled pro Block mitschreiben (deaktivierte Blöcke bleiben erhalten, aber leer-Blöcke werden gefiltert)
   function cleanRuleGroup(group) {
     if (!group || !Array.isArray(group.blocks)) return null;
     const blocks = group.blocks
       .map(b => ({ conditions: (b.conditions || []).slice(), is_short: b.is_short ?? false, enabled: b.enabled !== false }))
-      .filter(b => b.conditions.length > 0 || b.enabled === false);  // deaktivierte Blöcke ohne Conditions behalten (Ticket 48)
+      .filter(b => b.conditions.length > 0 || b.enabled === false);  // deaktivierte Blöcke ohne Conditions behalten
     return { blocks };
   }
   function cleanRules(rules) {
@@ -2087,7 +2087,7 @@
     { value: 'entry_price', label: 'entry_price (Einstiegspreis)' },
   ];
   // Baut die Dropdown-Optionen für LHS/RHS: OHLCV + State-Primitiven + alle Indikator-Outputs + "Konstante..."
-  // GEÄNDERT: Ticket 48 — deaktivierte Indikatoren (ind.enabled === false) aus den Optionen ausschließen.
+  // GEÄNDERT: deaktivierte Indikatoren (ind.enabled === false) aus den Optionen ausschließen.
   // Bestehende Referenzen auf deaktivierte Indikatoren werden von classifyRef als "Indikator deaktiviert" markiert.
   function collectRefOptions() {
     const opts = [];
@@ -2101,7 +2101,7 @@
     opts.push({ value: '__const__', label: 'Konstante' });
     return opts;
   }
-  // GEÄNDERT (Ticket 34): Klassifiziert einen gespeicherten Referenzwert.
+  // GEÄNDERT: Klassifiziert einen gespeicherten Referenzwert.
   //   Zahl              -> Konstante
   //   String in opts    -> gültige Referenz
   //   String nicht in opts -> nicht verfügbar (Indikator deaktiviert/fehlt)
@@ -2177,7 +2177,7 @@
         container.appendChild(sep);
       }
       const blockEl = document.createElement('div');
-      // GEÄNDERT: Ticket 46 — Short-Blöcke optisch hervorheben
+      // GEÄNDERT: Short-Blöcke optisch hervorheben
       const isShort = block.is_short === true;
       blockEl.className = 'cp-rule-block' + (isShort ? ' cp-rule-block--short' : '');
       // GEÄNDERT: Entry/Exit-Typ oben rechts an der Box (absolut positioniert, immer sichtbar)
@@ -2191,7 +2191,7 @@
       const footer = document.createElement('div');
       footer.className = 'd-flex gap-2 mt-1 align-items-center';
       const shortToggleId = `isShort_${groupKey}_${bi}`;
-      // GEÄNDERT: Ticket 48 — Aktiv-Schalter pro Block (jetzt Schiebeschalter ganz rechts)
+      // GEÄNDERT: Aktiv-Schalter pro Block (jetzt Schiebeschalter ganz rechts)
       const blockEnabled = block.enabled !== false;
       const enabledToggleId = `blockEnabled_${groupKey}_${bi}`;
       const bgToggleId = `entryBg_${groupKey}_${bi}`;
@@ -2271,7 +2271,7 @@
         invalidateLiteResult();
       });
     });
-    // GEÄNDERT: Ticket 46 — Short-Toggle: is_short pro Block setzen/löschen
+    // GEÄNDERT: Short-Toggle: is_short pro Block setzen/löschen
     container.querySelectorAll('[data-short-toggle]').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const t = e.currentTarget;
@@ -2281,7 +2281,7 @@
         invalidateLiteResult();
       });
     });
-    // GEÄNDERT: Ticket 48 — Block-enabled-Toggle: enabled pro Block setzen
+    // GEÄNDERT: Block-enabled-Toggle: enabled pro Block setzen
     container.querySelectorAll('[data-block-enabled]').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const t = e.currentTarget;
@@ -2309,7 +2309,7 @@
     if (!state.rules.entry || !Array.isArray(state.rules.entry.blocks)) {
       state.rules.entry = { blocks: [] };
     }
-    // GEÄNDERT: Ticket 48 — cpExitEnabled-Schalter entfernt; Exit wird direkt gerendert wenn vorhanden.
+    // GEÄNDERT: cpExitEnabled-Schalter entfernt; Exit wird direkt gerendert wenn vorhanden.
     renderRuleGroup('entry', 'cpEntryConditions');
     if (state.rules.exit !== null) renderRuleGroup('exit', 'cpExitConditions');
     else document.getElementById('cpExitConditions').innerHTML = '';
@@ -2329,7 +2329,7 @@
     { key: 'init_cash',         label: 'init_cash',         type: 'number', step: 'any' },
     { key: 'fees',              label: 'fees',              type: 'number', step: '0.0001' },
     { key: 'slippage',          label: 'slippage',          type: 'number', step: '0.0001' },
-    // GEÄNDERT: Ticket 59 — Phantom-Optionen CloseOrStop/Price entfernt (in der installierten VBT-Version nicht vorhanden)
+    // GEÄNDERT: Phantom-Optionen CloseOrStop/Price entfernt (in der installierten VBT-Version nicht vorhanden)
     { key: 'stop_exit_price',   label: 'stop_exit_price',   type: 'select', options: ['','Stop','HardStop','Close'] },
     { key: 'stop_order_type',   label: 'stop_order_type',   type: 'select', options: ['','market','limit'] },
   ];
@@ -2578,7 +2578,7 @@
   }
 
   // ========= Run Backtest =========
-  // GEÄNDERT: Ticket 17 — Inline-Result-Panel, Trade-Marker, Equity-Sub-Chart
+  // GEÄNDERT: Inline-Result-Panel, Trade-Marker, Equity-Sub-Chart
 
   // Zustand des aktuellen Results
   let cpCurrentResultId = null;
@@ -2610,7 +2610,7 @@
         tf: ind.timeframe || null,
         ...inputs,
       };
-      // GEÄNDERT: Ticket 48 — enabled als Meta-Feld mitsenden (deaktivierter Indikator wird vom Runner übersprungen)
+      // GEÄNDERT: enabled als Meta-Feld mitsenden (deaktivierter Indikator wird vom Runner übersprungen)
       if (ind.enabled === false) entry.enabled = false;
       // Params: numerische Werte aus ind.params
       Object.entries(ind.params || {}).forEach(([k, v]) => {
@@ -2721,8 +2721,8 @@
     cpCurrentEquitySeries.setData(doResample ? resampleLine(cpCurrentEquityRaw, targetSec) : cpCurrentEquityRaw);
   }
 
-  // GEÄNDERT: Ticket 23 — gemeinsame Pre-Check-Funktion (DRY)
-  // GEÄNDERT: Ticket 48 — Pre-Check nur auf aktive Entry-Blöcke prüfen.
+  // GEÄNDERT: gemeinsame Pre-Check-Funktion (DRY)
+  // GEÄNDERT: Pre-Check nur auf aktive Entry-Blöcke prüfen.
   // Alle Entry-Blöcke deaktiviert = gültig (0 Trades, kein Fehler).
   // Fehler nur wenn ein aktiver Block keine Conditions hat (echte Fehlkonfiguration).
   function _cpPreChecks() {
@@ -2759,7 +2759,7 @@
     cpScheduleEntryBgRefresh();
   }
 
-  // GEÄNDERT: Ticket 23 — Schnellanalyse-Button (Lite-Backtest, kein DB-Schreiben)
+  // GEÄNDERT: Schnellanalyse-Button (Lite-Backtest, kein DB-Schreiben)
   /** Zählt die Kombinationen eines Indikator-Dicts serverseitig (einzige Zähl-Wahrheit). */
   async function countCombosForRun(indicators) {
     try {
@@ -2895,7 +2895,7 @@
       const ddStr = d.max_drawdown != null ? pctFmtLite.format(d.max_drawdown * 100) + ' %' : '-';
       badge.textContent = `Total Return: ${retStr}  ·  Benchmark: ${benchStr}  ·  Profitfaktor: ${pfStr}  ·  Max DD: ${ddStr}  ·  ${d.trades ?? '-'} Trades  ·  ${durStr}`;
       const isPositive = d.total_return != null && d.total_return >= 0;
-      // GEÄNDERT: Ticket 23 — text-white für WCAG-AA-Kontrast auf grün/rot
+      // GEÄNDERT: text-white für WCAG-AA-Kontrast auf grün/rot
       badge.className = 'badge text-white ' + (isPositive ? 'bg-success' : 'bg-danger');
 
       // GEÄNDERT: Equity-Kurve als Overlay-Series am Haupt-Chart rendern (analog vollem Lauf)
@@ -2982,7 +2982,7 @@
   }
 
   // ========= Setups =========
-  // GEÄNDERT: Ticket 15 — vier separate JSON-Felder statt eines flachen config_json
+  // GEÄNDERT: vier separate JSON-Felder statt eines flachen config_json
   function collectSetupConfig() {
     // Nur 'indicator' (Bibliotheks-Feld) und 'tf' (TF-Dropdown) sind Sonderfelder mit eigenem Widget.
     // Alle anderen Keys sind normale, anzuzeigende/speichernde Felder.
@@ -3015,7 +3015,7 @@
           if (!META_KEYS.has(k)) entry[k] = v;
         });
       }
-      // GEÄNDERT: Ticket 48 — enabled als Meta-Feld in indicators_config_json schreiben
+      // GEÄNDERT: enabled als Meta-Feld in indicators_config_json schreiben
       if (i.enabled === false) entry.enabled = false;
       indicators_config_json[i.name] = entry;
       // Chart-Sichtbarkeit (chartVisible) liegt separat im UI-State
@@ -3064,7 +3064,7 @@
     return { backtest_config_json, indicators_config_json, strategy_config_json, ui_state_json };
   }
 
-  // GEÄNDERT: Ticket 15 — nimmt das komplette SetupOut-Objekt (vier _json-Felder); paramsMeta/inputs/outputs werden aus dem Katalog rekonstruiert
+  // GEÄNDERT: nimmt das komplette SetupOut-Objekt (vier _json-Felder); paramsMeta/inputs/outputs werden aus dem Katalog rekonstruiert
   async function applySetupConfig(data, opts) {
     // GEÄNDERT: hideIndicators erzwingt beim Result-Ladepfad, dass alle Indikatoren zunächst
     // ausgeblendet sind (Anzeige-Checkboxen nicht angehakt) — der Nutzer blendet gezielt ein.
@@ -3153,7 +3153,7 @@
         lineStyle: uiInd.line_style || 'solid',
         // GEÄNDERT: Anzeige-Versatz laden (Default 0 für Alt-Setups)
         displayOffset: uiInd.display_offset || 0,
-        // GEÄNDERT: Ticket 48 — enabled laden (Default true für Alt-Setups ohne Feld)
+        // GEÄNDERT: enabled laden (Default true für Alt-Setups ohne Feld)
         enabled: entry.enabled !== false,
         outputs: null,
       };
@@ -3483,7 +3483,7 @@
           else stale.push(i.name + '.' + k);
         });
       }
-      // GEÄNDERT: Ticket 48 — enabled als Meta-Feld in collectIndicatorConfigJson schreiben (analog collectSetupConfig)
+      // GEÄNDERT: enabled als Meta-Feld in collectIndicatorConfigJson schreiben (analog collectSetupConfig)
       if (i.enabled === false) entry.enabled = false;
       config_json[i.name] = entry;
     });
@@ -3919,7 +3919,7 @@
   document.getElementById('cpAddEntryBlockBtn').addEventListener('click', () => {
     if (!state.rules) state.rules = defaultRules();
     if (!Array.isArray(state.rules.entry.blocks)) state.rules.entry = { blocks: [] };
-    // GEÄNDERT: Ticket 48 — neuer Block bekommt enabled: true
+    // GEÄNDERT: neuer Block bekommt enabled: true
     state.rules.entry.blocks.push({ conditions: [], enabled: true });
     renderRuleGroup('entry', 'cpEntryConditions');
     invalidateLiteResult();
@@ -3927,7 +3927,7 @@
   document.getElementById('cpAddExitBlockBtn').addEventListener('click', () => {
     if (!state.rules) state.rules = defaultRules();
     if (!state.rules.exit) state.rules.exit = { blocks: [] };
-    // GEÄNDERT: Ticket 48 — neuer Block bekommt enabled: true; renderRules() rendert Exit-Container mit
+    // GEÄNDERT: neuer Block bekommt enabled: true; renderRules() rendert Exit-Container mit
     state.rules.exit.blocks.push({ conditions: [], enabled: true });
     renderRules();
     invalidateLiteResult();
@@ -4242,7 +4242,7 @@
         color: nextColor(), plot_type: meta.plot_type || 'subplot',
         // chartVisible (Chart-Anzeige) default an
         chartVisible: true,
-        // GEÄNDERT: Ticket 48 — enabled laden (Default true für Alt-Configs ohne Feld)
+        // GEÄNDERT: enabled laden (Default true für Alt-Configs ohne Feld)
         enabled: entry.enabled !== false,
         outputs: null,
       };
@@ -4308,7 +4308,7 @@
       } catch (e) { setStatus('Setup-URL laden fehlgeschlagen: ' + e.message, 'err'); }
     }
 
-    // GEÄNDERT: Ticket 42 — flüchtiger Lade-Pfad aus Result (?resultid=<id>), kein Setup-Eintrag
+    // GEÄNDERT: flüchtiger Lade-Pfad aus Result (?resultid=<id>), kein Setup-Eintrag
     var urlResultId = new URLSearchParams(window.location.search).get('resultid') || '';
     if (urlResultId) {
       try {

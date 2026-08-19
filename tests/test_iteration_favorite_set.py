@@ -1,5 +1,5 @@
 """Favoriten-Sterne einer Iteration (gelb + roter Doku-Stern) — setzend statt
-umschaltend (Ticket 89).
+umschaltend.
 
 Verifiziert services/api/routes/api_strategy.py:
 - mark_iteration_favorite / mark_iteration_doc_favorite: setzen idempotent (nie aus),

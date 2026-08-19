@@ -1,4 +1,4 @@
-"""Tests für `--out`/`--full` an den `--json`-Verben aus `_maybe_json` (Ticket 77/C).
+"""Tests für `--out`/`--full` an den `--json`-Verben aus `_maybe_json`.
 
 Fundfall (werkzeug-luecken.md, 14.08.2026): `result-list --run <id> --json --out
 datei.json` schrieb keine Datei — `--out` wurde von `_maybe_json` schlicht ignoriert,
@@ -128,7 +128,7 @@ def test_result_list_out_and_full_together_raises(toolbox):
 
 
 def test_result_list_without_out_keeps_stdout_behavior(toolbox, capsys):
-    """Ohne --out bleibt das bisherige stdout-Verhalten (Ticket 77/C, Testanforderung)."""
+    """Ohne --out bleibt das bisherige stdout-Verhalten (Testanforderung)."""
     with patch.object(toolbox, "fetch", return_value={"data": {"items": _MANY_RESULT_ITEMS}}):
         rc = toolbox.result_list(["--run", "608", "--json"])
 
@@ -140,7 +140,7 @@ def test_result_list_without_out_keeps_stdout_behavior(toolbox, capsys):
 
 def test_run_top_results_out_flag_now_reaches_maybe_json(toolbox, capsys, isolated_out_dir):
     """Regression: run-top-results/run-best bauten flags früher manuell als {'json': ..}
-    und verschluckten --out dabei stillschweigend (Ticket 77/C betrifft auch diese
+    und verschluckten --out dabei stillschweigend (betrifft auch diese
     beiden, da sie über _strip_json_flag liefen statt über _parse_flags)."""
     response = {"results": _MANY_RESULT_ITEMS}
     with patch.object(toolbox, "fetch", return_value=response):

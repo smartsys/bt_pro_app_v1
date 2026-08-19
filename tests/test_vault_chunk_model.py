@@ -1,4 +1,4 @@
-"""Import-Smoketest für das VaultChunk-Modell (Ticket 24).
+"""Import-Smoketest für das VaultChunk-Modell.
 
 Prüft:
   - VaultChunk ist importierbar
@@ -48,7 +48,7 @@ def test_vault_chunk_nullable_regeln():
     assert spalten['heading_path'].nullable is True, "heading_path muss nullable sein"
     assert spalten['frontmatter_json'].nullable is True, "frontmatter_json muss nullable sein"
     assert spalten['vault_path'].nullable is False, "vault_path darf nicht nullable sein"
-    # GEÄNDERT: Ticket 33 — content und embedding sind nullable (leere Sentinel-Rows
+    # GEÄNDERT: content und embedding sind nullable (leere Sentinel-Rows
     # für Stub-Dateien ohne chunkbaren Inhalt).
     assert spalten['content'].nullable is True, "content muss nullable sein (Sentinel-Rows)"
     assert spalten['embedding'].nullable is True, "embedding muss nullable sein (Sentinel-Rows)"

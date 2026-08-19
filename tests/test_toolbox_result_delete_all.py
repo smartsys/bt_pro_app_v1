@@ -1,4 +1,4 @@
-"""Tests für das Toolbox-Verb `result-delete-all` (Ticket 77/B).
+"""Tests für das Toolbox-Verb `result-delete-all`.
 
 Prüft `result_delete_all` aus
 `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-Zugriff
@@ -64,7 +64,7 @@ def test_result_delete_all_run_and_testset_run_together_raises(toolbox):
 
 
 def test_result_delete_all_prints_deleted_run_ids(toolbox, capsys):
-    """Die Antwort benennt deleted_run_ids (Ticket 75-Konsistenz)."""
+    """Die Antwort benennt deleted_run_ids."""
     response = {"status": "ok", "deleted_results": 3, "deleted_runs": 1, "deleted_run_ids": [608]}
     with patch.object(toolbox, "request", return_value=response):
         toolbox.result_delete_all(["--testset-run", "6"])

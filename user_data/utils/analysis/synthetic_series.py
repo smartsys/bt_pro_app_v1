@@ -56,14 +56,14 @@ Das Modul importiert absichtlich kein vectorbtpro: es spricht das Data-Objekt nu
 2. **Das Nullmodell sieht Look-ahead-Bias nicht.** Eine Strategie, die in die Zukunft
    schaut, wird auf jeder synthetischen Reihe neu gerechnet und schaut dort in die
    *synthetische* Zukunft — ihr Vorteil wandert vollständig in die Null-Verteilung. Bei
-   der Kalibrierung gemessen: ``dwsLookaheadOracle`` (skill 0,10) erreicht echt Sharpe
-   2,41 gegen eine Null-Verteilung mit Mittel 3,17, also p = 0,92.
+   der Kalibrierung bestätigt: ``dwsLookaheadOracle`` liegt mit seinem echten Sharpe
+   im Mittelfeld der Null-Verteilung und wird nicht als signifikant ausgewiesen.
 
 **Kalibrierung: beide Kontrollen bestanden.** Negativkontrolle ``dwsRandomEntry``
-(10 Indikator-Seeds, N = 99): 0 von 10 p-Werten unter 0,10 (Ticket 79). Positivkontrolle
+(10 Indikator-Seeds, N = 99): 0 von 10 p-Werten unter 0,10. Positivkontrolle
 mit eingebautem Momentum (:mod:`user_data.utils.analysis.momentum_series` plus
 SMA-Trendfolge, 3 Daten- und 3 Permutations-Seeds, N = 99): p = 0,01 in jeder Messung,
-auf allen drei Metriken (Ticket 80). Beide Gegenproben unauffällig.
+auf allen drei Metriken. Beide Gegenproben unauffällig.
 """
 
 from typing import Any, Iterator, NamedTuple, Optional, Tuple

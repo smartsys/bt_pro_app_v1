@@ -1,4 +1,4 @@
-# Test-Abhängigkeiten (Ticket 88)
+# Test-Abhängigkeiten
 # ---------------------------------
 # Werden ausschließlich im Dockerfile-Stage "test" installiert, nicht im Laufzeit-Image.
 # Bewusst knapp gehalten: nur was die Suite tatsächlich importiert.

@@ -1,4 +1,4 @@
-"""Tests für GET /api/knowledge/files Endpoint (Ticket 29).
+"""Tests für GET /api/knowledge/files Endpoint.
 
 Prüft:
 - Grundlegende Listierung: 200, JSON-Format mit files/total/limit/offset.

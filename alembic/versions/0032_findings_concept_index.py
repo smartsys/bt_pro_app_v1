@@ -1,4 +1,4 @@
-"""testset_run_findings — Index auf concept_id (Ticket 85)
+"""testset_run_findings — Index auf concept_id
 
 Die neue Route ``GET /api/testset-run-findings/by-concept/{concept_id}`` filtert
 nach ``concept_id`` — bisher gab es dafür keinen Index (nur auf ``iteration_id``

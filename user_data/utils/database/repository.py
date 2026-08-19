@@ -6,18 +6,18 @@ Speichert Strategie-Ergebnisse in PostgreSQL/TimescaleDB.
 - backtest_results: Upsert per params_hash (MD5 aus run_id + actual_params)
 - Kennzahlen: genau eine Funktion für jeden Lauf — `_extract_metrics`. Ein Result
   trägt denselben Satz Kennzahlen, unabhängig davon, ob es aus einem Einzellauf
-  oder aus einem Multiparameterlauf stammt (Ticket 64). Die Zeitreihen (Equity,
+  oder aus einem Multiparameterlauf stammt. Die Zeitreihen (Equity,
   Trades, Orders, Positionen, Indikatorwerte) bleiben davon getrennt — sie
   skalieren mit Kombinationen x Balken und entstehen nur beim Einzellauf
   beziehungsweise auf Anforderung ("Analyse starten").
-- Welche Kennzahl-Gruppen ein Lauf rechnet, ist wählbar (Ticket 68). Die
+- Welche Kennzahl-Gruppen ein Lauf rechnet, ist wählbar. Die
   Zuordnung Gruppe -> Felder steht ausschließlich in
   `user_data/utils/metrics/metric_sets.py`. Geschrieben werden immer alle
   Kennzahl-Spalten: nicht gerechnete Felder ausdrücklich als NULL, damit ein
   Result nie ein Gemisch aus zwei Läufen mit verschiedener Auswahl trägt.
 - Deflated Sharpe Ratio: die einzige rasterweite Kennzahl und deshalb kein Teil
   von `_extract_metrics`, sondern ein Nachlauf über den ganzen Lauf
-  (`_calculate_deflated_sharpe`, Ticket 54).
+  (`_calculate_deflated_sharpe`).
 """
 
 import hashlib
@@ -37,16 +37,16 @@ from user_data.utils.database.models import (
     BacktestRun, BacktestResult, BacktestTrade, BacktestOrder,
     BacktestPosition, BacktestIndicator, BacktestEquity, BacktestParam
 )
-# GEÄNDERT: Ticket 58 — Kennzahlen laufen ausschließlich über das Handelsfenster
+# GEÄNDERT: Kennzahlen laufen ausschließlich über das Handelsfenster
 # start..end der BacktestConfig. Der Zuschnitt steht einmal in trading_window.py.
 from user_data.utils.metrics.trading_window import (
     count_open_trades,
     slice_to_trading_window,
 )
-# GEÄNDERT: Ticket 54 — die Deflated Sharpe Ratio kommt aus der eigenen, korrigierten
+# GEÄNDERT: die Deflated Sharpe Ratio kommt aus der eigenen, korrigierten
 # Rechnung und läuft als Nachlauf über den ganzen Lauf (siehe _calculate_deflated_sharpe).
 from user_data.utils.metrics.deflated_sharpe import deflated_sharpe_ratio
-# GEÄNDERT: Ticket 68 — Metrik-Gruppen und Feldliste kommen aus der einzigen Quelle.
+# GEÄNDERT: Metrik-Gruppen und Feldliste kommen aus der einzigen Quelle.
 # Das Modul selbst (nicht nur einzelne Namen) wird zusätzlich importiert, damit die
 # Selbstauskunft-Notiz immer den LIVE-Wert von AUTO_FULL_COMBINATION_THRESHOLD zeigt
 # (relevant für Tests, die die Schwelle testweise klein stellen).
@@ -92,7 +92,7 @@ def _safe_int(value) -> Optional[int]:
 def _safe_duration(value) -> Optional[str]:
     """Konvertiert Timedelta zu String, None bei NaT.
 
-    GEÄNDERT: Ticket 64 — die Prüfung fasst jetzt jeden fehlenden Wert, nicht nur
+    GEÄNDERT: die Prüfung fasst jetzt jeden fehlenden Wert, nicht nur
     `pd.Timedelta`-Instanzen. `pd.NaT` ist selbst keine `Timedelta` und lief vorher
     durch: `str(pd.NaT)` hätte die Zeichenkette "NaT" in die Datenbank geschrieben.
     Vorher konnte das nicht auffallen, weil die Dauer-Felder nur im Einzellauf-Pfad
@@ -149,7 +149,7 @@ def _extract_metrics(
 ) -> list[dict]:
     """Extrahiert den Kennzahlensatz je Kombination — für jeden Lauf.
 
-    Die einzige Kennzahl-Funktion des Systems (Ticket 64). Sie ersetzt die drei
+    Die einzige Kennzahl-Funktion des Systems. Sie ersetzt die drei
     früheren Funktionen `_extract_partial_metrics` (Multiparameterlauf, 24 Felder),
     `_extract_chart_metrics` (Einzellauf, 34 Felder) und `_extract_full_metrics`
     (Hintergrund-Job, 13 Felder mit vier Dubletten). Ein Result trägt damit
@@ -165,7 +165,7 @@ def _extract_metrics(
     sie über eine andere VBT-Route laufen (`total_market_return`/`max_drawdown`
     statt `bm_returns.vbt.returns.total`/`drawdowns.max_drawdown`).
 
-    Handelsfenster (Ticket 58): Das Portfolio wird vor jeder Messung auf
+    Handelsfenster: Das Portfolio wird vor jeder Messung auf
     `start`..`end` der BacktestConfig zugeschnitten — im gechunkten Lauf je Chunk,
     sonst einmal. Der Vorlauf (`ohlc_start`..`ohlc_end`) wärmt nur die Indikatoren
     auf und geht in keine Kennzahl ein, weder in den Buy-and-Hold-Vergleichsmaßstab
@@ -196,13 +196,13 @@ def _extract_metrics(
     als eigene aufrufbare Funktionen — sonst kehrt die aufgelöste Zweiteilung durch
     die Hintertür zurück.
 
-    Auswahl (Ticket 68): `groups` benennt, welche Gruppen gerechnet werden. Ein
+    Auswahl: `groups` benennt, welche Gruppen gerechnet werden. Ein
     abgewählter Abschnitt wird **samt seinen Zwischenobjekten** übersprungen — der
     Sinn der Auswahl ist gesparte Rechenzeit, nicht das nachträgliche Verwerfen
     fertiger Werte. Die Pflichtgruppen (`user_data/utils/metrics/metric_sets.py`)
     laufen immer mit; ihre Felder sind zugleich die Eingänge des DSR-Nachlaufs.
 
-    Nicht enthalten (Ticket 54): die `deflated_sharpe_ratio`. Sie ist die einzige
+    Nicht enthalten: die `deflated_sharpe_ratio`. Sie ist die einzige
     **rasterweite** Kennzahl — ihr Wert hängt davon ab, wie viele andere
     Kombinationen mitgelaufen sind — und gehört damit nicht in eine Funktion, die
     je Kombination rechnet. Sie entsteht als Nachlauf über den ganzen Lauf in
@@ -232,14 +232,14 @@ def _extract_metrics(
     from vectorbtpro.generic.enums import WType
     from vectorbtpro.indicators.nb import atr_nb
 
-    # GEÄNDERT: Ticket 68 — aktive Gruppen bestimmen. Ohne Angabe wird alles gerechnet.
+    # GEÄNDERT: aktive Gruppen bestimmen. Ohne Angabe wird alles gerechnet.
     active_groups = ALL_GROUPS if groups is None else normalize_groups(groups)
 
-    # GEÄNDERT: Ticket 58 — Zuschnitt auf das Handelsfenster vor jeder Messung.
+    # GEÄNDERT: Zuschnitt auf das Handelsfenster vor jeder Messung.
     portfolios = slice_to_trading_window(portfolios, backtest_config)
     n_combinations = len(columns)
 
-    # GEÄNDERT: Ticket 44 Bugfix — atleast_1d(...) wandelt VBT-Skalare (eine Spalte) in
+    # GEÄNDERT: Bugfix — atleast_1d(...) wandelt VBT-Skalare (eine Spalte) in
     # 1-Element-Arrays, bevor .values geholt wird. Bei mehreren Spalten ein No-Op.
     def _vals(x):
         x = np.atleast_1d(x)
@@ -272,7 +272,7 @@ def _extract_metrics(
     # Einmal binden statt je Kennzahl neu auflösen.
     _wrapper = portfolios.wrapper
     _trades = portfolios.trades
-    # GEÄNDERT: Ticket 68 — die Auswahl auf geschlossene Trades ist selbst schon Arbeit
+    # GEÄNDERT: die Auswahl auf geschlossene Trades ist selbst schon Arbeit
     # (sie filtert die Trade-Records) und wird nur von 'trade_quality' und 'sqn_edge'
     # gebraucht. Sind beide abgewählt, entsteht sie gar nicht erst.
     _closed = (
@@ -331,7 +331,7 @@ def _extract_metrics(
         avg_losing_duration = _wrapper.arr_to_timedelta(_closed.losing.duration.mean())
         print(f"  [DB] Trade-Kennzahlen: {_time.time() - t0:.1f}s")
 
-    # GEÄNDERT: Ticket 64 — sqn und edge_ratio laufen wieder in jedem Lauf mit. Sie
+    # GEÄNDERT: sqn und edge_ratio laufen wieder in jedem Lauf mit. Sie
     # waren 2026 ungemessen zu den teuren Kennzahlen sortiert worden; gemessen kostet
     # sqn bei 3.600 Kombinationen 0,40 s und skaliert überhaupt nicht (es reduziert
     # über die Trade-Records, nicht über die Renditematrix), edge_ratio 0,81 s.
@@ -394,7 +394,7 @@ def _extract_metrics(
     # =====================================================================
     # Abschnitt 6 — Extremrisiko (perzentil-basiert, parallel gerechnet; 'tail_risk')
     # =====================================================================
-    # GEÄNDERT: Ticket 64 — parallel gerechnet. tail_ratio_nb/value_at_risk_nb/
+    # GEÄNDERT: parallel gerechnet. tail_ratio_nb/value_at_risk_nb/
     # cond_value_at_risk_nb sind laut VBT-Quelltext mit
     # @register_jitted(cache=True, tags={"can_parallel"}) und einer prange-Schleife
     # über die Spalten markiert, werden über die Property (pf.tail_ratio etc.) aber
@@ -422,7 +422,7 @@ def _extract_metrics(
     # =====================================================================
     # Abschnitt 8 — Verteilungsform der Renditen (Bausteine der Deflated Sharpe Ratio)
     # =====================================================================
-    # GEÄNDERT: Ticket 64 — skew und kurtosis je Kombination persistieren. Ohne sie
+    # GEÄNDERT: skew und kurtosis je Kombination persistieren. Ohne sie
     # ist die Deflated Sharpe Ratio nicht nachrechenbar; dass sie nie gespeichert
     # wurden, ist der Grund, warum der Altbestand nicht neu gerechnet werden kann.
     # Rechenweg exakt so, wie VBT ihn intern für die DSR nutzt (am Quelltext von
@@ -431,8 +431,8 @@ def _extract_metrics(
     # gespeichert wird die ROHE Wölbung (Normalverteilung rund 3), nicht die
     # Excess-Wölbung. scipy liefert per Default fisher=True; dass VBT diesen Default
     # in die Formel (kurtosis - 1) / 4 einsetzt, die die rohe Wölbung erwartet, war
-    # einer der beiden Formelfehler, die Ticket 54 behoben hat.
-    # GEÄNDERT: Ticket 54 — die DSR selbst wird hier NICHT mehr gerechnet. Sie ist
+    # einer der beiden Formelfehler, die Die Umstellung behoben hat.
+    # GEÄNDERT: die DSR selbst wird hier NICHT mehr gerechnet. Sie ist
     # rasterweit und läuft als Nachlauf über den ganzen Run
     # (_calculate_deflated_sharpe); diese Funktion liefert nur ihre Bausteine.
     t0 = _time.time()
@@ -453,7 +453,7 @@ def _extract_metrics(
     # =====================================================================
     # Zusammenbau
     # =====================================================================
-    # GEÄNDERT: Ticket 68 — der DataFrame trägt nur die Spalten der aktiven Gruppen.
+    # GEÄNDERT: der DataFrame trägt nur die Spalten der aktiven Gruppen.
     # Reihenfolge unverändert zum Stand vor dem Ticket, damit die Auswahl 'voll' Feld
     # für Feld dasselbe Ergebnis liefert wie bisher.
     t0 = _time.time()
@@ -545,7 +545,7 @@ def _extract_metrics(
         r['end_index'] = _end_index
         r['total_duration'] = _total_duration
         r['bar_count'] = _bar_count
-        # GEÄNDERT: Ticket 64 — die drei Dauer-Felder laufen jetzt in jedem Lauf mit.
+        # GEÄNDERT: die drei Dauer-Felder laufen jetzt in jedem Lauf mit.
         # Dass VBT sie über ein Multi-Spalten-Portfolio vektorisiert liefert, war offen
         # und ist am vbt-Kernel gemessen: drawdowns.max_duration sowie
         # trades.status_closed.winning/losing.duration.mean() geben eine Series über die
@@ -565,7 +565,7 @@ def _calculate_deflated_sharpe(conn, run_id: int) -> int:
     Kombinationen des Laufs und die Rastergröße `N` geht direkt in die
     Deflationsschwelle ein. Je Kombination oder je Chunk gerechnet ist sie damit
     strukturell falsch — deshalb entsteht sie hier, nachdem alle Results
-    geschrieben sind, in einem Durchgang über den kompletten Lauf (Ticket 54).
+    geschrieben sind, in einem Durchgang über den kompletten Lauf.
 
     Braucht kein Portfolio: alle Eingaben stehen in der Datenbank. Damit ist der
     Nachlauf speicherneutral und im gechunkten Fall automatisch richtig — der
@@ -698,7 +698,7 @@ def create_backtest_run(
     Args:
         backtest_config: Backtest-Konfiguration (enthält strategy_family, strategy_name,
                          symbols, exchange, timeframe, start, end). Optionaler Key
-                         'metrics' (Ticket 68): Stufenname ('kern'/'voll'/'auto'), eine
+                         'metrics': Stufenname ('kern'/'voll'/'auto'), eine
                          Liste zusätzlich gewünschter Gruppen-Keys, oder fehlend (= 'auto').
                          Wird hier zur konkreten Gruppenmenge aufgelöst und als
                          'metrics_resolved' in den gespeicherten backtest_config_json
@@ -707,10 +707,10 @@ def create_backtest_run(
         parent_run_id: Optionale Parent-Run-ID für Walk-Forward Verkettung
         parent_result_id: Optionale Result-ID die die Config geliefert hat
         selection_metric: Metrik nach der das Parent-Result ausgewählt wurde
-        spec_runner_version: Versionsnummer des spec_runner-Moduls (Ticket 01)
-        testset_run_id: Optionale TestSet-Run-ID (Ticket 04) — NULL bei Einzelstarts
-        iteration_id: Optionale Iteration-ID (Ticket 10) — kein Auto-Lookup, kein
-                      Fallback (Ticket 83): wer einen Run startet, muss sie explizit
+        spec_runner_version: Versionsnummer des spec_runner-Moduls
+        testset_run_id: Optionale TestSet-Run-ID — NULL bei Einzelstarts
+        iteration_id: Optionale Iteration-ID — kein Auto-Lookup, kein
+                      Fallback: wer einen Run startet, muss sie explizit
                       mitgeben, sonst bleibt der Run ohne Iteration.
         backtest_config_id: Optionale Herkunfts-Referenz auf die gespeicherte BacktestConfig
         indicator_config_id: Optionale Herkunfts-Referenz auf die gespeicherte IndicatorConfig
@@ -723,7 +723,7 @@ def create_backtest_run(
     # iteration_id wird vom Aufrufer explizit mitgegeben (Playground, Start-Run, Testset).
     # Kein Auto-Lookup, kein Fallback — wer einen Run startet, wählt die Iteration.
 
-    # GEÄNDERT: Ticket 68 — Metrik-Auswahl wird HIER, ein einziges Mal, aufgelöst: das ist
+    # GEÄNDERT: Metrik-Auswahl wird HIER, ein einziges Mal, aufgelöst: das ist
     # die Stelle, an der n_combinations für Einzel- und Multiparameterlauf exakt dieselbe
     # Zahl ist wie später backtest_runs.n_combinations. Runner, Chunks und Persistenz lesen
     # danach nur noch 'metrics_resolved' — nie mehr die Rohangabe 'auto'. Ein zweiter
@@ -743,7 +743,7 @@ def create_backtest_run(
     # eine Kürzungs-Notiz, aber der neue Lauf liegt diesmal unter der Schwelle, bliebe
     # sonst eine veraltete Notiz stehen, obwohl gar nicht gekürzt wurde.
     backtest_config.pop('metrics_auto_note', None)
-    # Selbstauskunft (Ticket 60/68): nur wenn 'auto' selbst gekürzt hat — bei expliziter
+    # Selbstauskunft: nur wenn 'auto' selbst gekürzt hat — bei expliziter
     # Auswahl bleibt usability_note frei für echte Warnungen (worker_tasks liest dieses
     # Feld nach dem Lauf und hängt es an die Note an).
     if (
@@ -767,7 +767,7 @@ def create_backtest_run(
             timeframe=backtest_config['timeframe'],
             start_date=datetime.strptime(backtest_config['start'], '%Y-%m-%d'),
             end_date=datetime.strptime(backtest_config['end'], '%Y-%m-%d'),
-            # GEÄNDERT: Ticket 15 — _json-Suffix
+            # GEÄNDERT: _json-Suffix
             backtest_config_json=backtest_config,
             indicators_config_json=indicators_config,
             n_combinations=n_combinations,
@@ -775,11 +775,11 @@ def create_backtest_run(
             parent_run_id=parent_run_id,
             parent_result_id=parent_result_id,
             selection_metric=selection_metric,
-            # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
+            # GEÄNDERT: Spec-Runner-Version mitschreiben
             spec_runner_version=spec_runner_version,
-            # GEÄNDERT: TestSet-Run-Zuordnung (Ticket 04)
+            # GEÄNDERT: TestSet-Run-Zuordnung
             testset_run_id=testset_run_id,
-            # GEÄNDERT: Ticket 10 — Iterations-FK
+            # GEÄNDERT: Iterations-FK
             iteration_id=iteration_id,
             # GEÄNDERT: Herkunfts-Referenzen auf gespeicherte Configs (lose, kein FK)
             backtest_config_id=backtest_config_id,
@@ -912,7 +912,7 @@ def assess_run_usability(
         warmup: Rückgabe von ``check_warmup`` aus dem Run-Start. Ist sie
             'insufficient_history', hat dieser Grund Vorrang vor 'no_signals', weil er
             die Ursache benennt statt nur die Folge.
-        metrics_note: Selbstauskunft der 'auto'-Metrik-Auswahl (Ticket 68), wenn sie den
+        metrics_note: Selbstauskunft der 'auto'-Metrik-Auswahl, wenn sie den
             Lauf gekürzt hat (`backtest_config_json['metrics_auto_note']`). Wird an die
             sonst berechnete Note angehängt, nicht anstelle von ihr geschrieben — bei
             expliziter Auswahl bleibt dieser Parameter None, und usability_note trägt
@@ -952,7 +952,7 @@ def assess_run_usability(
         usability = 'usable'
         note = f'Verwertbar: {n_results} Kombinationen, {total_trades} Trades insgesamt.'
 
-    # GEÄNDERT: Ticket 68 — Selbstauskunft der 'auto'-Metrik-Kürzung wird angehängt, nicht
+    # GEÄNDERT: Selbstauskunft der 'auto'-Metrik-Kürzung wird angehängt, nicht
     # die obige Note ersetzt.
     if metrics_note:
         note = f'{note} {metrics_note}'
@@ -1037,7 +1037,7 @@ def _build_full_config_snapshot(
         'size_type': _bc('size_type'),
         'init_cash': _bc('init_cash'),
         'fees': _bc('fees'),
-        # GEÄNDERT: Ticket 59 — die drei Portfolio-Parameter mit einfrieren, damit ein
+        # GEÄNDERT: die drei Portfolio-Parameter mit einfrieren, damit ein
         # Result selbst-reproduzierbar bleibt. Bei Alt-Runs, deren portfolio-Block die
         # Keys nicht trug, steht hier None = "nicht gesetzt" (nicht 0).
         'slippage': _bc('slippage'),
@@ -1121,7 +1121,7 @@ def _build_resolved_config(indicators_config: dict, actual_params: dict) -> dict
                         break
 
             if matched_value is not None:
-                # GEÄNDERT: Ticket 18 — Skalar statt Pseudo-Range schreiben, dtype-Erhaltung
+                # GEÄNDERT: Skalar statt Pseudo-Range schreiben, dtype-Erhaltung
                 dtype = param_val.get('dtype', 'float64')
                 if 'int' in dtype:
                     resolved[config_key][param_key] = int(matched_value)
@@ -1146,11 +1146,11 @@ def _load_run_context(conn, run_id: int, backtest_config: Optional[dict]) -> tup
     run_row = conn.execute(
         BacktestRun.__table__.select().where(BacktestRun.id == run_id)
     ).fetchone()
-    # GEÄNDERT: Ticket 15 — _json-Suffix
+    # GEÄNDERT: _json-Suffix
     run_indicators_config = run_row.indicators_config_json if run_row else {}
-    # Ticket 10 — iteration_id aus Run konsistent in Results übernehmen
+    # iteration_id aus Run konsistent in Results übernehmen
     run_iteration_id = run_row.iteration_id if run_row else None
-    # GEÄNDERT: Ticket 41 — backtest_config für Snapshot: Parameter hat Vorrang, sonst aus Run
+    # GEÄNDERT: backtest_config für Snapshot: Parameter hat Vorrang, sonst aus Run
     snapshot_backtest_config = backtest_config if backtest_config is not None else (
         run_row.backtest_config_json if run_row else {}
     )
@@ -1172,7 +1172,7 @@ def _write_result_rows(
 
     Einzige Schreibstelle für `backtest_results` und `backtest_result_params`. Sie
     wird sowohl vom Lauf in einem Stück als auch je Chunk eines gechunkten Laufs
-    benutzt (Ticket 71) — deshalb steht hier nichts Lauf-Abschließendes: kein
+    benutzt — deshalb steht hier nichts Lauf-Abschließendes: kein
     Status, kein `n_combinations`, kein Nachlauf. Der Upsert auf
     (run_id, params_hash) macht das wiederholte Schreiben desselben Chunks
     ergebnisgleich; ein fortgesetzter Lauf kann einen unterbrochenen Chunk deshalb
@@ -1185,8 +1185,8 @@ def _write_result_rows(
         columns: Spalten-Index (pd.Index / MultiIndex) der Parameter-Kombinationen.
         run_indicators_config: Indikator-Konfiguration des Laufs (für resolved_config).
         run_iteration_id: Iterations-ID des Laufs (wird in jedes Result übernommen).
-        spec_runner_version: Versionsnummer des Spec-Runners (Ticket 01).
-        rules: Regeln der Spec; None lässt den Config-Snapshot weg (Ticket 41).
+        spec_runner_version: Versionsnummer des Spec-Runners.
+        rules: Regeln der Spec; None lässt den Config-Snapshot weg.
         snapshot_backtest_config: Backtest-Konfiguration für den Snapshot.
 
     Returns:
@@ -1210,7 +1210,7 @@ def _write_result_rows(
     else:
         all_params = [{'param': str(col)} for col in columns]
 
-    # GEÄNDERT: Ticket 68 — Persistenz-Semantik der Metrik-Auswahl. Geschrieben werden
+    # GEÄNDERT: Persistenz-Semantik der Metrik-Auswahl. Geschrieben werden
     # immer ALLE 46 Kennzahl-Spalten; nicht gerechnete Felder ausdrücklich als NULL.
     # Damit trägt ein Result nie einen Mix aus zwei Läufen mit verschiedener Auswahl,
     # und ein Re-Run mit schmalerer Auswahl lässt keine Altwerte stehen (die
@@ -1230,17 +1230,17 @@ def _write_result_rows(
         record = {
             'run_id': run_id,
             'params_hash': _make_params_hash(run_id, actual_params),
-            # GEÄNDERT: Ticket 15 — _json-Suffix
+            # GEÄNDERT: _json-Suffix
             'actual_params_json': actual_params,
             'resolved_config_json': resolved,
             **{field: all_metrics[idx].get(field) for field in ALL_METRIC_FIELDS},
         }
-        # GEÄNDERT: Spec-Runner-Version mitschreiben (Ticket 01)
+        # GEÄNDERT: Spec-Runner-Version mitschreiben
         if spec_runner_version is not None:
             record['spec_runner_version'] = spec_runner_version
-        # GEÄNDERT: Ticket 10 — iteration_id konsistent zum Run setzen
+        # GEÄNDERT: iteration_id konsistent zum Run setzen
         record['iteration_id'] = run_iteration_id
-        # GEÄNDERT: Ticket 41 — vollständigen Config-Snapshot schreiben (nur wenn rules vorhanden)
+        # GEÄNDERT: vollständigen Config-Snapshot schreiben (nur wenn rules vorhanden)
         if rules is not None:
             record['full_config_snapshot_json'] = _build_full_config_snapshot(
                 backtest_config=snapshot_backtest_config,
@@ -1259,14 +1259,14 @@ def _write_result_rows(
         chunk = batch[i:i + batch_size]
         result_stmt = insert(BacktestResult).values(chunk)
         update_cols = {col: result_stmt.excluded[col] for col in ALL_METRIC_FIELDS}
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         update_cols['resolved_config_json'] = result_stmt.excluded['resolved_config_json']
-        # GEÄNDERT: spec_runner_version beim Upsert mitschreiben (Ticket 01)
+        # GEÄNDERT: spec_runner_version beim Upsert mitschreiben
         if spec_runner_version is not None:
             update_cols['spec_runner_version'] = result_stmt.excluded['spec_runner_version']
-        # GEÄNDERT: Ticket 10 — iteration_id beim Upsert mitschreiben
+        # GEÄNDERT: iteration_id beim Upsert mitschreiben
         update_cols['iteration_id'] = result_stmt.excluded['iteration_id']
-        # GEÄNDERT: Ticket 41 — vollständigen Config-Snapshot beim Upsert mitschreiben
+        # GEÄNDERT: vollständigen Config-Snapshot beim Upsert mitschreiben
         if rules is not None:
             update_cols['full_config_snapshot_json'] = result_stmt.excluded['full_config_snapshot_json']
         result_stmt = result_stmt.on_conflict_do_update(
@@ -1339,7 +1339,7 @@ def save_result_chunk(
     rules: Optional[dict] = None,
     backtest_config: Optional[dict] = None,
 ) -> int:
-    """Speichert die Results EINES fertig gerechneten Chunks (Ticket 71).
+    """Speichert die Results EINES fertig gerechneten Chunks.
 
     Der gechunkte Multiparameterlauf hielt seine Ergebnisse früher bis zum letzten
     Chunk im Speicher und schrieb sie erst danach — ein hart beendeter Lauf verlor
@@ -1350,7 +1350,7 @@ def save_result_chunk(
     Der Lauf wird hier ausdrücklich NICHT abgeschlossen. Status, `n_combinations`
     und die rasterweite Deflated Sharpe Ratio entstehen erst in
     `finalize_backtest_run` über den gesamten Lauf — die DSR je Chunk zu rechnen
-    wäre strukturell falsch (Ticket 54).
+    wäre strukturell falsch.
 
     Args:
         run_id: ID des Laufs.
@@ -1361,8 +1361,8 @@ def save_result_chunk(
         ann_factor: Annualisierungsfaktor des Laufs (aus VBT). Wird am Lauf
             hinterlegt, damit der DSR-Nachlauf ihn auch dann hat, wenn beim
             Fortsetzen kein Chunk mehr gerechnet werden muss.
-        spec_runner_version: Versionsnummer des Spec-Runners (Ticket 01).
-        rules: Regeln der Spec für den Config-Snapshot (Ticket 41).
+        spec_runner_version: Versionsnummer des Spec-Runners.
+        rules: Regeln der Spec für den Config-Snapshot.
         backtest_config: Backtest-Konfiguration für den Snapshot.
 
     Returns:
@@ -1419,7 +1419,7 @@ def _finalize_run(conn, run_id: int, ann_factor: Optional[float]) -> int:
         'completed_at': datetime.now(),
         'n_combinations': n_combinations,
     }
-    # GEÄNDERT: Ticket 54 — ann_factor mitschreiben. Er ist die Voraussetzung dafür,
+    # GEÄNDERT: ann_factor mitschreiben. Er ist die Voraussetzung dafür,
     # dass der Nachlauf gleich darunter den Sharpe je Balken rekonstruieren kann.
     if ann_factor is not None:
         values['ann_factor'] = float(ann_factor)
@@ -1429,7 +1429,7 @@ def _finalize_run(conn, run_id: int, ann_factor: Optional[float]) -> int:
         .values(**values)
     )
 
-    # GEÄNDERT: Ticket 54 — Nachlauf für die Deflated Sharpe Ratio. Er steht hier
+    # GEÄNDERT: Nachlauf für die Deflated Sharpe Ratio. Er steht hier
     # bewusst am Ende und INNERHALB derselben Transaktion: die Results sind
     # geschrieben, n_combinations und ann_factor stehen am Lauf, und der Zustand
     # bleibt atomar.
@@ -1447,10 +1447,9 @@ def finalize_backtest_run(
 ) -> int:
     """Schließt einen Lauf ab: Kombinationszahl, Annualisierungsfaktor, Status, DSR.
 
-    Der Abschluss ist von der Result-Schreibung getrennt (Ticket 71), weil ein
+    Der Abschluss ist von der Result-Schreibung getrennt, weil ein
     gechunkter Lauf seine Results je Chunk schreibt, aber genau einmal abgeschlossen
-    wird. Die Deflated Sharpe Ratio läuft hier als Nachlauf über den gesamten Lauf
-    (Ticket 54) — sie ist rasterweit und je Chunk gerechnet strukturell falsch.
+    wird. Die Deflated Sharpe Ratio läuft hier als Nachlauf über den gesamten Lauf — sie ist rasterweit und je Chunk gerechnet strukturell falsch.
 
     `n_combinations` kommt aus der Zahl der tatsächlich vorliegenden Results des
     Laufs. Für einen Lauf in einem Stück ist das dieselbe Zahl wie die Spaltenzahl
@@ -1497,17 +1496,17 @@ def save_strategy_results(
     * ``portfolios`` — Lauf in einem Stück: Kennzahlen werden hier extrahiert.
     * ``metrics_table`` + ``columns`` — gechunkter Lauf ohne Chunk-Senke: die
       Kennzahlen sind fertig und werden in einem Rutsch geschrieben.
-    * ``chunks_saved`` — gechunkter Lauf MIT Chunk-Senke (Ticket 71): die Results
+    * ``chunks_saved`` — gechunkter Lauf MIT Chunk-Senke: die Results
       stehen bereits in der Datenbank, hier folgt nur noch der Abschluss.
 
     Args:
         run_id: ID des bereits angelegten BacktestRun
         strategy_results: Return-Dict der Strategie-Funktion (enthält 'portfolios')
-        spec_runner_version: Versionsnummer des spec_runner-Moduls (Ticket 01)
-        rules: Regeln {entry, exit} aus der Strategie-Spec (Ticket 41 — für Snapshot)
-        backtest_config: Backtest-Konfiguration (Ticket 41 — für Snapshot).
+        spec_runner_version: Versionsnummer des spec_runner-Moduls
+        rules: Regeln {entry, exit} aus der Strategie-Spec (für Snapshot)
+        backtest_config: Backtest-Konfiguration (für Snapshot).
             Wird für den full_config_snapshot_json benötigt. Falls None, wird aus dem Run geladen.
-            Trägt sie einen Key 'metrics_resolved' (Ticket 68, von create_backtest_run
+            Trägt sie einen Key 'metrics_resolved' (von create_backtest_run
             gesetzt), bestimmt der den 'portfolios'-Pfad (nicht 'metrics_table' — der
             ist bereits fertig extrahiert): welche Kennzahl-Gruppen _extract_metrics
             rechnet. Fehlt der Key, rechnet _extract_metrics wie vor diesem Ticket alles.
@@ -1515,7 +1514,7 @@ def save_strategy_results(
     Returns:
         int: Anzahl der Parameter-Kombinationen
     """
-    # GEÄNDERT: Ticket 71 — Der gechunkte Lauf mit Chunk-Senke hat seine Results schon
+    # GEÄNDERT: Der gechunkte Lauf mit Chunk-Senke hat seine Results schon
     # während der Rechnung geschrieben (save_result_chunk). Hier bleibt nur der
     # Abschluss über den ganzen Lauf: Status, Kombinationszahl und der rasterweite
     # DSR-Nachlauf. Genau dieselbe Abschluss-Funktion nutzt der Lauf in einem Stück.
@@ -1529,7 +1528,7 @@ def save_strategy_results(
         )
         return n_combinations
 
-    # GEÄNDERT: Ticket 44 — Chunked-Pfad: metrics_table + columns statt portfolios.
+    # GEÄNDERT: Chunked-Pfad: metrics_table + columns statt portfolios.
     # Der spec_runner liefert dieses Format, wenn der Grid in Chunks aufgeteilt wurde.
     # Die Metriken sind bereits fertig extrahiert — kein _extract_metrics nötig.
     if 'metrics_table' in strategy_results:
@@ -1543,7 +1542,7 @@ def save_strategy_results(
                 "Run kann nicht gespeichert werden."
             )
         portfolios = None  # nicht verfügbar im Chunked-Pfad
-        # GEÄNDERT: Ticket 54 — im gechunkten Pfad gibt es kein Portfolio mehr, aus dem
+        # GEÄNDERT: im gechunkten Pfad gibt es kein Portfolio mehr, aus dem
         # sich der Annualisierungsfaktor holen ließe. Der Spec-Runner liefert ihn
         # deshalb im Ergebnis-Dict mit; er stammt auch dort aus VBT selbst
         # (ReturnsAccessor.ann_factor) und wird nirgends nachgebaut.
@@ -1566,7 +1565,7 @@ def save_strategy_results(
                 "Run kann nicht gespeichert werden."
             )
 
-        # GEÄNDERT: Ticket 54 — Annualisierungsfaktor aus dem Portfolio, also genau der
+        # GEÄNDERT: Annualisierungsfaktor aus dem Portfolio, also genau der
         # Wert, den VBT für den annualisierten Sharpe benutzt. Er hängt nur an
         # Jahres- und Balkenfrequenz, der spätere Zuschnitt auf das Handelsfenster
         # ändert ihn nicht.
@@ -1583,29 +1582,29 @@ def save_strategy_results(
     with engine.begin() as conn:
 
         # Indicators-Config und iteration_id des Runs laden für resolved_config
-        # GEÄNDERT: Ticket 58 — der Run-Datensatz wird jetzt VOR der Metrik-Extraktion
+        # GEÄNDERT: der Run-Datensatz wird jetzt VOR der Metrik-Extraktion
         # geladen, weil _snapshot_backtest_config das Handelsfenster (start/end) für den
         # Portfolio-Zuschnitt liefert.
         run_row = conn.execute(
             BacktestRun.__table__.select().where(BacktestRun.id == run_id)
         ).fetchone()
-        # GEÄNDERT: Ticket 15 — _json-Suffix
+        # GEÄNDERT: _json-Suffix
         run_indicators_config = run_row.indicators_config_json if run_row else {}
-        # Ticket 10 — iteration_id aus Run konsistent in Results übernehmen
+        # iteration_id aus Run konsistent in Results übernehmen
         run_iteration_id = run_row.iteration_id if run_row else None
-        # GEÄNDERT: Ticket 41 — backtest_config für Snapshot: Parameter hat Vorrang, sonst aus Run
+        # GEÄNDERT: backtest_config für Snapshot: Parameter hat Vorrang, sonst aus Run
         _snapshot_backtest_config = backtest_config if backtest_config is not None else (
             run_row.backtest_config_json if run_row else {}
         )
 
         # Metriken extrahieren (nur im Original-Pfad — im Chunked-Pfad bereits fertig)
         if portfolios is not None:
-            # GEÄNDERT: Ticket 64 — keine Verzweigung nach Kombinationszahl mehr. Ein Lauf
+            # GEÄNDERT: keine Verzweigung nach Kombinationszahl mehr. Ein Lauf
             # mit einer Kombination und ein Lauf mit vielen gehen durch denselben Code und
             # liefern denselben Satz Kennzahlen.
             _t0 = _time.time()
             print("[DB] Metriken extrahieren ...")
-            # GEÄNDERT: Ticket 68 — 'metrics_resolved' kommt aus create_backtest_run
+            # GEÄNDERT: 'metrics_resolved' kommt aus create_backtest_run
             # (einzige Auflösungsstelle). Fehlt der Key (Aufrufer außerhalb des
             # Run-Start-Wegs, z.B. Direktaufrufe in Tests), rechnet _extract_metrics
             # wie vor diesem Ticket alles — kein Regress für Bestandsaufrufer.
@@ -1615,7 +1614,7 @@ def save_strategy_results(
             )
             print(f"[DB] Metriken extrahiert ({_time.time() - _t0:.1f}s)")
 
-            # Zeitreihen bleiben getrennt (Ticket 64, ausdrücklich nicht angefasst): sie
+            # Zeitreihen bleiben getrennt (ausdrücklich nicht angefasst): sie
             # skalieren mit Kombinationen x Balken und entstehen nur beim Einzellauf.
             if n_combinations == 1:
                 pf = portfolios[columns[0]]
@@ -1913,9 +1912,9 @@ def lookup_result_rows_by_params(engine: Engine, run_id: int, filters: Dict[str,
             'win_rate_pct': r.win_rate_pct,
             'profit_factor': r.profit_factor,
             'total_trades': r.total_trades,
-            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            # GEÄNDERT: Nenner der Trefferquote mitliefern.
             'open_trades': r.open_trades,
-            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern.
+            # GEÄNDERT: Long/Short-Aufteilung mitliefern.
             'long_trades': r.long_trades,
             'short_trades': r.short_trades,
             'end_value': r.end_value,
@@ -1995,9 +1994,9 @@ def lookup_results_across_runs(engine: Engine, run_ids: List[int], filters: Dict
             'win_rate_pct': r.win_rate_pct,
             'profit_factor': r.profit_factor,
             'total_trades': r.total_trades,
-            # GEÄNDERT: Ticket 58 — Nenner der Trefferquote mitliefern.
+            # GEÄNDERT: Nenner der Trefferquote mitliefern.
             'open_trades': r.open_trades,
-            # GEÄNDERT: Ticket 60 — Long/Short-Aufteilung mitliefern.
+            # GEÄNDERT: Long/Short-Aufteilung mitliefern.
             'long_trades': r.long_trades,
             'short_trades': r.short_trades,
             'end_value': r.end_value,

@@ -1,4 +1,4 @@
-"""Tests für die Indikator-Katalog-Filterung der Objekt-Toolbox (Ticket 50).
+"""Tests für die Indikator-Katalog-Filterung der Objekt-Toolbox.
 
 Prüft die reinen Funktionen `_filter_indicators` und `_format_indicator_line`
 aus `.claude/skills/ds-strategie-session/scripts/toolbox.py` — ohne Netzwerk-
@@ -115,7 +115,7 @@ def test_format_indicator_line_without_params(toolbox, sample_groups):
 
 
 def test_print_data_truncation_hint(toolbox, capsys):
-    """_print_data muss bei Kürzung die Original-Größe sichtbar ausweisen (Ticket 50, Anforderung 3)."""
+    """_print_data muss bei Kürzung die Original-Größe sichtbar ausweisen (Anforderung 3)."""
     big_payload = {"data": {"items": ["x" * 100 for _ in range(100)]}}
     toolbox._print_data("test-verb", big_payload)
     out = capsys.readouterr().out
