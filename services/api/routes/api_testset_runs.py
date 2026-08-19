@@ -250,6 +250,11 @@ def start_testset_run(payload: TestSetRunIn) -> JSONResponse:
                 'slippage': bt.slippage,
                 'stop_exit_price': bt.stop_exit_price,
                 'stop_order_type': bt.stop_order_type,
+                # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel
+                # aus der BacktestConfig durchreichen (analog echter Einzel-Run).
+                'risk_pct': bt.risk_pct,
+                'leverage': bt.leverage,
+                'leverage_mode': bt.leverage_mode,
                 # GEÄNDERT: Schritt 3c/3d — Stop-Spalten UND Stop-Formate aus der
                 # BacktestConfig entfernt. Stops samt Formaten kommen ausschließlich
                 # aus indicators_json['_stops'] (IndicatorConfig).

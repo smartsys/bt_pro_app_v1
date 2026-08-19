@@ -1067,9 +1067,10 @@ def _state_exit_signal_func_nb(
     short_n_series_cols: np.int64,
     short_series_col_map: np.ndarray,
     # OHLCV für max/min-Tracking (volle 1D-Arrays)
-    # TOTER PARAMETER (2026-07-12): wird im Rumpf nie gelesen — die Preise kommen aus dem
-    # Kontext c. Der Aufrufer (Zeile ~1951) reicht ihn weiterhin durch; nicht entfernt, um
-    # den Aufrufer nicht anzufassen. Vor einer Bereinigung bewusst entscheiden.
+    # GEÄNDERT: Ticket 104 — close_arr war bis hier ein toter Parameter
+    # (2026-07-12 als solcher markiert). Die risikobasierte Größe braucht den
+    # Bezugspreis des Einstiegsbalkens, um einen prozentualen Stopabstand in einen
+    # Preisabstand umzurechnen; damit ist der Parameter wieder in Benutzung.
     close_arr: np.ndarray,          # (T,)
     high_arr: np.ndarray,           # (T,)
     low_arr: np.ndarray,            # (T,)
@@ -1081,6 +1082,12 @@ def _state_exit_signal_func_nb(
     live_stop_arr: np.ndarray,      # (2, T, n_combo) float64 — Platzhalter (2,1,1) wenn aus
     live_stop_modes: np.ndarray,    # (2,) int64 — -1 aus, 0 ohne Ratsche, 1 mit Ratsche
     live_stop_level: np.ndarray,    # (2, N) float64 — mitgeführtes Stop-Niveau der Ratsche
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße.
+    risk_enabled: bool,             # False = der Zweig greift nicht (feste Größe)
+    risk_pct: np.float64,           # Kontoanteil je Trade (0.03 = 3 %)
+    risk_delta_format: np.int64,    # Delta-Format des sl_stop (Absolute/Percent/Percent100)
+    risk_sl_arr: np.ndarray,        # (T, n_combo) float64 — sl_stop-Wert je Balken/Combo
+    risk_size_arr: np.ndarray,      # (T, N) float64 — dasselbe Array geht als 'size' an VBT
 ) -> tuple:
     """Numba-signal_func_nb für State-basierte Exit-Conditions in DNF.
 
@@ -1098,6 +1105,13 @@ def _state_exit_signal_func_nb(
     live_stop_level das Stop-Niveau je Portfolio-Spalte mit (Reset beim Einstieg,
     wie track_max_price/track_min_price). Ohne Live-Serie steht der Modus auf -1
     und der Zweig greift nicht.
+
+    Ist 'risk_enabled' gesetzt (size_type='risk_percent'), wird an jedem Balken mit
+    Einstiegssignal die Ordergröße gerechnet und in risk_size_arr geschrieben —
+    dasselbe Array, das from_signals als 'size' bekommt. Die Funktion läuft vor
+    allen Lesestellen von size_, der Wert wirkt also im selben Balken. Ohne
+    risk_enabled bleibt das Array unberührt (Platzhalter) und die Rechnung
+    unverändert.
 
     entry_mask / short_entry_mask sind immer 2D (T, N), static_block /
     short_static_block immer 3D (n_blocks, T, W) — auch für Single-Combo,
@@ -1234,6 +1248,29 @@ def _state_exit_signal_func_nb(
     else:
         is_long_exit = False
         is_short_exit = False
+
+    # GEÄNDERT: Ticket 104 — risikobasierte Ordergröße im Einstiegsbalken.
+    # Steht NACH der Entry-Unterdrückung, damit nur tatsächlich wirksame
+    # Einstiegssignale eine Größe bekommen. Der Kontowert ist der der eigenen
+    # Portfolio-Spalte (ohne cash_sharing ist c.group == c.col), der Divisor der
+    # Stopabstand dieses Balkens — umgerechnet nach delta_format wie in
+    # _apply_live_stop_nb. Ohne bestimmbaren Stopabstand (Vorlauf-NaN, Null)
+    # wird NaN geschrieben: VBT legt dann keine Order an, statt eine mit
+    # willkürlicher Größe.
+    if risk_enabled and (is_long_entry or is_short_entry):
+        sl_value = risk_sl_arr[i, combo_col]
+        ref_price = close_arr[i]
+        if risk_delta_format == _DELTA_FORMAT_ABSOLUTE:
+            price_distance = abs(sl_value)
+        elif risk_delta_format == _DELTA_FORMAT_PERCENT:
+            price_distance = abs(sl_value) * abs(ref_price)
+        else:
+            price_distance = abs(sl_value) * abs(ref_price) / 100.0
+        if np.isfinite(price_distance) and price_distance > 0.0:
+            account_value = c.last_value[c.group]
+            risk_size_arr[i, col] = (account_value * risk_pct) / price_distance
+        else:
+            risk_size_arr[i, col] = np.nan
 
     return is_long_entry, is_long_exit, is_short_entry, is_short_exit
 
@@ -1700,6 +1737,85 @@ def _build_live_stop_args(
     return live_stop_arr, modes
 
 
+# GEÄNDERT: Ticket 104 — Argumente der risikobasierten Positionsgröße.
+def _build_risk_size_args(
+    risk_sizing: Any,
+    stop_ref_operands: dict,
+    n_bars: int,
+    n_combo: int,
+    n_total: int,
+) -> tuple:
+    """Baut die signal_args der risikobasierten Positionsgröße.
+
+    Der Divisor der Rechnung ist der ``sl_stop``-Wert dieses Balkens: entweder
+    die aufgelöste Indikator-Serie (Ticket 103) oder — bei skalarem Stop — der
+    feste Wert, hier als konstante Serie ausgerollt. Damit liest die
+    Signal-Funktion in beiden Fällen dieselbe Struktur.
+
+    Das size-Array trägt ``inf`` als Grundwert. Das ist genau VBTs eigener
+    Default für ``size`` (``vectorbtpro/_settings.py``: ``size=inf``,
+    ``size_type='amount'``) — an Balken ohne Einstieg verhält sich der Lauf damit
+    unverändert, insbesondere schließt ein Ausstieg weiterhin die volle Position.
+
+    Args:
+        risk_sizing: Die ``RiskSizingSpec`` des Laufs, oder ``None``.
+        stop_ref_operands: Ergebnis von ``_build_stop_ref_operands`` (Serien auf
+            der Combo-Achse).
+        n_bars: Anzahl der Balken.
+        n_combo: Breite der Combo-Achse.
+        n_total: Anzahl der Portfolio-Spalten.
+
+    Returns:
+        Tupel (risk_enabled, risk_pct, delta_format_code, risk_sl_arr,
+        risk_size_arr). Ist ``risk_sizing`` None, kommen (1,1)-Platzhalter
+        zurück, die der Numba-Zweig nie liest.
+
+    Raises:
+        ValueError: Wenn die Portfolio-Spalten breiter sind als die Combo-Achse
+            (Sweep-Achse über den Spalten) oder wenn weder eine Referenz-Serie
+            noch ein skalarer ``sl_stop`` vorliegt. Beides ist ein interner
+            Konsistenzfehler — die Eingabegrenze in
+            ``risk_sizing.build_risk_sizing_spec`` weist die Fälle bereits ab.
+    """
+    if risk_sizing is None:
+        placeholder = np.empty((1, 1), dtype=np.float64)
+        return False, np.float64(0.0), np.int64(0), placeholder, placeholder
+
+    # GEÄNDERT: Zweiter Riegel gegen die Stop-Sweep-Achse. Die Eingabegrenze
+    # (build_risk_sizing_spec) weist sie ab; käme sie doch hier an, schriebe die
+    # Signal-Funktion über das Ende von risk_size_arr hinaus — Numba prüft das
+    # nicht, und der Lauf lieferte still falsche Zahlen statt eines Fehlers.
+    if n_total != n_combo:
+        raise ValueError(
+            f"size_type='risk_percent' verträgt sich nicht mit einer Sweep-Achse "
+            f"über den Portfolio-Spalten: {n_total} Portfolio-Spalten gegen "
+            f"{n_combo} Indikator-Spalten. Die zur Laufzeit gerechnete Größe ließe "
+            f"sich den Spalten nicht eindeutig zuordnen."
+        )
+
+    operand = stop_ref_operands.get('sl_stop')
+    if operand is not None:
+        values = operand.values if isinstance(operand, pd.DataFrame) else operand
+        risk_sl_arr = np.ascontiguousarray(np.asarray(values, dtype=np.float64))
+    elif risk_sizing.sl_scalar is not None:
+        risk_sl_arr = np.full((n_bars, n_combo), float(risk_sizing.sl_scalar), dtype=np.float64)
+    else:
+        raise ValueError(
+            "size_type='risk_percent': weder eine sl_stop-Referenzserie noch ein "
+            "skalarer sl_stop steht zur Verfügung — der Stopabstand als Divisor fehlt."
+        )
+
+    risk_size_arr = np.full((n_bars, n_total), np.inf, dtype=np.float64)
+    risk_sizing.desired_size = risk_size_arr
+    return (
+        True,
+        np.float64(risk_sizing.risk_pct),
+        np.int64(risk_sizing.delta_format_code),
+        risk_sl_arr,
+        risk_size_arr,
+    )
+
+
 # GEÄNDERT: Bugfix — Anzahl der Stop-Sweep-Kombinationen aus den
 # from_signals-Stop-kwargs bestimmen. Unabhängige vbt.Param (Default-Level)
 # multiplizieren sich, gleich-gelevelte Param (gekoppeltes TSL-Paar, level=0)
@@ -1936,6 +2052,7 @@ def evaluate_rules_native(
     date_end: Optional[Any] = None,
     stops_swept: bool = False,
     stop_ref_series: Optional[dict] = None,
+    risk_sizing: Optional[Any] = None,
 ) -> Any:
     """Nativer Pfad: Portfolio direkt per from_signals(signal_func_nb=...) aufbauen.
 
@@ -1987,6 +2104,16 @@ def evaluate_rules_native(
             zusätzlich als signal_args in die laufende Nachführung
             (_apply_live_stop_nb) — der Abstand wird dann bei jeder Kerze einer
             offenen Position neu gesetzt statt beim Einstieg eingefroren.
+        risk_sizing: Optional — ``risk_sizing.RiskSizingSpec`` für
+            ``size_type='risk_percent'``. Ist sie gesetzt, rechnet die
+            Signal-Funktion im Einstiegsbalken
+            ``(Kontowert x risk_pct) / Stopabstand`` und schreibt das Ergebnis in
+            ein size-Array, das zugleich als ``size``-Argument an
+            ``from_signals`` geht (``size_type='amount'``). Das beschriebene
+            Array wird in ``spec.desired_size`` zurückgegeben, damit der Aufrufer
+            die gewünschte gegen die ausgeführte Größe halten kann
+            (``risk_sizing.summarize_truncation``). ``None`` = feste Größe, der
+            Zweig greift nicht und die Rechnung bleibt unverändert.
 
     Returns:
         vbt.Portfolio-Objekt.
@@ -2329,6 +2456,17 @@ def evaluate_rules_native(
     # NaN = Trade-Beginn; die signal_func setzt es beim Einstieg zurück.
     live_stop_level = np.full((len(_LIVE_STOP_KEYS), n_total), np.nan, dtype=np.float64)
 
+    # GEÄNDERT: Ticket 104 — Argumente der risikobasierten Größe. Das
+    # size-Array geht doppelt: als signal_arg (die Signal-Funktion beschreibt es)
+    # und als 'size' an from_signals (dort wird es gelesen).
+    (
+        risk_enabled,
+        risk_pct_nb,
+        risk_delta_format_nb,
+        risk_sl_arr,
+        risk_size_arr,
+    ) = _build_risk_size_args(risk_sizing, stop_ref_operands, T, n_combo, n_total)
+
     # signal_args zusammenbauen (alles als numpy-Arrays für Numba)
     # GEÄNDERT: Short-Entry-Maske + Short-Exit-Kodierung hinzugefügt
     # GEÄNDERT: Bugfix — combo_col_map als erstes Arg (Multi-Combo-Mapping)
@@ -2375,6 +2513,11 @@ def evaluate_rules_native(
         live_stop_arr,
         live_stop_modes,
         live_stop_level,
+        risk_enabled,
+        risk_pct_nb,
+        risk_delta_format_nb,
+        risk_sl_arr,
+        risk_size_arr,
     )
 
     # Portfolio via from_signals mit signal_func_nb aufbauen (N1: KEIN entries/exits)
@@ -2391,6 +2534,16 @@ def evaluate_rules_native(
                 f"({pf_build_kwargs[_stop_key]!r}) sind gleichzeitig gesetzt."
             )
         pf_build_kwargs[_stop_key] = _stop_arr
+
+    # GEÄNDERT: Ticket 104 — bei risikobasierter Größe ersetzt das zur
+    # Laufzeit beschriebene Array die feste Größe. 'risk_percent' ist kein
+    # VBT-SizeType; gerechnet wird eine Stückzahl, also 'amount'. Die Form des
+    # Arrays (T, n_total) entspricht dem Ziel-Broadcast — nur dann bleibt es
+    # dasselbe Objekt, in das die Signal-Funktion schreibt.
+    if risk_enabled:
+        pf_build_kwargs['size'] = risk_size_arr
+        pf_build_kwargs['size_type'] = 'amount'
+
     portfolio = vbt.Portfolio.from_signals(
         close_mc,
         signal_func_nb=_state_exit_signal_func_nb,

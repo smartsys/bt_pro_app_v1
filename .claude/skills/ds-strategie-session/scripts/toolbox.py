@@ -127,6 +127,9 @@ durchgereicht und scheitert beim Lauf laut, wenn falsch geformt.
   python3 toolbox.py backtest-config-create --file backtest.json
         --file = der volle Body (Pflicht: name, start, end, ohlc_start, ohlc_end; Defaults: symbol BTCUSDT, exchange binance, timeframe 4h, size 100, size_type value, init_cash 100, fees 0.001, slippage 0.0).
         stop_exit_price/stop_order_type optional (leer/nicht gesetzt = VBT-Default).
+        size_type nimmt zusätzlich 'risk_percent' an (Ticket 104); risk_pct optional (nur dort wirksam,
+        Kontoanteil je Trade als Bruchteil, z.B. 0.03). leverage (Default 1.0) und leverage_mode
+        (Default lazy — Lazy/Eager/LazyMult/EagerMult) gehen immer an den Lauf, unabhängig von size_type.
   python3 toolbox.py testset-create --name "OoS 22/23" --configs 552,553,554 [--description ...]
   python3 toolbox.py iteration-log-add --id 41 --text "..." [--run 1812]
         Hängt einen Freitext-Eintrag ans append-only Denkprotokoll der Iteration.
@@ -211,10 +214,15 @@ ergänzen" — KEIN kompletter Body nötig:
     iteration-set --id N [--version-name --description --status]
     backtest-config-set --id N [--symbol --exchange --timeframe --start --end --ohlc-start
                                 --ohlc-end --size --size-type --init-cash --fees --slippage
-                                --stop-exit-price --stop-order-type --name --description]
+                                --stop-exit-price --stop-order-type --risk-pct --leverage
+                                --leverage-mode --name --description]
         --stop-exit-price/--stop-order-type: gültige Werte Stop/HardStop/Close bzw. Market/Limit
         (Groß-/Kleinschreibung egal); --stop-exit-price "" (leerer String) setzt VBT-Default
         zurück. Feld weglassen lässt den bestehenden Wert unangetastet.
+        --size-type nimmt zusätzlich 'risk_percent' an (Ticket 104). --risk-pct wirkt nur dort
+        (Kontoanteil je Trade als Bruchteil, z.B. 0.03). --leverage/--leverage-mode gehen immer
+        an den Lauf (Default 1.0/lazy); gültige Modi: Lazy/Eager/LazyMult/EagerMult
+        (Groß-/Kleinschreibung egal).
   Indikatoren (spec_json.indicators bzw. config_json):
     iteration-indicator-set --id N --name <key> --file frag.json [--replace]
     iteration-indicator-remove --id N --name <key>
@@ -638,6 +646,11 @@ def backtest_config_read(i: int) -> None:
     # (Stale Read seit Schritt 3d) — hier durch die tatsächlich vorhandenen Portfolio-Felder ersetzt.
     print(f"- Stop-Ausführung: stop_exit_price={d.get('stop_exit_price') or 'VBT-Default'} "
           f"stop_order_type={d.get('stop_order_type') or 'VBT-Default'}")
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel ausgeben.
+    # risk_pct None = nicht gesetzt (nur bei size_type='risk_percent' wirksam).
+    risk_pct = d.get('risk_pct')
+    print(f"- Risiko/Hebel: risk_pct={risk_pct if risk_pct is not None else 'nicht gesetzt'} "
+          f"leverage={d.get('leverage')} leverage_mode={d.get('leverage_mode')}")
     print()
 
 
@@ -4112,13 +4125,19 @@ def iteration_set(args: list) -> int:
 
 # Editierbare Felder der BacktestConfig (Voll-Replace-PUT -> GET, mergen, zurueck).
 # GEÄNDERT: slippage/stop_exit_price/stop_order_type analog fees ergänzt.
+# GEÄNDERT: Ticket 104 — risk_pct/leverage/leverage_mode ergänzt (risikobasierte
+# Positionsgröße + Hebel; size_type nimmt zusätzlich 'risk_percent' an).
 _BACKTEST_FIELDS = (
     "name", "description", "symbol", "exchange", "timeframe", "start", "end",
     "ohlc_start", "ohlc_end", "size", "size_type", "init_cash", "fees",
     "slippage", "stop_exit_price", "stop_order_type",
+    "risk_pct", "leverage", "leverage_mode",
 )
 # Kurz-Flags -> Feldname; numerische Felder werden gecastet.
-_BACKTEST_NUMERIC = {"size": float, "init_cash": float, "fees": float, "slippage": float}
+_BACKTEST_NUMERIC = {
+    "size": float, "init_cash": float, "fees": float, "slippage": float,
+    "risk_pct": float, "leverage": float,
+}
 
 
 def backtest_config_set(args: list) -> int:

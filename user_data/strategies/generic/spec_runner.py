@@ -135,7 +135,15 @@ from typing import Any, Callable, Optional
 # (Default) lässt das Stop-Niveau dabei nur zugunsten der Position wandern. Opt-in:
 # ohne Live-Serie greift der Zweig nicht, Specs ohne '"live": true' laufen bit-identisch
 # zu 4.2.0.
-VERSION = "4.3.0"
+#
+# GEÄNDERT: Minor-Bump 4.4.0: 'size_type' im portfolio-Block nimmt
+# zusätzlich den App-Wert 'risk_percent'. Die Ordergröße entsteht dann zur Laufzeit
+# als (Kontowert der Spalte x 'risk_pct') / Stopabstand, wobei der Stopabstand aus
+# 'sl_stop' kommt (Skalar oder Indikator-Referenz aus 4.2.0) und nach 'delta_format'
+# in einen Preisabstand umgerechnet wird. Zusätzlich meldet der Lauf, wenn VBT eine
+# Order auf das verfügbare Geld gekürzt hat ('risk_sizing_report'). Opt-in: ohne
+# 'risk_percent' greift der Zweig nicht, Specs laufen bit-identisch zu 4.3.0.
+VERSION = "4.4.0"
 
 # Zentraler Importpfad zum generischen Spec-Runner-Einstiegspunkt. Wird von API-Routen
 # als import_path in die BacktestConfig geschrieben — Single Source statt verstreuter Literale.
@@ -156,6 +164,11 @@ from user_data.strategies.generic.stop_refs import (
     is_stop_ref,
     parse_stop_refs,
     resolve_stop_refs,
+)
+from user_data.strategies.generic.risk_sizing import (
+    build_risk_sizing_spec,
+    merge_reports,
+    summarize_truncation,
 )
 from user_data.strategies.generic.rules_engine import (
     evaluate_rules_native,
@@ -289,6 +302,17 @@ def run_spec_strategy(
         print(f" - Referenz-Stops: {sorted(stop_ref_series.keys())}")
     stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
 
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße. Die Prüfung
+    # läuft VOR dem Lauf: fehlendes risk_pct, fehlender sl_stop, Stop-Sweep,
+    # delta_format 'target' und from_ago != 0 brechen hier mit Klartext ab. Ist
+    # size_type nicht 'risk_percent', kommt None zurück und nichts ändert sich.
+    risk_sizing = build_risk_sizing_spec(pf_cfg, stops_cfg, stops_swept)
+    if risk_sizing is not None:
+        print(
+            f" - Risikobasierte Größe: risk_pct={risk_sizing.risk_pct}, "
+            f"delta_format_code={risk_sizing.delta_format_code}"
+        )
+
     # GEÄNDERT: beide Stop-Enum-Felder werden roh an from_signals
     # durchgereicht. VBT löst sie selbst case-insensitiv auf (map_enum_fields); der
     # frühere Custom-Resolver _resolve_stop_exit_price war case-sensitiv und hätte
@@ -304,6 +328,18 @@ def run_spec_strategy(
     slippage = pf_cfg.get('slippage')
     if slippage is None:
         slippage = 0.0
+
+    # GEÄNDERT: Ticket 104 — leverage/leverage_mode werden jetzt immer an
+    # from_signals durchgereicht (vorher fehlten sie vollständig). Fehlender Key
+    # (Alt-Runs, Alt-Snapshots ohne die Felder) fällt auf VBTs eigenen Default
+    # zurück (leverage=1.0, leverage_mode='lazy', vectorbtpro/_settings.py) —
+    # identisch zu explizitem Setzen, kein stiller Verhaltenswechsel.
+    leverage = pf_cfg.get('leverage')
+    if leverage is None:
+        leverage = 1.0
+    leverage_mode = pf_cfg.get('leverage_mode')
+    if leverage_mode is None:
+        leverage_mode = 'lazy'
 
     close_series = ohlc_data.get('Close')
     open_series = ohlc_data.get('Open')
@@ -331,13 +367,19 @@ def run_spec_strategy(
         tsl_stop=stop_kwargs['tsl_stop'],
         freq=timeframe,
         init_cash=pf_cfg['init_cash'],
-        size=pf_cfg['size'],
+        # GEÄNDERT: Ticket 104 — bei risikobasierter Größe ist der feste
+        # 'size'-Wert bedeutungslos: evaluate_rules_native ersetzt ihn durch das
+        # zur Laufzeit beschriebene Array (und 'size_type' durch 'amount'). Er
+        # darf dann auch fehlen; für jede andere Größenart bleibt er Pflicht.
+        size=pf_cfg.get('size') if risk_sizing is not None else pf_cfg['size'],
         size_type=pf_cfg['size_type'],
         td_stop=stop_kwargs['td_stop'],
         delta_format=stops_cfg.get('delta_format'),
         time_delta_format=stops_cfg.get('time_delta_format'),
         stop_exit_price=stop_exit_price,
         stop_order_type=stop_order_type,
+        leverage=leverage,
+        leverage_mode=leverage_mode,
         chunked=False,
     )
 
@@ -350,7 +392,18 @@ def run_spec_strategy(
         date_end=end_date,
         stops_swept=stops_swept,
         stop_ref_series=stop_ref_series,
+        risk_sizing=risk_sizing,
     )
+
+    # GEÄNDERT: Ticket 104, Anforderung 3 — stille Kürzung sichtbar machen.
+    # Ohne Kreditlinie kürzt VBT eine zu große Order auf das verfügbare Geld; die
+    # Kennzahlen sähen plausibel aus, messen aber eine konstante statt einer
+    # risikobasierten Größe. Der Abgleich läuft über die Order-Records.
+    risk_report = None
+    if risk_sizing is not None:
+        risk_report = summarize_truncation(portfolios, risk_sizing.desired_size)
+        if risk_report['note']:
+            print(f" ! Risikobasierte Größe: {risk_report['note']}")
 
     # Roh-Signale nicht verfügbar (signal_func_nb produziert per-bar)
     long_entries = None
@@ -373,6 +426,9 @@ def run_spec_strategy(
             'short_exits': short_exits,
         },
         'analysis_results_dict': None,
+        # GEÄNDERT: Ticket 104 — Selbstauskunft der risikobasierten Größe.
+        # None, wenn der Lauf mit fester Größe rechnet.
+        'risk_sizing_report': risk_report,
     }
 
 
@@ -444,6 +500,10 @@ def _run_chunked(
     all_metrics: list[list[dict]] = []
     all_columns: list = []
     last_indicators_results = None
+    # GEÄNDERT: Ticket 104, Anforderung 3 — die Selbstauskunft der
+    # risikobasierten Größe wird über alle Chunks summiert. Sonst berichtete der
+    # Lauf nur über seinen letzten Block.
+    risk_reports: list[dict] = []
     # GEÄNDERT: Zahl der an die Senke abgegebenen Kombinationen. Bleibt bei
     # 0, wenn ein fortgesetzter Lauf gar keinen Chunk mehr rechnen musste.
     n_sunk = 0
@@ -528,6 +588,9 @@ def _run_chunked(
             all_metrics.append(block_metrics)
             all_columns.append(block_columns)
         last_indicators_results = block_result.get('indicators_results')
+        block_risk_report = block_result.get('risk_sizing_report')
+        if block_risk_report is not None:
+            risk_reports.append(block_risk_report)
 
         # Chunk-Speicher freigeben
         del block_pf, block_result, block_metrics, block_columns
@@ -538,9 +601,14 @@ def _run_chunked(
     # GEÄNDERT: 'ann_factor' mitliefern: im gechunkten Pfad kommt beim
     # Speichern kein Portfolio an, aus dem er sich holen ließe. Ohne ihn kann der
     # DSR-Nachlauf den Sharpe je Balken nicht aus dem annualisierten rekonstruieren.
+    merged_risk_report = merge_reports(risk_reports) if risk_reports else None
+    if merged_risk_report is not None and merged_risk_report['note']:
+        print(f" ! Risikobasierte Größe (ganzer Lauf): {merged_risk_report['note']}")
+
     common = {
         'ann_factor': ann_factor,
         'indicators_results': last_indicators_results,
+        'risk_sizing_report': merged_risk_report,
         'signals': {
             'long_entries': None,
             'long_exits': None,

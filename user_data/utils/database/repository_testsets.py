@@ -807,6 +807,11 @@ def _build_leaderboard_entry_in_session(
             'slippage': c.slippage,
             'stop_exit_price': c.stop_exit_price,
             'stop_order_type': c.stop_order_type,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel mit
+            # einfrieren (derselbe Grund: Quelle des Leaderboard-Reruns).
+            'risk_pct': c.risk_pct,
+            'leverage': c.leverage,
+            'leverage_mode': c.leverage_mode,
             # GEÄNDERT: Schritt 3d — Stop-Formate gehören nicht mehr in den
             # Config-Snapshot; sie reisen in indicator_config_snapshot_json
             # ['config_json']['_stops'] mit.

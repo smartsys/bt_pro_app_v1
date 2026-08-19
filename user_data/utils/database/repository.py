@@ -899,6 +899,7 @@ def assess_run_usability(
     run_id: int,
     warmup: Optional[dict] = None,
     metrics_note: Optional[str] = None,
+    risk_note: Optional[str] = None,
 ) -> dict:
     """Bewertet nach dem Lauf, ob er verwertbar ist, und schreibt das Urteil an den Run.
 
@@ -917,6 +918,12 @@ def assess_run_usability(
             sonst berechnete Note angehängt, nicht anstelle von ihr geschrieben — bei
             expliziter Auswahl bleibt dieser Parameter None, und usability_note trägt
             ausschließlich die Verwertbarkeits-Bewertung.
+        risk_note: Selbstauskunft der risikobasierten Positionsgröße
+            (Ticket 104, Anforderung 3): Meldung, wenn VBT Orders auf das
+            verfügbare Geld gekürzt hat oder Einstiege ohne bestimmbaren
+            Stopabstand blieben. Wird wie ``metrics_note`` angehängt, damit sie
+            am Run hängt statt nur im Worker-Protokoll zu stehen — und damit
+            auch bei einem Testset-Lauf ankommt, dessen Runs denselben Weg gehen.
 
     Returns:
         Dict mit 'usability', 'note', 'n_results' und 'total_trades'.
@@ -956,6 +963,10 @@ def assess_run_usability(
     # die obige Note ersetzt.
     if metrics_note:
         note = f'{note} {metrics_note}'
+
+    # GEÄNDERT: Ticket 104 — Meldung der risikobasierten Größe anhängen.
+    if risk_note:
+        note = f'{note} Risikobasierte Größe: {risk_note}'
 
     update_backtest_run_usability(run_id, usability, note)
     return {
@@ -1043,6 +1054,11 @@ def _build_full_config_snapshot(
         'slippage': _bc('slippage'),
         'stop_exit_price': _bc('stop_exit_price'),
         'stop_order_type': _bc('stop_order_type'),
+        # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel mit
+        # einfrieren, aus demselben Grund (Ticket 41, Selbst-Reproduzierbarkeit).
+        'risk_pct': _bc('risk_pct'),
+        'leverage': _bc('leverage'),
+        'leverage_mode': _bc('leverage_mode'),
         'td_stop': _stop('td_stop'),
         'tp_stop': _stop('tp_stop'),
         'sl_stop': _stop('sl_stop'),

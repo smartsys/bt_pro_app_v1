@@ -215,13 +215,28 @@ def run_backtest_job(run_id: int) -> bool:
         logger.info(f"[BACKTEST] Fertig: {n_results} Kombinationen gespeichert (Run #{run_id})")
         run_status = 'completed'
 
+        # GEÄNDERT: Ticket 104, Anforderung 3 — die Selbstauskunft der
+        # risikobasierten Größe darf nicht im Rechenweg hängenbleiben. Sie geht
+        # ins Log UND an den Run (usability_note), damit sie auch bei einem
+        # Testset-Lauf sichtbar bleibt: dessen Runs laufen durch genau diese
+        # Funktion. Ohne 'risk_percent' ist der Bericht None und nichts ändert sich.
+        risk_report = (strategy_results or {}).get('risk_sizing_report')
+        risk_note = risk_report.get('note') if risk_report else None
+        if risk_note:
+            logger.warning(
+                '[BACKTEST] Run #%d risikobasierte Größe: %s', run_id, risk_note
+            )
+
         # GEÄNDERT: Selbstauskunft: hat der Lauf überhaupt Substanz?
         # Reine Kennzeichnung am Run, die Results bleiben unangetastet.
         # GEÄNDERT: 'metrics_auto_note' kommt aus create_backtest_run
         # (nur gesetzt, wenn 'auto' den Lauf tatsächlich gekürzt hat) und wird an die
         # Verwertbarkeits-Note angehängt, statt sie zu ersetzen.
         verdict = assess_run_usability(
-            run_id, warmup, metrics_note=backtest_config_json.get('metrics_auto_note')
+            run_id,
+            warmup,
+            metrics_note=backtest_config_json.get('metrics_auto_note'),
+            risk_note=risk_note,
         )
         if verdict['usability'] == 'usable':
             logger.info('[BACKTEST] Run #%d verwertbar: %s', run_id, verdict['note'])

@@ -113,6 +113,14 @@ class BacktestConfig(Base):
     # Voreinstellung), dieselbe Konvention wie im Playground-JS.
     stop_exit_price = Column(String(20), nullable=True)
     stop_order_type = Column(String(20), nullable=True)
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel. risk_pct ist
+    # nur bei size_type='risk_percent' wirksam, None = nicht gesetzt (analog den
+    # beiden Stop-Feldern oben). leverage/leverage_mode gehen IMMER an
+    # from_signals, unabhängig von size_type — Default 1.0/'lazy' entspricht
+    # VBTs eigenem Default (kein stiller Verhaltenswechsel für Bestandsconfigs).
+    risk_pct = Column(Float, nullable=True)
+    leverage = Column(Float, nullable=False, default=1.0, server_default='1')
+    leverage_mode = Column(String(20), nullable=False, default='lazy', server_default='lazy')
 
     # GEÄNDERT: Schritt 3d — Format-Spalten (delta_format/time_delta_format) entfernt.
     # Die Stop-Formate leben jetzt im Meta-Key indicators_json['_stops']

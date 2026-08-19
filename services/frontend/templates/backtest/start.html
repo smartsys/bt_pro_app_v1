@@ -88,6 +88,10 @@
               <div class="col-auto"><strong>Slippage:</strong> <span id="bt-slippage"></span></div>
               <div class="col-auto"><strong>Stop Exit:</strong> <span id="bt-stop-exit-price"></span></div>
               <div class="col-auto"><strong>Stop Order:</strong> <span id="bt-stop-order-type"></span></div>
+              <!-- GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel -->
+              <div class="col-auto"><strong>Risk %:</strong> <span id="bt-risk-pct"></span></div>
+              <div class="col-auto"><strong>Leverage:</strong> <span id="bt-leverage"></span></div>
+              <div class="col-auto"><strong>Lev-Mode:</strong> <span id="bt-leverage-mode"></span></div>
             </div>
           </div>
         </div>
@@ -362,6 +366,11 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById("bt-slippage").textContent = c.slippage;
     document.getElementById("bt-stop-exit-price").textContent = c.stop_exit_price || 'VBT-Default';
     document.getElementById("bt-stop-order-type").textContent = c.stop_order_type || 'VBT-Default';
+    // GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel. risk_pct
+    // NULL = nicht gesetzt (nur bei size_type='risk_percent' wirksam).
+    document.getElementById("bt-risk-pct").textContent = (c.risk_pct === null || c.risk_pct === undefined) ? 'nicht gesetzt' : c.risk_pct;
+    document.getElementById("bt-leverage").textContent = c.leverage;
+    document.getElementById("bt-leverage-mode").textContent = c.leverage_mode;
     document.getElementById("bt-config-details").style.display = '';
   }
 

@@ -70,7 +70,15 @@ from services.api.utils.symbol_correlation import (
 )
 from user_data.utils.ohlc.loader import load_ohlc_data
 # GEÄNDERT: Enum-Prüfung der Stop-Ausführungsfelder an der Eingabegrenze
-from user_data.utils.portfolio_enums import validate_stop_exit_price, validate_stop_order_type
+# GEÄNDERT: Ticket 104 — size_type/risk_pct/leverage/leverage_mode ebenfalls hier geprüft
+from user_data.utils.portfolio_enums import (
+    validate_leverage,
+    validate_leverage_mode,
+    validate_risk_pct,
+    validate_size_type,
+    validate_stop_exit_price,
+    validate_stop_order_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +108,13 @@ class BacktestConfigIn(BaseModel):
     slippage: float = 0.0
     stop_exit_price: Optional[str] = None
     stop_order_type: Optional[str] = None
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel. risk_pct
+    # ist nullable (nur bei size_type='risk_percent' wirksam), leverage/
+    # leverage_mode sind NOT NULL mit VBTs eigenem Default (kein stiller
+    # Verhaltenswechsel für Bestandsconfigs).
+    risk_pct: Optional[float] = None
+    leverage: float = 1.0
+    leverage_mode: str = 'lazy'
 
     # GEÄNDERT: Eingabegrenze 1 von 2. Ein ungültiger Enum-Wert wird hier
     # mit klarer Meldung abgewiesen, statt später roh aus VBT als KeyError zu fallen.
@@ -114,6 +129,30 @@ class BacktestConfigIn(BaseModel):
     def _check_stop_order_type(cls, value: Optional[str]) -> Optional[str]:
         """Prüft stop_order_type gegen die installierte VBT-Version."""
         return validate_stop_order_type(value)
+
+    @field_validator('size_type')
+    @classmethod
+    def _check_size_type(cls, value: str) -> str:
+        """Prüft size_type gegen die installierte VBT-Version plus 'risk_percent'."""
+        return validate_size_type(value)
+
+    @field_validator('risk_pct')
+    @classmethod
+    def _check_risk_pct(cls, value: Optional[float]) -> Optional[float]:
+        """Prüft risk_pct auf einen nicht-negativen Wert."""
+        return validate_risk_pct(value)
+
+    @field_validator('leverage')
+    @classmethod
+    def _check_leverage(cls, value: float) -> float:
+        """Prüft leverage auf einen positiven Wert."""
+        return validate_leverage(value)
+
+    @field_validator('leverage_mode')
+    @classmethod
+    def _check_leverage_mode(cls, value: str) -> str:
+        """Prüft leverage_mode gegen die installierte VBT-Version."""
+        return validate_leverage_mode(value)
 
 
 class BacktestConfigOut(BaseModel):
@@ -138,6 +177,10 @@ class BacktestConfigOut(BaseModel):
     slippage: float
     stop_exit_price: Optional[str] = None
     stop_order_type: Optional[str] = None
+    # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel auch in der Ausgabe
+    risk_pct: Optional[float] = None
+    leverage: float
+    leverage_mode: str
     is_favorite: int
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -264,6 +307,10 @@ def create_config(data: BacktestConfigIn):
             slippage=data.slippage,
             stop_exit_price=data.stop_exit_price,
             stop_order_type=data.stop_order_type,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel mitschreiben
+            risk_pct=data.risk_pct,
+            leverage=data.leverage,
+            leverage_mode=data.leverage_mode,
         )
         session.add(config)
         session.commit()
@@ -301,6 +348,10 @@ def update_config(config_id: int, data: BacktestConfigIn):
         config.slippage = data.slippage
         config.stop_exit_price = data.stop_exit_price
         config.stop_order_type = data.stop_order_type
+        # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel mitschreiben
+        config.risk_pct = data.risk_pct
+        config.leverage = data.leverage
+        config.leverage_mode = data.leverage_mode
         config.updated_at = datetime.now()
 
         session.commit()
@@ -352,6 +403,10 @@ def copy_config(config_id: int):
             slippage=original.slippage,
             stop_exit_price=original.stop_exit_price,
             stop_order_type=original.stop_order_type,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel mitkopieren
+            risk_pct=original.risk_pct,
+            leverage=original.leverage,
+            leverage_mode=original.leverage_mode,
         )
         session.add(copy)
         session.commit()
@@ -404,6 +459,17 @@ def create_backtest_config_from_result(result_id: int):
         if snapshot_slippage is None:
             snapshot_slippage = 0.0
 
+        # GEÄNDERT: Ticket 104 — leverage/leverage_mode sind ebenfalls NOT NULL.
+        # Alt-Snapshots ohne den Key (oder mit ausdrücklichem null) bekommen den
+        # Spaltendefault (1.0/'lazy' = VBT-Default), damit die Config anlegbar
+        # bleibt und wie bisher (ohne Hebel) rechnet.
+        snapshot_leverage = bc.get('leverage')
+        if snapshot_leverage is None:
+            snapshot_leverage = 1.0
+        snapshot_leverage_mode = bc.get('leverage_mode')
+        if snapshot_leverage_mode is None:
+            snapshot_leverage_mode = 'lazy'
+
         config = BacktestConfig(
             name=f'Aus Result {result_id} — {bc.get("symbol", "")} {bc.get("timeframe", "")}',
             description=f'Gespeichert aus Backtest-Result {result_id}.',
@@ -423,6 +489,11 @@ def create_backtest_config_from_result(result_id: int):
             slippage=snapshot_slippage,
             stop_exit_price=bc.get('stop_exit_price'),
             stop_order_type=bc.get('stop_order_type'),
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel aus dem
+            # Snapshot ziehen.
+            risk_pct=bc.get('risk_pct'),
+            leverage=snapshot_leverage,
+            leverage_mode=snapshot_leverage_mode,
         )
         session.add(config)
         session.commit()

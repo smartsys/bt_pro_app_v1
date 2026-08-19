@@ -122,7 +122,7 @@
             <div class="col-md-3">
               <label class="form-label">Size Type</label>
               <select class="form-select" id="cfg-size-type">
-                {% for st in ['value', 'percent100'] %}
+                {% for st in ['value', 'percent100', 'risk_percent'] %}
                 <option value="{{ st }}" {{ 'selected' if config and config.size_type == st else ('selected' if not config and st == 'value' else '') }}>{{ st }}</option>
                 {% endfor %}
               </select>
@@ -162,6 +162,28 @@
                 {% endfor %}
               </select>
               <small class="form-hint">Leer = VBT-Default, kein erzwungener Wert.</small>
+            </div>
+          </div>
+          <!-- GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel -->
+          <div class="row mt-3">
+            <div class="col-md-4">
+              <label class="form-label">Risk %</label>
+              <input type="number" class="form-control" id="cfg-risk-pct" step="0.0001" value="{{ config.risk_pct if config and config.risk_pct is not none else '' }}" placeholder="z.B. 0.03">
+              <small class="form-hint">Kontoanteil je Trade als Bruchteil (<code>0.03</code> = 3 %). Wirkt nur bei Size Type <code>risk_percent</code>. Leer = nicht gesetzt.</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Leverage</label>
+              <input type="number" class="form-control" id="cfg-leverage" step="any" min="0" value="{{ config.leverage if config else '1.0' }}" required>
+              <small class="form-hint">Kreditlinie über das Kontoguthaben hinaus. Geht immer an den Lauf, unabhängig von Size Type. VBT-Default <code>1.0</code> = keine Kreditlinie.</small>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Leverage Mode</label>
+              <select class="form-select" id="cfg-leverage-mode">
+                {% for lm in ['lazy', 'eager', 'lazymult', 'eagermult'] %}
+                <option value="{{ lm }}" {{ 'selected' if config and config.leverage_mode == lm else ('selected' if not config and lm == 'lazy' else '') }}>{{ lm }}</option>
+                {% endfor %}
+              </select>
+              <small class="form-hint">VBT-Default <code>lazy</code>.</small>
             </div>
           </div>
         </div>
@@ -787,6 +809,10 @@ document.addEventListener("DOMContentLoaded", function() {
       slippage: parseFloat(document.getElementById("cfg-slippage").value),
       stop_exit_price: document.getElementById("cfg-stop-exit-price").value || null,
       stop_order_type: document.getElementById("cfg-stop-order-type").value || null,
+      // GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel
+      risk_pct: document.getElementById("cfg-risk-pct").value === "" ? null : parseFloat(document.getElementById("cfg-risk-pct").value),
+      leverage: parseFloat(document.getElementById("cfg-leverage").value),
+      leverage_mode: document.getElementById("cfg-leverage-mode").value,
     };
 
     var url = id ? '/api/config/backtest/' + id : '/api/config/backtest';

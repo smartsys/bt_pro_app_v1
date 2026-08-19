@@ -53,6 +53,8 @@ class TestPreflightBacktestConfig:
             exchange='binance', timeframe='4h',
             size=100, size_type='value', init_cash=100, fees=0.001,
             slippage=0.0, stop_exit_price=None, stop_order_type=None,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel
+            risk_pct=None, leverage=1.0, leverage_mode='lazy',
         )
         cfg = playground_module._preflight_backtest_config(bt, 'a.b.c')
 

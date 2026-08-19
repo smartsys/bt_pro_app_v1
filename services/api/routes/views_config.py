@@ -184,6 +184,10 @@ def backtest_config_edit_page(request: Request, config_id: int) -> HTMLResponse:
             'slippage': config.slippage,
             'stop_exit_price': config.stop_exit_price,
             'stop_order_type': config.stop_order_type,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel an den Formular-Kontext
+            'risk_pct': config.risk_pct,
+            'leverage': config.leverage,
+            'leverage_mode': config.leverage_mode,
             # GEÄNDERT: Schritt 3d — Stop-Formate aus BacktestConfig entfernt
             # (leben jetzt in indicators_json['_stops']).
             # GEÄNDERT: is_favorite wird nur über den Tabellen-Stern getoggelt,

@@ -534,6 +534,13 @@ def rerun_from_snapshot(entry_id: int):
                 'slippage': cfg.get('slippage'),
                 'stop_exit_price': cfg.get('stop_exit_price'),
                 'stop_order_type': cfg.get('stop_order_type'),
+                # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel aus
+                # dem eingefrorenen Testset-Snapshot lesen. Alt-Einträge ohne die
+                # Keys liefern None; der Spec-Runner normalisiert leverage/
+                # leverage_mode dann auf VBTs Default (1.0/'lazy').
+                'risk_pct': cfg.get('risk_pct'),
+                'leverage': cfg.get('leverage'),
+                'leverage_mode': cfg.get('leverage_mode'),
                 # GEÄNDERT: Schritt 3d — Stop-Formate kommen über '_stops'
                 # (indicators_json), nicht mehr aus dem Config-portfolio-Block.
             },

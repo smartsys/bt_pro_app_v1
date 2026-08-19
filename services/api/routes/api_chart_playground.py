@@ -832,7 +832,12 @@ def get_result_config(result_id: int) -> dict:
         # gesetzter Nullwert: Alt-Results (vor der Umstellung) dürfen im Playground nicht als
         # "slippage = 0" erscheinen. Das Prefill prüft die Felder per hasOwnProperty und
         # lässt sie unangetastet, solange sie fehlen.
-        for portfolio_key in ('slippage', 'stop_exit_price', 'stop_order_type'):
+        # GEÄNDERT: Ticket 104 — dieselbe hasOwnProperty-Logik für risk_pct/
+        # leverage/leverage_mode.
+        for portfolio_key in (
+            'slippage', 'stop_exit_price', 'stop_order_type',
+            'risk_pct', 'leverage', 'leverage_mode',
+        ):
             if portfolio_key in bc:
                 backtest_config_json['portfolio'][portfolio_key] = bc[portfolio_key]
 
@@ -894,7 +899,7 @@ class RunBacktestIn(BaseModel):
     # Top-Level des Eintrags (kein 'inputs'-Wrapper), siehe buildBacktestPayload().
     indicators: dict      # {name -> {indicator, tf, enabled, <inputs>, <params>}, _stops: {tp_stop, sl_stop, ...}}
     rules: dict           # {entry: {...}, exit: None|{...}}
-    portfolio: dict       # {size, size_type, init_cash, fees, slippage, stop_exit_price, stop_order_type}
+    portfolio: dict       # {size, size_type, init_cash, fees, slippage, stop_exit_price, stop_order_type, risk_pct, leverage, leverage_mode}
     data: dict            # {exchange, symbols, timeframe, start, end, ohlc_start, ohlc_end}
     name: Optional[str] = None           # optional Strategie-Name für DB
     concept_slug: Optional[str] = None  # Strategie-Konzept (nur informativ)
@@ -1230,6 +1235,9 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
             'duration_ms': duration_ms,
             # GEÄNDERT: neuer Zählerstand des Konzepts (None ohne concept_id)
             'concept_probe_count': concept_probe_count,
+            # GEÄNDERT: Ticket 104, Anforderung 3 — Selbstauskunft der
+            # risikobasierten Größe (None, wenn mit fester Größe gerechnet wurde).
+            'risk_sizing_report': strategy_results.get('risk_sizing_report'),
             'equity': equity,
             'trades_data': trades_data,
         },
@@ -1536,6 +1544,10 @@ def _preflight_backtest_config(bt: BacktestConfig, import_path: str) -> dict:
             'slippage': bt.slippage,
             'stop_exit_price': bt.stop_exit_price,
             'stop_order_type': bt.stop_order_type,
+            # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel
+            'risk_pct': bt.risk_pct,
+            'leverage': bt.leverage,
+            'leverage_mode': bt.leverage_mode,
         },
     }
 
@@ -1659,6 +1671,44 @@ def _preflight_stop_ref_summary(indicators_full: dict) -> list[dict]:
     return summary
 
 
+def _preflight_risk_summary(portfolio: dict, stops_cfg: dict) -> dict:
+    """Fasst die risikobasierte Positionsgröße für den Preflight zusammen.
+
+    Ticket 104, Anforderung 5: vor dem Lauf muss erkennbar sein, welcher
+    Risikoanteil, Hebel und Hebelmodus gelten und aus welcher Quelle der
+    Stopabstand kommt — analog zur Referenz-Stop-Ausweisung aus Ticket 103
+    (``_preflight_stop_ref_summary``). Der Divisor der risikobasierten Größe ist
+    ``sl_stop`` (Ticket 104, Anforderung 2), daher wird dessen Quelle hier
+    zusätzlich lesbar aufbereitet — als Skalar, Sweep-Achse oder Indikator-Referenz.
+
+    Args:
+        portfolio: Der Portfolio-Block der BacktestConfig (bzw. des Playground-Requests).
+        stops_cfg: Der '_stops'-Block der Indikator-Config.
+
+    Returns:
+        dict mit size_type, risk_pct, leverage, leverage_mode, sl_stop_source.
+    """
+    from user_data.strategies.generic.stop_refs import is_stop_ref
+
+    sl_stop = (stops_cfg or {}).get('sl_stop')
+    if sl_stop is None:
+        sl_stop_source = 'nicht gesetzt'
+    elif is_stop_ref(sl_stop):
+        sl_stop_source = f"Referenz: {sl_stop.get('ref')} × {sl_stop.get('mult', 1.0)}"
+    elif isinstance(sl_stop, dict):
+        sl_stop_source = f"Sweep: {sl_stop}"
+    else:
+        sl_stop_source = f"Skalar: {sl_stop}"
+
+    return {
+        'size_type': portfolio.get('size_type'),
+        'risk_pct': portfolio.get('risk_pct'),
+        'leverage': portfolio.get('leverage'),
+        'leverage_mode': portfolio.get('leverage_mode'),
+        'sl_stop_source': sl_stop_source,
+    }
+
+
 @router.post('/preflight')
 def preflight(req: PreflightIn) -> dict:
     """Billiger Vorlauf auf einer Kombination — gespeicherte Iteration + BacktestConfig
@@ -1671,8 +1721,9 @@ def preflight(req: PreflightIn) -> dict:
     Signalzeitpunkt, tatsächlicher Vorlauf (`check_warmup` — Anforderung 4, nicht neu
     gerechnet), Kombinationszahl des vollen Rasters (`count_total_combos` — die
     einzige Zähl-Wahrheit), Referenz-Stops mit Indikator/Faktor/Live/Ratsche
-    (`_preflight_stop_ref_summary`, Ticket 103 Anforderung 7) und eine grobe
-    Laufzeit-Hochrechnung.
+    (`_preflight_stop_ref_summary`, Ticket 103 Anforderung 7), Risikoanteil/
+    Hebel/Hebelmodus/Stopabstand-Quelle (`_preflight_risk_summary`, Ticket 104
+    Anforderung 5) und eine grobe Laufzeit-Hochrechnung.
 
     Berichtet, blockiert nicht: auch ein Null-Signal-Fall liefert 200 mit den
     Zahlen, die das belegen — kein automatisches Verhindern des vollen Laufs.
@@ -1745,6 +1796,12 @@ def preflight(req: PreflightIn) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f'{e}')
 
+    # GEÄNDERT: Ticket 104, Anforderung 5 — Risikoanteil, Hebel, Hebelmodus und
+    # die Quelle des Stopabstands (sl_stop) lesbar ausweisen.
+    risk_summary = _preflight_risk_summary(
+        backtest_config.get('portfolio') or {}, indicators_full.get('_stops') or {}
+    )
+
     # Auf den Startwert reduzieren — exakt derselbe Baustein wie /run-backtest-lite.
     indicators_reduced = _reduce_to_start_values(indicators_full)
 
@@ -1769,12 +1826,30 @@ def preflight(req: PreflightIn) -> dict:
     # /run-backtest-lite — und linear auf die volle Rastergröße hochrechnen. Grob,
     # weil ein echter Multi-Kombi-Lauf vektorisiert rechnet und typischerweise
     # günstiger als linear ist; als Schätzung für "lohnt sich das?" reicht das.
+    # GEÄNDERT: Ticket 104 — das gezielte Abfangen des NotImplementedError
+    # aus Teilaufgabe 1 ist entfallen: der Spec-Runner rechnet die risikobasierte
+    # Größe jetzt selbst. Eine unzulässige Kombination (kein sl_stop, Stop-Sweep,
+    # from_ago) bricht wie jeder andere Konfigurationsfehler mit Klartext ab.
     t_start = _time.monotonic()
+    single_combo_ms: Optional[int] = None
+    runtime_note = (
+        'Grobe lineare Hochrechnung (Einzelkombi-Dauer x Rastergröße) — der echte '
+        'Multi-Kombi-Lauf rechnet vektorisiert und ist typischerweise günstiger.'
+    )
     try:
-        run_spec_strategy(ohlc_data, indicators_reduced, backtest_config, rules_json)
+        probe_results = run_spec_strategy(
+            ohlc_data, indicators_reduced, backtest_config, rules_json
+        )
+        single_combo_ms = int((_time.monotonic() - t_start) * 1000)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'{e}')
-    single_combo_ms = int((_time.monotonic() - t_start) * 1000)
+
+    # GEÄNDERT: Ticket 104, Anforderung 3 — die Selbstauskunft der
+    # risikobasierten Größe aus der Probe-Kombination mit ausweisen. Sie ist
+    # damit schon vor dem vollen Lauf sichtbar, nicht erst hinterher am Run.
+    probe_report = probe_results.get('risk_sizing_report')
+    if probe_report is not None:
+        risk_summary = {**risk_summary, 'probe_report': probe_report}
 
     return {
         'data': {
@@ -1786,13 +1861,13 @@ def preflight(req: PreflightIn) -> dict:
             'entry_signals': entry_signals,
             'exit_signals': exit_signals,
             'stop_refs': stop_refs_summary,
+            'risk_sizing': risk_summary,
             'indicator_nan_ratio': nan_ratios,
             'single_combo_duration_ms': single_combo_ms,
-            'estimated_full_runtime_ms': single_combo_ms * n_combinations,
-            'estimated_full_runtime_note': (
-                'Grobe lineare Hochrechnung (Einzelkombi-Dauer x Rastergröße) — der echte '
-                'Multi-Kombi-Lauf rechnet vektorisiert und ist typischerweise günstiger.'
+            'estimated_full_runtime_ms': (
+                single_combo_ms * n_combinations if single_combo_ms is not None else None
             ),
+            'estimated_full_runtime_note': runtime_note,
         },
         'error': None,
     }

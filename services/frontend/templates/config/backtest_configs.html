@@ -92,6 +92,9 @@
             <th class="text-center">Slippage</th>
             <th>Stop Exit</th>
             <th>Stop Order</th>
+            <th class="text-center">Risk %</th>
+            <th class="text-center">Leverage</th>
+            <th>Lev-Mode</th>
             <th style="min-width:120px"></th>
           </tr>
         </thead>
@@ -365,6 +368,11 @@ document.addEventListener("DOMContentLoaded", function() {
       { data: "slippage", className: "text-center" },
       { data: "stop_exit_price", render: function(d) { return d ? d : '<span class="text-muted">–</span>'; } },
       { data: "stop_order_type", render: function(d) { return d ? d : '<span class="text-muted">–</span>'; } },
+      // GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße + Hebel. risk_pct
+      // NULL bedeutet „nicht gesetzt" (wirkt nur bei size_type='risk_percent').
+      { data: "risk_pct", className: "text-center", render: function(d) { return d === null || d === undefined ? '<span class="text-muted">–</span>' : d; } },
+      { data: "leverage", className: "text-center" },
+      { data: "leverage_mode" },
       {
         data: "id",
         orderable: false,
