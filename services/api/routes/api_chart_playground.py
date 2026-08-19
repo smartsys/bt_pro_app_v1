@@ -1623,6 +1623,42 @@ def _preflight_nan_ratios(indicators: dict) -> dict:
     return ratios
 
 
+def _preflight_stop_ref_summary(indicators_full: dict) -> list[dict]:
+    """Fasst Referenz-Stops lesbar zusammen (Ticket 103, Anforderung 7).
+
+    Zeigt vor dem Lauf, welcher Indikator und welcher Faktor je Stop-Feld greifen
+    und ob der Abstand laufend nachgeführt wird (und bei Live, ob geratscht wird)
+    — damit erkennbar ist, dass kein fester Prozentwert gerechnet wird. Nutzt
+    ``stop_refs.parse_stop_refs`` (Single Source der Notation, kein zweiter Parser).
+
+    Args:
+        indicators_full: Das volle (ungereduzierte) Raster inkl. '_stops'.
+
+    Returns:
+        Liste je Referenz-Stop mit Stop-Feld, Referenz, Indikator-ID, Output,
+        Faktor sowie live/ratchet. Leer, wenn kein Stop eine Referenz ist.
+
+    Raises:
+        ValueError: Bei ungültiger Referenz-Notation (siehe ``parse_stop_ref``).
+    """
+    from user_data.strategies.generic.stop_refs import parse_stop_refs
+
+    specs = parse_stop_refs((indicators_full or {}).get('_stops'))
+    summary = []
+    for stop_key, spec in specs.items():
+        parts = spec.ref.split(':')
+        summary.append({
+            'stop_key': stop_key,
+            'ref': spec.ref,
+            'indicator_id': parts[1] if len(parts) > 1 else spec.ref,
+            'output': parts[2] if len(parts) > 2 else None,
+            'mult': spec.mult,
+            'live': spec.live,
+            'ratchet': spec.ratchet,
+        })
+    return summary
+
+
 @router.post('/preflight')
 def preflight(req: PreflightIn) -> dict:
     """Billiger Vorlauf auf einer Kombination — gespeicherte Iteration + BacktestConfig
@@ -1634,7 +1670,9 @@ def preflight(req: PreflightIn) -> dict:
     Entry-/Exit-Signalzahl, NaN-Anteil je Indikator-Output, erster/letzter
     Signalzeitpunkt, tatsächlicher Vorlauf (`check_warmup` — Anforderung 4, nicht neu
     gerechnet), Kombinationszahl des vollen Rasters (`count_total_combos` — die
-    einzige Zähl-Wahrheit) und eine grobe Laufzeit-Hochrechnung.
+    einzige Zähl-Wahrheit), Referenz-Stops mit Indikator/Faktor/Live/Ratsche
+    (`_preflight_stop_ref_summary`, Ticket 103 Anforderung 7) und eine grobe
+    Laufzeit-Hochrechnung.
 
     Berichtet, blockiert nicht: auch ein Null-Signal-Fall liefert 200 mit den
     Zahlen, die das belegen — kein automatisches Verhindern des vollen Laufs.
@@ -1701,6 +1739,12 @@ def preflight(req: PreflightIn) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f'{e}')
 
+    # Referenz-Stops lesbar ausweisen (Ticket 103, Anforderung 7).
+    try:
+        stop_refs_summary = _preflight_stop_ref_summary(indicators_full)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f'{e}')
+
     # Auf den Startwert reduzieren — exakt derselbe Baustein wie /run-backtest-lite.
     indicators_reduced = _reduce_to_start_values(indicators_full)
 
@@ -1741,6 +1785,7 @@ def preflight(req: PreflightIn) -> dict:
             'warmup': warmup,
             'entry_signals': entry_signals,
             'exit_signals': exit_signals,
+            'stop_refs': stop_refs_summary,
             'indicator_nan_ratio': nan_ratios,
             'single_combo_duration_ms': single_combo_ms,
             'estimated_full_runtime_ms': single_combo_ms * n_combinations,

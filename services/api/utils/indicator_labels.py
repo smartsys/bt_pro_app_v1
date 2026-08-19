@@ -14,7 +14,10 @@ Name (selbsttragend — reicht allein zur Auswahl im Playground-Dropdown):
   Stops im Namen: ``TP``, ``SL``, ``TSL`` (th/stop), ``TD`` in dieser Reihenfolge, mit
   Leerzeichen getrennt; das Format-Wort hängt per Komma an seinem Stop (``TSL 2%/1%, percent``,
   ``TD 8, rows``). TP/SL/TSL als Prozent (×100 mit ``%``), TD als ganze Zahl. Sweep-Achsen
-  erscheinen als Bereich mit Anzahl ``min-max (n)`` — z. B. ``TP 10-40% (13)``.
+  erscheinen als Bereich mit Anzahl ``min-max (n)`` — z. B. ``TP 10-40% (13)``. Ein
+  Indikator-Referenz-Stop (Dict mit ``ref``, siehe ``stop_refs.py``) erscheint als
+  ``<mult> × <indikator_id>`` (z. B. ``SL 5 × atr14``); bei ``live: true`` hängt ``live``
+  an, bei zusätzlich ``ratchet: false`` noch ``, no-ratchet``.
 
 Beschreibung:
   Auflistung der Indikatoren mit ihren Werten/Wertebereichen —
@@ -32,6 +35,7 @@ from user_data.strategies.generic.indicator_factory import (
     expand_stop_values,
     is_stop_sweep,
 )
+from user_data.strategies.generic.stop_refs import is_stop_ref, parse_stop_ref
 
 
 def _clean_num(value: float) -> str:
@@ -62,8 +66,27 @@ def _sweep_bounds(value, stop_key: str) -> tuple:
     return min(values), max(values), len(values)
 
 
+def _fmt_stop_ref(v: dict, stop_key: str) -> str:
+    """Indikator-Referenz-Stop lesbar: ``<mult> × <indikator_id>`` (+ live/ratchet).
+
+    Nutzt ``stop_refs.parse_stop_ref`` (Single Source der Notation, keine zweite
+    Validierung hier) und liest die Indikator-ID aus dem 'ref'-String.
+    """
+    spec = parse_stop_ref(v, stop_key)
+    ind_id = spec.ref.split(":")[1]
+    label = f"{_clean_num(spec.mult)} × {ind_id}"
+    if spec.live:
+        label += " live"
+        if not spec.ratchet:
+            label += ", no-ratchet"
+    return label
+
+
 def _fmt_pct(v, stop_key: str) -> str:
-    """TP/SL/TSL-Wert als Prozent (×100 mit %); Sweep als ``min-max% (n)``."""
+    """TP/SL/TSL-Wert als Prozent (×100 mit %); Sweep als ``min-max% (n)``;
+    Indikator-Referenz als ``<mult> × <indikator_id>``."""
+    if is_stop_ref(v):
+        return _fmt_stop_ref(v, stop_key)
     if is_stop_sweep(v):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo * 100) + "-" + _clean_num(hi * 100) + f"% ({n})"
@@ -71,7 +94,10 @@ def _fmt_pct(v, stop_key: str) -> str:
 
 
 def _fmt_td(v, stop_key: str) -> str:
-    """TD-Wert als ganze Zahl; Sweep als ``min-max (n)`` (ohne Prozent)."""
+    """TD-Wert als ganze Zahl; Sweep als ``min-max (n)`` (ohne Prozent);
+    Indikator-Referenz als ``<mult> × <indikator_id>``."""
+    if is_stop_ref(v):
+        return _fmt_stop_ref(v, stop_key)
     if is_stop_sweep(v):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo) + "-" + _clean_num(hi) + f" ({n})"

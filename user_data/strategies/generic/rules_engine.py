@@ -868,6 +868,152 @@ def _eval_exit_blocks_nb(
     return False
 
 
+# GEÄNDERT: Laufend nachgeführter Stopabstand ('"live": true').
+# Slot-Reihenfolge der Live-Serien und Bedeutung der Modi. Beide Konstanten-Sätze
+# werden Python-seitig (_build_live_stop_args) und im Numba-Pfad
+# (_apply_live_stop_nb / _state_exit_signal_func_nb) gelesen — sie müssen
+# zusammenpassen.
+_LIVE_STOP_KEYS = ('sl_stop', 'tsl_stop')
+_LIVE_MODE_OFF = -1      # keine Live-Serie für dieses Feld — der Zweig greift nicht
+_LIVE_MODE_FREE = 0      # ratchet: false — das Niveau folgt der Serie in beide Richtungen
+_LIVE_MODE_RATCHET = 1   # ratchet: true  — das Niveau darf sich nur zugunsten der Position bewegen
+
+# Delta-Formate direkt aus der installierten VBT-Version gelesen (kein
+# handgepflegtes Duplikat). Sie werden gebraucht, um zwischen dem Stop-Wert im
+# Record und dem Preisabstand umzurechnen, den das Niveau braucht — VBT rechnet
+# in resolve_stop_price_nb genau so: Absolute = Preisabstand, Percent =
+# Anteil vom Bezugspreis, Percent100 = derselbe Anteil in Prozentpunkten.
+_DELTA_FORMAT_ABSOLUTE = int(vbt.pf_enums.DeltaFormat.Absolute)
+_DELTA_FORMAT_PERCENT = int(vbt.pf_enums.DeltaFormat.Percent)
+_DELTA_FORMAT_PERCENT100 = int(vbt.pf_enums.DeltaFormat.Percent100)
+
+
+@njit(cache=True)
+def _apply_live_stop_nb(
+    stop_info: np.ndarray,   # Record-Array last_sl_info bzw. last_tsl_info aus dem Kontext
+    col: np.int64,
+    ref_price: np.float64,
+    value: np.float64,
+    mode: np.int64,
+    is_long: bool,
+    level_track: np.ndarray,  # (n_total,) float64 — mitgeführtes Niveau, NaN = Trade-Beginn
+) -> None:
+    """Setzt den Stopabstand einer offenen Position auf den Wert der Live-Serie.
+
+    Läuft im selben Balken VOR der Stop-Prüfung von ``from_signals`` — der neu
+    gesetzte Abstand wirkt also bereits in diesem Balken.
+
+    Ohne Ratsche (``_LIVE_MODE_FREE``) wandert der Wert unverändert in den Record:
+    das Niveau folgt der Serie in beide Richtungen.
+
+    Mit Ratsche (``_LIVE_MODE_RATCHET``) wird das **Niveau** mitgeführt, nicht der
+    Abstand. VBT rechnet das Niveau als ``bezugspreis ∓ preisabstand`` (Long:
+    minus, Short: plus). Der Bezugspreis ist beim ``sl_stop`` der feste
+    Einstiegspreis (``init_price``) und beim ``tsl_stop`` der nachgezogene
+    Extrempreis (``peak_price``, am Quelltext der Container-Version geprüft: VBT
+    liest ihn in ``check_stop_hit_nb`` als ``init_price`` des TSL). Je Balken wird
+    daraus das Kandidaten-Niveau gebildet, gegen das mitgeführte Niveau
+    zugunsten der Position gekappt und der an VBT übergebene Abstand
+    zurückgerechnet (Long: ``abstand = bezugspreis − niveau``).
+
+    Der Unterschied zur naheliegenden Kurzform „der Abstand darf nur kleiner
+    werden" ist nicht kosmetisch: beim ``sl_stop`` ist der Bezugspreis konstant,
+    dort sind beide Formen dasselbe. Beim ``tsl_stop`` wandert der Bezugspreis
+    zugunsten der Position — steigt er stärker als die Serie, **darf der Abstand
+    wachsen**, ohne dass das Niveau fällt. Genau das macht das auslösende Original
+    in Pine (``stopLevel := math.max(stopLevel, high - trailAtr * atrVal)``); die
+    Kurzform würde den Nachbau systematisch zu eng stellen.
+
+    Trade-Beginn: ``level_track`` trägt NaN (der Aufrufer setzt es beim Einstieg
+    zurück). Startwert ist dann das Niveau, das VBT gerade führt — also der beim
+    Einstieg aus derselben Serie eingefrorene Abstand am Bezugspreis. Der
+    Einstiegsbalken selbst wird nie angefasst (die Position ist dort noch nicht
+    offen), deshalb steht ``peak_price`` beim ersten Live-Balken bereits.
+
+    Args:
+        stop_info: Das Record-Array des Stops (``c.last_sl_info`` bzw.
+            ``c.last_tsl_info``), wird in-place geändert.
+        col: Portfolio-Spalte.
+        ref_price: Der Bezugspreis desselben Records (``init_price`` bzw.
+            ``peak_price``) — der Aufrufer liest ihn, weil nur er weiß, welches
+            Record vorliegt.
+        value: Der Serienwert dieses Balkens für diese Spalte (bereits mit
+            'mult' skaliert).
+        mode: _LIVE_MODE_FREE oder _LIVE_MODE_RATCHET.
+        is_long: True bei Long-Position (Niveau unter dem Bezugspreis).
+        level_track: Mitgeführtes Niveau je Portfolio-Spalte für dieses Stop-Feld.
+
+    Raises:
+        ValueError: Wenn der Bezugspreis kein gültiger Kurs ist (dann ließe sich
+            kein Niveau zurückrechnen) oder das Delta-Format 'target' ist (dort
+            ist der Stop-Wert selbst ein Kursniveau — die Eingabegrenze in
+            stop_refs weist die Kombination bereits ab).
+    """
+    if not np.isfinite(value):
+        # Warmup-NaN: den bestehenden Abstand stehen lassen. Ein NaN zu schreiben
+        # würde den Stop still abschalten (VBT liest NaN als "kein Stop").
+        return
+    if stop_info['init_idx'][col] < 0 or not stop_info['active'][col]:
+        # Kein Stop-Record dieses Trades (das Feld ist gar nicht gesetzt oder die
+        # Position ist gerade geschlossen worden). Hier wird nichts scharf
+        # gemacht, was der Lauf nicht selbst gesetzt hat.
+        return
+
+    stop_value = abs(value)
+    if mode != _LIVE_MODE_RATCHET:
+        stop_info['stop'][col] = stop_value
+        return
+
+    if not np.isfinite(ref_price):
+        raise ValueError(
+            "Laufende Stop-Nachführung mit Ratsche: der Bezugspreis des "
+            "Stop-Records ist kein gültiger Kurs, das Stop-Niveau lässt sich "
+            "nicht zurückrechnen."
+        )
+
+    delta_format = stop_info['delta_format'][col]
+    if delta_format == _DELTA_FORMAT_ABSOLUTE:
+        umrechnung = 1.0
+    elif delta_format == _DELTA_FORMAT_PERCENT:
+        umrechnung = abs(ref_price)
+    elif delta_format == _DELTA_FORMAT_PERCENT100:
+        umrechnung = abs(ref_price) / 100.0
+    else:
+        raise ValueError(
+            "Laufende Stop-Nachführung mit Ratsche: delta_format 'target' "
+            "kennt keinen Abstand, aus dem sich ein Niveau ergäbe."
+        )
+
+    # Kandidaten-Niveau aus dem Serienwert dieses Balkens.
+    preis_abstand = stop_value * umrechnung
+    if is_long:
+        kandidat = ref_price - preis_abstand
+    else:
+        kandidat = ref_price + preis_abstand
+
+    niveau = level_track[col]
+    if not np.isfinite(niveau):
+        # Trade-Beginn: Startwert ist das Niveau, das VBT gerade führt.
+        alt_stop = stop_info['stop'][col]
+        if np.isfinite(alt_stop):
+            alt_abstand = abs(alt_stop) * umrechnung
+            niveau = ref_price - alt_abstand if is_long else ref_price + alt_abstand
+        else:
+            niveau = kandidat
+
+    if is_long:
+        if kandidat > niveau:
+            niveau = kandidat
+        neuer_preis_abstand = ref_price - niveau
+    else:
+        if kandidat < niveau:
+            niveau = kandidat
+        neuer_preis_abstand = niveau - ref_price
+
+    level_track[col] = niveau
+    stop_info['stop'][col] = neuer_preis_abstand / umrechnung
+
+
 @njit(cache=True)
 def _state_exit_signal_func_nb(
     c,
@@ -931,6 +1077,10 @@ def _state_exit_signal_func_nb(
     track_entry_idx: np.ndarray,    # (N,) int64 — letzter Entry-Bar
     track_max_price: np.ndarray,    # (N,) float64
     track_min_price: np.ndarray,    # (N,) float64
+    # Laufend nachgeführte Stopabstände; Slots wie _LIVE_STOP_KEYS (0 = sl, 1 = tsl)
+    live_stop_arr: np.ndarray,      # (2, T, n_combo) float64 — Platzhalter (2,1,1) wenn aus
+    live_stop_modes: np.ndarray,    # (2,) int64 — -1 aus, 0 ohne Ratsche, 1 mit Ratsche
+    live_stop_level: np.ndarray,    # (2, N) float64 — mitgeführtes Stop-Niveau der Ratsche
 ) -> tuple:
     """Numba-signal_func_nb für State-basierte Exit-Conditions in DNF.
 
@@ -941,6 +1091,13 @@ def _state_exit_signal_func_nb(
     die Long- oder Short-Exit-Gruppe block-weise aus (_eval_exit_blocks_nb):
     je Block UND der stateful Conditions UND der vorberechneten statischen
     Block-Maske, zwischen den Blöcken ODER.
+
+    Trägt ein Referenz-Stop '"live": true', wird sein Abstand hier bei jeder Kerze
+    einer offenen Position neu gesetzt (_apply_live_stop_nb) — die Funktion läuft
+    im selben Balken vor der Stop-Prüfung von from_signals. Mit Ratsche führt
+    live_stop_level das Stop-Niveau je Portfolio-Spalte mit (Reset beim Einstieg,
+    wie track_max_price/track_min_price). Ohne Live-Serie steht der Modus auf -1
+    und der Zweig greift nicht.
 
     entry_mask / short_entry_mask sind immer 2D (T, N), static_block /
     short_static_block immer 3D (n_blocks, T, W) — auch für Single-Combo,
@@ -980,6 +1137,13 @@ def _state_exit_signal_func_nb(
             track_entry_idx[col] = entry_idx
             track_max_price[col] = high_arr[i]
             track_min_price[col] = low_arr[i]
+            # GEÄNDERT: Das mitgeführte Stop-Niveau der Ratsche gehört zum
+            # einzelnen Trade und startet neu. NaN heißt "noch kein Niveau" —
+            # _apply_live_stop_nb leitet es dann aus dem VBT-Record ab.
+            if live_stop_modes[0] >= 0:
+                live_stop_level[0, col] = np.nan
+            if live_stop_modes[1] >= 0:
+                live_stop_level[1, col] = np.nan
         else:
             h = high_arr[i]
             l = low_arr[i]
@@ -990,6 +1154,34 @@ def _state_exit_signal_func_nb(
 
         max_price_val = track_max_price[col]
         min_price_val = track_min_price[col]
+
+        # GEÄNDERT: Laufend nachgeführter Stopabstand. Greift ausschließlich,
+        # wenn für das Feld eine Live-Serie gesetzt ist (Modus >= 0) — ohne sie
+        # bleibt der beim Einstieg eingefrorene Abstand unangetastet und die
+        # Rechnung damit unverändert.
+        is_long_position = direction == 0
+        if live_stop_modes[0] >= 0:
+            # Bezugspreis des sl_stop ist der feste Einstiegspreis.
+            _apply_live_stop_nb(
+                c.last_sl_info,
+                col,
+                c.last_sl_info['init_price'][col],
+                live_stop_arr[0, i, combo_col],
+                live_stop_modes[0],
+                is_long_position,
+                live_stop_level[0],
+            )
+        if live_stop_modes[1] >= 0:
+            # Bezugspreis des tsl_stop ist der nachgezogene Extrempreis.
+            _apply_live_stop_nb(
+                c.last_tsl_info,
+                col,
+                c.last_tsl_info['peak_price'][col],
+                live_stop_arr[1, i, combo_col],
+                live_stop_modes[1],
+                is_long_position,
+                live_stop_level[1],
+            )
 
         if direction == 0:
             # Long-Position: gleichen Entry-Typ unterdrücken; Short-Entry durchlassen
@@ -1329,6 +1521,185 @@ def _build_series_col_map(
     return result
 
 
+# GEÄNDERT: Combo-Achse um die Param-Achse der Referenz-Stops erweitern.
+def _extend_combo_axis_for_stop_refs(
+    combo_columns: Any,
+    n_combo: int,
+    stop_ref_series: Optional[dict],
+) -> tuple:
+    """Nimmt die Param-Achse jedes Referenz-Stops in die Combo-Achse auf.
+
+    Ein Referenz-Stop erscheint in keiner Entry-Maske und in keinem Regel-Operanden.
+    Trägt der referenzierte Indikator eine eigene Parameter-Achse (er wird gesweept),
+    muss sie trotzdem die Portfolio-Spalten unterscheiden — sonst bekäme jede Spalte
+    dieselbe Serie. Auch bei nur EINEM Wert gehört das Level in den Spalten-Label:
+    im gechunkten Lauf steht in jedem Chunk ein anderer Einzelwert, und ohne das Level
+    wären die Chunk-Labels identisch (kollidierende params_hash beim Speichern).
+
+    Level, die die Combo-Achse schon führt (der Indikator wird zusätzlich in einer
+    Regel benutzt), bleiben unangetastet — dort alignt die Achse ohnehin.
+
+    Args:
+        combo_columns: Bisheriger Spalten-Index der Combo-Achse (oder None).
+        n_combo: Bisherige Breite der Combo-Achse.
+        stop_ref_series: Stop-Feld -> ResolvedStopRef (oder None/leer).
+
+    Returns:
+        Tupel (combo_columns, n_combo) nach der Erweiterung.
+
+    Raises:
+        ValueError: Wenn die Param-Achse eines Referenz-Indikators keine
+            Level-Namen trägt und sich deshalb nicht kreuzen ließe.
+    """
+    if not stop_ref_series:
+        return combo_columns, n_combo
+
+    for stop_key, resolved in stop_ref_series.items():
+        frame = resolved.series
+        if not isinstance(frame, pd.DataFrame):
+            continue
+        ref_cols = frame.columns
+        if any(name is None for name in ref_cols.names):
+            raise ValueError(
+                f"Stop {stop_key!r}: die Referenz {resolved.spec.ref!r} liefert eine "
+                f"Spalten-Achse ohne Level-Namen — sie lässt sich den Portfolio-Spalten "
+                f"nicht eindeutig zuordnen."
+            )
+        if combo_columns is None:
+            combo_columns = ref_cols
+            n_combo = len(ref_cols)
+            continue
+        if set(ref_cols.names) <= set(combo_columns.names):
+            continue
+        combo_columns = _cross_target_from_indexes([combo_columns, ref_cols])
+        n_combo = len(combo_columns)
+    return combo_columns, n_combo
+
+
+# GEÄNDERT: Referenz-Stops auf die Combo-Achse bringen.
+def _build_stop_ref_operands(
+    stop_ref_series: Optional[dict],
+    combo_columns: Any,
+    n_combo: int,
+    n_bars: int,
+) -> dict:
+    """Bringt die Zeitreihen der Referenz-Stops auf die Combo-Achse des Portfolios.
+
+    Jede aufgelöste Referenz-Serie wird — wie die Series-Operanden der stateful
+    Conditions — auf die Combo-Achse expandiert und mit deren Spalten-Index versehen.
+    Damit steht in jeder Spalte der Wert des dort tatsächlich gerechneten
+    Indikator-Parametersatzes.
+
+    Die Kreuzung mit einer Stop-Sweep-Achse (vbt.Param) übernimmt VBT selbst: es
+    broadcastet die Stop-Argumente ZUERST gegen die Kursreihe (hier close_mc mit
+    genau dieser Combo-Achse) und legt die Param-Achse anschließend darüber — Stop
+    außen, Indikator innen, wie bei den Masken. Eine hier schon auf n_combo * n_stops
+    Spalten aufgezogene Serie würde dagegen am Broadcast gegen close_mc scheitern.
+
+    Args:
+        stop_ref_series: Stop-Feld -> ResolvedStopRef (oder None/leer).
+        combo_columns: Spalten-Index der Combo-Achse (oder None).
+        n_combo: Breite der Combo-Achse (Indikator-Param-Spalten).
+        n_bars: Anzahl der Balken (Länge der Zeitachse).
+
+    Returns:
+        Dict Stop-Feld -> pandas-DataFrame bzw. float64-Array mit n_combo Spalten.
+
+    Raises:
+        ValueError: Wenn eine Serie nicht auf die Combo-Achse passt (interner
+            Konsistenzfehler) oder ihre Länge von der Zeitachse abweicht.
+    """
+    if not stop_ref_series:
+        return {}
+
+    operands: dict = {}
+    for stop_key, resolved in stop_ref_series.items():
+        obj = resolved.series
+        if isinstance(obj, pd.DataFrame):
+            if (
+                obj.shape[1] > 1
+                and combo_columns is not None
+                and not obj.columns.equals(combo_columns)
+            ):
+                obj = vbt.broadcast(
+                    obj, columns_from=combo_columns, align_index=False
+                )
+            arr = np.asarray(obj.values, dtype=np.float64)
+            index = obj.index
+        else:
+            arr = np.asarray(obj.values, dtype=np.float64).reshape(-1, 1)
+            index = obj.index
+
+        if arr.shape[0] != n_bars:
+            raise ValueError(
+                f"Stop {stop_key!r}: die Referenz-Serie hat {arr.shape[0]} Balken, "
+                f"die Kursreihe {n_bars}."
+            )
+        if arr.shape[1] == 1 and n_combo > 1:
+            arr = np.repeat(arr, n_combo, axis=1)
+        if arr.shape[1] != n_combo:
+            raise ValueError(
+                f"Stop {stop_key!r}: die Referenz-Serie hat {arr.shape[1]} Spalten, "
+                f"die Combo-Achse {n_combo} — sie ließ sich nicht auf die Achse "
+                f"expandieren."
+            )
+        if combo_columns is not None:
+            operands[stop_key] = pd.DataFrame(arr, index=index, columns=combo_columns)
+        else:
+            operands[stop_key] = arr
+    return operands
+
+
+# GEÄNDERT: Live-Serien für die laufende Nachführung bereitstellen.
+def _build_live_stop_args(
+    stop_ref_series: Optional[dict],
+    stop_ref_operands: dict,
+    n_bars: int,
+    n_combo: int,
+) -> tuple:
+    """Baut die signal_args der laufenden Stop-Nachführung ('"live": true').
+
+    Die Serie ist dieselbe, die auch als from_signals-Argument gesetzt wird
+    (``_build_stop_ref_operands``) — sie liefert beim Einstieg den Anfangswert und
+    ab dem Folgebalken den nachgeführten. Damit kann die Nachführung nicht von dem
+    abweichen, was VBT beim Einstieg eingefroren hat.
+
+    Args:
+        stop_ref_series: Stop-Feld -> ResolvedStopRef (oder None/leer).
+        stop_ref_operands: Ergebnis von ``_build_stop_ref_operands`` (Serien auf
+            der Combo-Achse).
+        n_bars: Anzahl der Balken.
+        n_combo: Breite der Combo-Achse.
+
+    Returns:
+        Tupel (live_stop_arr, live_stop_modes): das Serien-Array
+        (len(_LIVE_STOP_KEYS), n_bars, n_combo) und die Modi je Slot
+        (-1 aus, 0 ohne Ratsche, 1 mit Ratsche). Ist kein Feld live, kommt ein
+        (len(_LIVE_STOP_KEYS), 1, 1)-Platzhalter zurück — der Numba-Zweig liest
+        ihn nie.
+    """
+    n_slots = len(_LIVE_STOP_KEYS)
+    modes = np.full(n_slots, _LIVE_MODE_OFF, dtype=np.int64)
+    live_keys = [
+        key for key in _LIVE_STOP_KEYS
+        if stop_ref_series and key in stop_ref_series and stop_ref_series[key].spec.live
+    ]
+    if not live_keys:
+        return np.empty((n_slots, 1, 1), dtype=np.float64), modes
+
+    live_stop_arr = np.full((n_slots, n_bars, n_combo), np.nan, dtype=np.float64)
+    for slot, key in enumerate(_LIVE_STOP_KEYS):
+        if key not in live_keys:
+            continue
+        operand = stop_ref_operands[key]
+        values = operand.values if isinstance(operand, pd.DataFrame) else operand
+        live_stop_arr[slot] = np.asarray(values, dtype=np.float64)
+        modes[slot] = (
+            _LIVE_MODE_RATCHET if stop_ref_series[key].spec.ratchet else _LIVE_MODE_FREE
+        )
+    return live_stop_arr, modes
+
+
 # GEÄNDERT: Bugfix — Anzahl der Stop-Sweep-Kombinationen aus den
 # from_signals-Stop-kwargs bestimmen. Unabhängige vbt.Param (Default-Level)
 # multiplizieren sich, gleich-gelevelte Param (gekoppeltes TSL-Paar, level=0)
@@ -1564,6 +1935,7 @@ def evaluate_rules_native(
     date_start: Optional[Any] = None,
     date_end: Optional[Any] = None,
     stops_swept: bool = False,
+    stop_ref_series: Optional[dict] = None,
 ) -> Any:
     """Nativer Pfad: Portfolio direkt per from_signals(signal_func_nb=...) aufbauen.
 
@@ -1605,6 +1977,16 @@ def evaluate_rules_native(
             Multi-Combo x Stop-Sweep korrekt (Bit-Paritaet geprueft in
             tests/test_native_short.py). Nicht entfernt, um den Aufrufer nicht
             anzufassen — vor einer Bereinigung bewusst entscheiden.
+        stop_ref_series: Optional — Referenz-Stops (Stop-Feld -> ResolvedStopRef aus
+            stop_refs.resolve_stop_refs). Ihre Zeitreihe wird auf die Combo-Achse
+            expandiert, je Portfolio-Spalte auf den dort gerechneten
+            Indikator-Parametersatz abgebildet und als Array in das zugehörige
+            from_signals-kwarg geschrieben. Der referenzierte Indikator darf dabei
+            selbst gesweept sein — seine Param-Achse geht wie jede andere Quelle in
+            die Combo-Achse ein. Trägt ein Feld '"live": true', geht dieselbe Serie
+            zusätzlich als signal_args in die laufende Nachführung
+            (_apply_live_stop_nb) — der Abstand wird dann bei jeder Kerze einer
+            offenen Position neu gesetzt statt beim Einstieg eingefroren.
 
     Returns:
         vbt.Portfolio-Objekt.
@@ -1751,6 +2133,15 @@ def evaluate_rules_native(
     ):
         combo_columns = _cross_target_from_indexes(cross_source_indexes)
         n_combo = len(combo_columns)
+
+    # GEÄNDERT: Die Param-Achse eines Referenz-Stops gehört zur Combo-Achse.
+    # Sie steckt in keiner Maske und keinem Regel-Operanden — ohne diesen Schritt
+    # bekäme jede Portfolio-Spalte dieselbe Serie, und im gechunkten Lauf verlöre der
+    # Spalten-Label die Kennung des Referenz-Indikators (kollidierende params_hash).
+    combo_columns, n_combo = _extend_combo_axis_for_stop_refs(
+        combo_columns, n_combo, stop_ref_series
+    )
+
     is_multi_combo = n_combo > 1
 
     if is_multi_combo and combo_columns is not None:
@@ -1925,6 +2316,19 @@ def evaluate_rules_native(
         is_multi_combo,
     )
 
+    # GEÄNDERT: Referenz-Stops einmal auf die Combo-Achse bringen — dieselben
+    # Serien gehen als from_signals-Argument (Anfangswert je Einstieg) und, wenn
+    # '"live": true' gesetzt ist, als signal_args in die laufende Nachführung.
+    stop_ref_operands = _build_stop_ref_operands(
+        stop_ref_series, combo_columns, n_combo, T
+    )
+    live_stop_arr, live_stop_modes = _build_live_stop_args(
+        stop_ref_series, stop_ref_operands, T, n_combo
+    )
+    # Mitgeführtes Stop-Niveau der Ratsche je Stop-Feld und Portfolio-Spalte.
+    # NaN = Trade-Beginn; die signal_func setzt es beim Einstieg zurück.
+    live_stop_level = np.full((len(_LIVE_STOP_KEYS), n_total), np.nan, dtype=np.float64)
+
     # signal_args zusammenbauen (alles als numpy-Arrays für Numba)
     # GEÄNDERT: Short-Entry-Maske + Short-Exit-Kodierung hinzugefügt
     # GEÄNDERT: Bugfix — combo_col_map als erstes Arg (Multi-Combo-Mapping)
@@ -1968,11 +2372,25 @@ def evaluate_rules_native(
         track_entry_idx,
         track_max_price,
         track_min_price,
+        live_stop_arr,
+        live_stop_modes,
+        live_stop_level,
     )
 
     # Portfolio via from_signals mit signal_func_nb aufbauen (N1: KEIN entries/exits)
     # GEÄNDERT: upon_opposite_entry='Reverse' für Long/Short-Umkehr
     pf_build_kwargs = {k: v for k, v in pf_kwargs.items() if k != 'close'}
+
+    # GEÄNDERT: Referenz-Stops als Array je Portfolio-Spalte einsetzen.
+    # build_stop_kwargs hat das Feld auf None gelassen — ein belegtes Feld hieße, dass
+    # derselbe Stop zweimal gesetzt wurde, und das bliebe sonst unbemerkt.
+    for _stop_key, _stop_arr in stop_ref_operands.items():
+        if pf_build_kwargs.get(_stop_key) is not None:
+            raise ValueError(
+                f"Stop {_stop_key!r}: Referenz-Serie und ein zweiter Wert "
+                f"({pf_build_kwargs[_stop_key]!r}) sind gleichzeitig gesetzt."
+            )
+        pf_build_kwargs[_stop_key] = _stop_arr
     portfolio = vbt.Portfolio.from_signals(
         close_mc,
         signal_func_nb=_state_exit_signal_func_nb,

@@ -228,6 +228,10 @@ ergänzen" — KEIN kompletter Body nötig:
   Stops (config_json._stops, einzeln):
     indicator-config-stops-set --id N [--tp --sl --td --tsl --tsl-th --delta-format --time-delta-format]
         Zahlen/null werden gecastet, Format-Felder bleiben String; nicht genannte Stops bleiben.
+    indicator-config-stops-set --id N --file stops.json
+        Fuer einen Stop als Indikator-Referenz ({"ref":"indicator:atr14:real","mult":5.0,
+        "live":true,"ratchet":true}) — die --tp/--sl/...-Flags casten jeden Wert zu Skalar/String
+        und koennen keine Referenz-Dicts tragen. Fragment wird in _stops gemergt, Rest bleibt.
   Regeln (spec_json.rules):
     iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json
     iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]
@@ -4275,18 +4279,33 @@ _STOP_STRING_FIELDS = {"delta_format", "time_delta_format"}
 
 def indicator_config_stops_set(args: list) -> int:
     """indicator-config-stops-set --id N [--tp .. --sl .. --td .. --tsl .. --tsl-th .. --delta-format .. --time-delta-format ..]
+    oder: indicator-config-stops-set --id N --file stops.json
 
     Setzt einzelne Werte in config_json._stops; nicht genannte Stops bleiben.
     Zahlen/null werden gecastet, die Format-Felder bleiben String. 'null' loescht
     einen Stop-Wert (setzt ihn auf None).
+
+    Fuer einen Stop als Indikator-Referenz (z.B. {"ref": "indicator:atr14:real",
+    "mult": 5.0, "live": true}) reicht kein Flag-Cast - die --tp/--sl/...-Flags
+    casten jeden Wert zu Skalar oder String. Dafuer --file stops.json nutzen: das
+    Fragment wird in _stops gemergt (wie iteration-indicator-set), nur die im
+    Fragment genannten Felder aendern sich, der Rest von _stops bleibt.
     """
     f = _parse_flags(args)
     cid = _require_id(f, "indicator-config-stops-set")
-    changed = {flag: dst for flag, dst in _STOP_FLAGS.items() if flag in f}
-    if not changed:
-        raise ValueError(f"indicator-config-stops-set: mindestens ein Stop noetig ({' | '.join('--' + x for x in _STOP_FLAGS)})")
     cfg = _indicator_config_get_json(cid)
     stops = cfg.setdefault("_stops", {})
+
+    if f.get("file"):
+        frag = _read_json_file(f["file"])
+        stops.update(frag)
+        _indicator_config_patch_json(cid, cfg)
+        print(f"## indicator-config-stops-set: OK — Config {cid}: _stops aktualisiert ueber --file ({', '.join(sorted(frag))})\n")
+        return 0
+
+    changed = {flag: dst for flag, dst in _STOP_FLAGS.items() if flag in f}
+    if not changed:
+        raise ValueError(f"indicator-config-stops-set: mindestens ein Stop noetig (--file stops.json oder {' | '.join('--' + x for x in _STOP_FLAGS)})")
     for flag, dst in changed.items():
         v = f[flag]
         stops[dst] = str(v) if dst in _STOP_STRING_FIELDS else _coerce_scalar(v)

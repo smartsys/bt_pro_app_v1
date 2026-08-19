@@ -121,7 +121,21 @@ from typing import Any, Callable, Optional
 # die übersprungen werden). Gerechnet wird unverändert: dieselbe Spec liefert dieselben
 # Kennzahlen, ob mit oder ohne Senke, ob in einem Stück oder fortgesetzt. Ohne die beiden
 # Parameter verhält sich der Runner exakt wie 4.0.0.
-VERSION = "4.1.0"
+#
+# GEÄNDERT: Minor-Bump 4.2.0: Ein Stop-Feld in '_stops' nimmt zusätzlich eine
+# Indikator-Referenz ({'ref': 'indicator:<id>:<output>', 'mult': ...}). Der Stopabstand
+# kommt dann aus einer Zeitreihe statt aus einem festen Wert — je Portfolio-Spalte aus
+# dem dort gerechneten Indikator-Parametersatz. Opt-in: Specs ohne Referenz-Stop laufen
+# unverändert und bit-identisch zu 4.1.0, die Kombinationszahl bleibt gleich (eine
+# Referenz ist keine Sweep-Achse).
+#
+# GEÄNDERT: Minor-Bump 4.3.0: Ein Referenz-Stop auf 'sl_stop'/'tsl_stop' nimmt
+# zusätzlich '"live": true'. Der Abstand wird dann bei jeder Kerze einer offenen
+# Position aus der Serie neu gesetzt statt beim Einstieg eingefroren; '"ratchet": true'
+# (Default) lässt das Stop-Niveau dabei nur zugunsten der Position wandern. Opt-in:
+# ohne Live-Serie greift der Zweig nicht, Specs ohne '"live": true' laufen bit-identisch
+# zu 4.2.0.
+VERSION = "4.3.0"
 
 # Zentraler Importpfad zum generischen Spec-Runner-Einstiegspunkt. Wird von API-Routen
 # als import_path in die BacktestConfig geschrieben — Single Source statt verstreuter Literale.
@@ -137,6 +151,11 @@ from user_data.strategies.generic.indicator_factory import (
     _collect_varying_axes,
     expand_stop_values,
     is_stop_sweep,
+)
+from user_data.strategies.generic.stop_refs import (
+    is_stop_ref,
+    parse_stop_refs,
+    resolve_stop_refs,
 )
 from user_data.strategies.generic.rules_engine import (
     evaluate_rules_native,
@@ -213,6 +232,11 @@ def run_spec_strategy(
     # Ergebnisse, Ergebniszahl unter n_combinations.
     _validate_swept_indicators_referenced(rules_json, indicators_json)
 
+    # GEÄNDERT: Run-Start-Validierung der Referenz-Stops. Notation und
+    # Verfügbarkeit des referenzierten Indikators werden geprüft, bevor die
+    # Indikatoren gebaut werden — ein Tippfehler kostet dann keine Rechenzeit.
+    _validate_stop_references(indicators_json)
+
     # GEÄNDERT: Combo-Batching: große Grids werden chunk-weise verarbeitet
     # um OOM-Crashes bei 36k+ Kombis zu vermeiden. Der recompute-Pfad setzt
     # '_disable_chunked': True in backtest_config_json um Chunking zu unterbinden.
@@ -258,6 +282,11 @@ def run_spec_strategy(
     # (vbt.Param). build_stop_kwargs übersetzt das und koppelt das TSL-Paar.
     stops_cfg = indicators_json.get('_stops', {})
     stop_kwargs = build_stop_kwargs(stops_cfg)
+    # GEÄNDERT: Referenz-Stops zur Zeitreihe auflösen. Muss nach
+    # build_indicators laufen — die Serie kommt aus einer gebauten Instanz.
+    stop_ref_series = resolve_stop_refs(stops_cfg, ohlc_data, indicators)
+    if stop_ref_series:
+        print(f" - Referenz-Stops: {sorted(stop_ref_series.keys())}")
     stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
 
     # GEÄNDERT: beide Stop-Enum-Felder werden roh an from_signals
@@ -320,6 +349,7 @@ def run_spec_strategy(
         date_start=start_date,
         date_end=end_date,
         stops_swept=stops_swept,
+        stop_ref_series=stop_ref_series,
     )
 
     # Roh-Signale nicht verfügbar (signal_func_nb produziert per-bar)
@@ -659,6 +689,12 @@ def _validate_swept_indicators_referenced(rules_json: dict, indicators_json: dic
             active_blocks = [b for b in (grp.get('blocks') or []) if b.get('enabled', True)]
             referenced |= _collect_indicator_refs({'blocks': active_blocks})
 
+    # GEÄNDERT: Ein Referenz-Stop ist eine echte Verwendung. Ein nur dort
+    # referenzierter, gesweepter Indikator (z.B. die ATR-Länge des Stopabstands)
+    # unterscheidet die Portfolio-Spalten sehr wohl — er darf nicht als "ohne
+    # Verwendung" abgewiesen werden.
+    referenced |= _collect_indicator_refs(indicators_json.get('_stops') or {})
+
     # Transitive Erreichbarkeits-Schließung über Chain-Inputs (BFS mit "schon gesehen"-Set,
     # analog zur Kanten-Behandlung in indicator_factory._topological_order — zyklensicher, da
     # jede ID höchstens einmal in die Arbeitsmenge kommt). Ein bereits erreichter Indikator
@@ -692,11 +728,52 @@ def _validate_swept_indicators_referenced(rules_json: dict, indicators_json: dic
     )
 
 
+# GEÄNDERT: Run-Start-Validierung der Referenz-Stops.
+def _validate_stop_references(indicators_json: dict) -> None:
+    """Prüft Notation und Verfügbarkeit der Indikator-Referenzen in '_stops'.
+
+    Die Notation selbst (ref-Form, mult als Zahl, live/ratchet als Wahrheitswerte)
+    prüft ``parse_stop_refs``. Zusätzlich muss der referenzierte Indikator in der
+    Indikator-Config vorhanden und aktiviert sein — sonst stünde der Stop später
+    ohne Wert da.
+
+    Args:
+        indicators_json: Indikator-Spec mit optionalem '_stops'-Block.
+
+    Raises:
+        ValueError: Bei ungültiger Notation oder fehlendem/deaktiviertem Indikator.
+            Die Meldung nennt Stop-Feld und Referenz.
+    """
+    specs = parse_stop_refs(indicators_json.get('_stops') or {})
+    problems: list[str] = []
+    for stop_key, spec in specs.items():
+        ind_id = spec.ref.split(':')[1]
+        entry = indicators_json.get(ind_id)
+        if entry is None:
+            problems.append(
+                f"{stop_key}: {spec.ref!r} — Indikator {ind_id!r} ist nicht in der "
+                f"gewählten Indikator-Config enthalten"
+            )
+        elif entry.get('enabled', True) is False:
+            problems.append(
+                f"{stop_key}: {spec.ref!r} — Indikator {ind_id!r} ist deaktiviert "
+                f"(enabled: false)"
+            )
+    if problems:
+        raise ValueError(
+            "Run abgebrochen: Referenz-Stops zeigen auf nicht verfügbare Indikatoren — "
+            + "; ".join(problems) + "."
+        )
+
+
 # GEÄNDERT: Schritt 2 — '_stops' in from_signals-kwargs übersetzen (Skalar vs. Sweep).
 def build_stop_kwargs(stops_cfg: dict) -> dict:
     """Übersetzt das '_stops'-Dict in from_signals-kwargs (Skalar oder vbt.Param).
 
     Skalar/None bleibt Skalar. Liste/Range-Dict wird zur Sweep-Achse via vbt.Param.
+    Ein Indikator-Referenz-Dict ({'ref': ...}) liefert hier None: seine Zeitreihe
+    steht erst nach build_indicators fest und wird in evaluate_rules_native als
+    Array je Portfolio-Spalte eingesetzt (stop_refs.resolve_stop_refs).
     Unabhängige Stops (tp_stop, sl_stop, td_stop) kreuzen sich (volles Kreuzprodukt).
     Das TSL-Paar (tsl_th, tsl_stop) wird — wenn BEIDE gesweept sind — als
     zusammengehörige Paare gekoppelt (gleiches level=0, zip, kein Kreuzprodukt);
@@ -733,6 +810,14 @@ def build_stop_kwargs(stops_cfg: dict) -> dict:
 
     for key in STOP_PARAM_KEYS:
         raw = stops_cfg.get(key)
+
+        if is_stop_ref(raw):
+            # GEÄNDERT: Indikator-Referenz. Der Wert ist hier noch nicht
+            # bekannt — die Zeitreihe wird erst nach build_indicators aufgelöst und in
+            # evaluate_rules_native als Array je Portfolio-Spalte eingesetzt. Das
+            # Referenz-Dict selbst darf nie an from_signals gehen.
+            kwargs[key] = None
+            continue
 
         if not is_stop_sweep(raw):
             # Skalar/None bleibt unverändert (wie Schritt 1).
