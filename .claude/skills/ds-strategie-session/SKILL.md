@@ -155,7 +155,13 @@ keines endet mit Fehler. Der Bericht ist auf beiden Wegen derselbe.
 
 Rechnet **eine** Kombination (kein DB-Schreiben) und meldet: Entry-/Exit-Signalzahl mit
 erstem/letztem Signalzeitpunkt, NaN-Anteil je Indikator-Output, tatsächlichen Vorlauf,
-Kombinationszahl des vollen Rasters, grobe Laufzeit-Hochrechnung. Es berichtet nur — es
+Kombinationszahl des vollen Rasters, grobe Laufzeit-Hochrechnung. Dazu — sofern
+einschlägig — die **Herkunft der Stop-Werte** (welcher Indikator, welcher Faktor, fest oder
+laufend nachgeführt) und bei risikobasierter Größe oder Hebel die **Positionsgröße**
+(Risikoanteil, Hebel, Hebelmodus, Quelle des Stopabstands) samt Probe-Bericht: wie viele
+Orders eine gerechnete Größe bekamen und wie viele VBT still auf das verfügbare Geld gekürzt
+hat. Eine gemeldete Kürzung heißt: die Risikoregel greift insoweit nicht — Hebel erhöhen oder
+Risikoanteil senken, sonst misst der Lauf eine andere Strategie als gedacht. Es berichtet nur — es
 verhindert nichts. **Die Entscheidung ist deine:** 0 Entry-Signale oder eine absurde
 Hochrechnung heißt Spec/Raster korrigieren, nicht starten.
 

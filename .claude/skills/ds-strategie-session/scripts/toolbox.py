@@ -2800,6 +2800,68 @@ def testset_run_start(args: list) -> int:
     return 0
 
 
+# GEÄNDERT: Ticket 105 — die Preflight-Antwort trägt seit Ticket 103 die
+# Herkunft der Stop-Werte und seit Ticket 104 den Risiko-/Hebel-Ausweis; beides
+# wurde hier bisher weggelassen und war nur über die rohe API sichtbar.
+def _print_stop_refs(stop_refs: list | None) -> None:
+    """Gibt die Herkunft der Referenz-Stops aus (Ticket 105, Anforderung 1).
+
+    Args:
+        stop_refs: Der 'stop_refs'-Block der Preflight-Antwort. Fehlt er (ältere
+            Route) oder ist er leer (kein Stop ist eine Indikator-Referenz),
+            bleibt die Ausgabe stumm — kein leeres Gerüst.
+    """
+    if not stop_refs:
+        return
+    print("- Stop-Herkunft (Indikator-Referenz):")
+    for spec in stop_refs:
+        if spec.get("live"):
+            art = "laufend nachgeführt"
+            art += ", ratchet" if spec.get("ratchet") else ", ohne Ratchet"
+        else:
+            art = "fest ab Einstieg"
+        print(f"  - {spec.get('stop_key', '?')}: {spec.get('ref', '?')} "
+              f"x {spec.get('mult', 1.0)} · {art}")
+
+
+def _print_risk_sizing(risk: dict | None) -> None:
+    """Gibt den Risiko-/Hebel-Ausweis aus (Ticket 105, Anforderung 2).
+
+    Bei fester Positionsgröße ohne Hebel gibt es nichts auszuweisen — dann
+    bleibt die Ausgabe stumm (Anforderung 3), damit der knappe Feldsatz knapp
+    bleibt.
+
+    Args:
+        risk: Der 'risk_sizing'-Block der Preflight-Antwort, oder None bei einer
+            Antwort ohne diesen Block.
+    """
+    if not risk:
+        return
+    size_type = risk.get("size_type")
+    leverage = risk.get("leverage")
+    if size_type != "risk_percent" and leverage in (None, 1, 1.0):
+        return
+
+    print("- Positionsgröße:")
+    print(f"  - Art: {size_type or '—'}")
+    risk_pct = risk.get("risk_pct")
+    if risk_pct is not None:
+        print(f"  - Risikoanteil je Trade: {risk_pct} ({risk_pct * 100:.2f}%)")
+    if leverage is not None:
+        print(f"  - Hebel: {leverage} · Modus: {risk.get('leverage_mode') or '—'}")
+    if risk.get("sl_stop_source"):
+        print(f"  - Quelle Stopabstand: {risk['sl_stop_source']}")
+
+    probe = risk.get("probe_report")
+    if probe:
+        print(f"  - Probe-Kombination: {probe.get('n_sized', 0)} Order(s) mit "
+              f"gerechneter Größe, {probe.get('n_unsized', 0)} ohne bestimmbaren "
+              f"Stopabstand, {probe.get('n_truncated', 0)} gekürzt "
+              f"(größte Kürzung {probe.get('max_shortfall_pct', 0.0):.1f}%)")
+        if probe.get("note"):
+            print(f"  - **{probe['note']}**")
+
+
 # GEÄNDERT: Preflight: billiger Vorlauf auf EINER
 # Kombination, adressiert über gespeicherte Objekte statt Playground-Request.
 def preflight_run(args: list) -> int:
@@ -2811,8 +2873,10 @@ def preflight_run(args: list) -> int:
     (Startwerte, kein DB-Schreiben) und meldet Entry-/Exit-Signalzahl samt erstem/
     letztem Signalzeitpunkt, NaN-Anteil je Indikator-Output, tatsächlichen Vorlauf
     (check_warmup), die Kombinationszahl des vollen Rasters (count_total_combos)
-    und eine grobe Laufzeit-Hochrechnung. Berichtet nur — startet nichts, verhindert
-    nichts (Report statt Gate).
+    und eine grobe Laufzeit-Hochrechnung. Zusätzlich (Ticket 105) die Herkunft der
+    Stop-Werte und — bei risikobasierter Größe oder Hebel — den Risiko-/Hebel-Ausweis
+    samt Probe-Bericht. Berichtet nur — startet nichts, verhindert nichts (Report
+    statt Gate).
     """
     f = _parse_flags(args)
     body = {
@@ -2840,6 +2904,10 @@ def preflight_run(args: list) -> int:
 
     w = d["warmup"]
     print(f"- Vorlauf: {w['level']} — {w['note']}")
+
+    # GEÄNDERT: Ticket 105 — Stop-Herkunft und Risiko-/Hebel-Ausweis mitrendern.
+    _print_stop_refs(d.get("stop_refs"))
+    _print_risk_sizing(d.get("risk_sizing"))
 
     nan = d.get("indicator_nan_ratio") or {}
     if nan:
