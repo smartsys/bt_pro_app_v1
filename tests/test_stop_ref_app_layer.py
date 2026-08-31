@@ -54,7 +54,7 @@ class TestConfigNameWithReferenceStop:
             **_atr_indicator_config(),
             '_stops': {'sl_stop': {'ref': 'indicator:atr14:real', 'mult': 5.0}},
         }
-        name = build_indicator_config_name(cfg, 'squeeze-bollinger-002', 28)
+        name = build_indicator_config_name(cfg, 'teststrategie', 28)
         assert 'SL 5 × atr14' in name
 
     def test_live_und_ratchet_erscheinen_im_namen(self):
