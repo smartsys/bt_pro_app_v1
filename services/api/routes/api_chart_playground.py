@@ -80,6 +80,7 @@ OVERLAY_KEYWORDS = {
     'psar', 'sar', 'vwap', 'hull', 'kama', 'tema', 'dema', 'trima', 'ma',
     'bollinger', 'keltner', 'donchian', 'midpoint', 'midprice', 'pivotinfo',
     'fastsma', 'slowsma', 'ht_trendline', 'linearreg', 'fastslow',
+    'gaussian', 'channel', 'fvg',
 }
 SUBPLOT_KEYWORDS = {
     'rsi', 'macd', 'stoch', 'smi', 'adx', 'cci', 'atr', 'obv', 'mfi', 'williams',
@@ -89,16 +90,60 @@ SUBPLOT_KEYWORDS = {
 }
 
 
-def _guess_plot_type(name: str) -> str:
-    """Overlay wenn der Name ein bekanntes Preis-Niveau-Indikator enthält, sonst subplot."""
+# GEÄNDERT: Kanal-Indikatoren werden im Chart-Playground als gefülltes Band gezeichnet
+# (plot_type 'band'). Erkannt wird das an den OUTPUT-Namen, nicht am Indikator-Namen: nur wer
+# eine obere und eine untere Kante liefert, kann als Band dargestellt werden. Die Suffix-Listen
+# sind mit dem Frontend (BAND_UPPER_NAMES/BAND_LOWER_NAMES in chart_playground/index.html)
+# deckungsgleich zu halten — beide Seiten müssen dieselben Kanten finden.
+BAND_UPPER_SUFFIXES = ('hband', 'upperband', 'upper', 'top', 'ub')
+BAND_LOWER_SUFFIXES = ('lband', 'lowerband', 'lower', 'bottom', 'lb')
+
+
+def _has_band_edges(outputs: list) -> bool:
+    """True, wenn genau ein Output die obere und genau einer die untere Kante benennt.
+
+    Mehrdeutigkeit schliesst das Band aus: `dwsFVG` liefert bull_top UND bear_top, damit ist
+    nicht entscheidbar, welche Reihe die Kante eines Bandes wäre.
+
+    Args:
+        outputs: Output-Namen des Indikators.
+
+    Returns:
+        True, wenn sich genau ein Kantenpaar eindeutig zuordnen lässt.
+    """
+    lowered = [o.lower() for o in outputs]
+    upper = [o for o in lowered if o.endswith(BAND_UPPER_SUFFIXES)]
+    lower = [o for o in lowered if o.endswith(BAND_LOWER_SUFFIXES)]
+    return len(upper) == 1 and len(lower) == 1
+
+
+def _guess_plot_type(name: str, outputs: Optional[list] = None, indicator_id: Optional[str] = None) -> str:
+    """Plot-Typ raten: Zonen, Band, Overlay oder Subplot.
+
+    Reihenfolge: Ein eingetragener Zonen-Anbieter schlaegt alles (der Indikator beschreibt
+    Rechtecke, keine Linien), danach das eindeutige Kantenpaar fuer das Band, zuletzt die
+    Namens-Schluesselwoerter.
+
+    Args:
+        name: Voller Indikator-Bezeichner (z.B. 'talib:BBANDS' oder 'dwsGaussianChannel').
+        outputs: Output-Namen des Indikators; ohne sie entfaellt die Band-Erkennung.
+        indicator_id: Voller Katalog-Bezeichner inkl. Prefix, fuer die Zonen-Registry.
+
+    Returns:
+        'zones', 'band', 'overlay' oder 'subplot'.
+    """
+    if indicator_id and _zone_provider(indicator_id) is not None:
+        return 'zones'
     lower = name.lower()
     # Suffix nach Prefix nehmen
     if ':' in lower:
         lower = lower.split(':', 1)[1]
     lower_clean = re.sub(r'[^a-z0-9]', '', lower)
-    for kw in OVERLAY_KEYWORDS:
-        if kw in lower_clean:
-            return 'overlay'
+    is_overlay = any(kw in lower_clean for kw in OVERLAY_KEYWORDS)
+    if is_overlay and outputs and _has_band_edges(outputs):
+        return 'band'
+    if is_overlay:
+        return 'overlay'
     for kw in SUBPLOT_KEYWORDS:
         if kw in lower_clean:
             return 'subplot'
@@ -305,6 +350,25 @@ def _list_custom_indicators() -> list:
     return items
 
 
+def _zone_provider(indicator_id: str) -> Optional[dict]:
+    """Zonen-Anbieter zu einem Indikator, falls das Custom-Modul einen führt.
+
+    Args:
+        indicator_id: Voller Bezeichner, z.B. 'custom:dwsFVG'.
+
+    Returns:
+        Der Registry-Eintrag ({'fn', 'inputs'}) oder None.
+    """
+    if not indicator_id.startswith('custom:'):
+        return None
+    try:
+        module = importlib.import_module('user_data.utils.indicators.custom')
+    except Exception:
+        return None
+    providers = getattr(module, 'ZONE_PROVIDERS', {}) or {}
+    return providers.get(indicator_id.split(':', 1)[1])
+
+
 @lru_cache(maxsize=1)
 def _build_catalog() -> dict:
     groups: dict[str, list] = {}
@@ -338,7 +402,7 @@ def _build_catalog() -> dict:
             'inputs': inputs,
             'params': [{'name': p, 'default': defaults.get(p)} for p in params],
             'outputs': outputs,
-            'plot_type': _guess_plot_type(full_id),
+            'plot_type': _guess_plot_type(full_id, outputs, full_id),
         })
 
     # Custom-Indikatoren
@@ -355,7 +419,7 @@ def _build_catalog() -> dict:
             'inputs': inputs,
             'params': [{'name': p, 'default': defaults.get(p)} for p in params],
             'outputs': outputs,
-            'plot_type': _guess_plot_type(cname),
+            'plot_type': _guess_plot_type(cname, outputs, full_id),
         })
 
     # Custom-Gruppe zuerst, dann alphabetisch
@@ -428,6 +492,47 @@ def _coerce_param(value: Any) -> Any:
         except ValueError:
             return s
     return value
+
+
+def _zones_to_times(zones: list, index) -> list:
+    """Übersetzt Balken-Indizes einer Zonenliste in Zeitstempel.
+
+    Drei Zeitpunkte je Zone, weil die TradingView-Vorlage genau so zeichnet
+    (`box.new(n-2, max, n+extend, min)`):
+
+    - `start` — Beginn der Dreikerzen-Formation (Bestätigungsbalken minus zwei); dort setzt
+      die Vorlage die linke Kante der Box an.
+    - `anchor` — der Bestätigungsbalken selbst. Von hier zählt die Anzeige die Zonen-Länge
+      nach rechts; die Länge ist eine Darstellungs-Einstellung, kein Rechenwert, und wird
+      deshalb erst im Chart angewandt.
+    - `mitigated` — Balken, an dem der Schlusskurs die ferne Kante durchlaufen hat, sonst
+      None. Die Vorlage lässt die Box dann stehen und färbt sie nur um; die Länge bleibt.
+
+    Args:
+        zones: Zonen mit start_index/end_index (Balken-Positionen), top, bottom, bullish.
+        index: DatetimeIndex der Reihe, auf der gerechnet wurde.
+
+    Returns:
+        Zonen mit `start`, `anchor` und `mitigated` als Unix-Sekunden.
+    """
+    times = [int(ts.timestamp()) for ts in index]
+    last = len(times) - 1
+    out = []
+    for z in zones:
+        anchor_i = z['start_index']
+        if anchor_i < 0 or anchor_i > last:
+            continue
+        start_i = max(anchor_i - 2, 0)
+        mi = z['end_index']
+        out.append({
+            'start': times[start_i],
+            'anchor': times[anchor_i],
+            'mitigated': None if (mi is None or mi > last) else times[mi],
+            'top': z['top'],
+            'bottom': z['bottom'],
+            'bullish': z['bullish'],
+        })
+    return out
 
 
 def _series_to_points(series: pd.Series) -> list:
@@ -599,12 +704,32 @@ def compute_indicators(req: ComputeRequest) -> dict:
                 outputs[oname] = _series_to_points(out_series)
             # Für Chaining bereitstellen
             computed_series[spec.name] = series_cache
-            results.append({
+            entry = {
                 'name': spec.name,
                 'client_id': spec.client_id,
                 'id': spec.id,
                 'outputs': outputs,
-            })
+            }
+            # GEÄNDERT: Zonen-Indikatoren (siehe ZONE_PROVIDERS im Custom-Modul) liefern
+            # zusätzlich ihre Preis-Zonen als Rechtecke. Die Reihen bleiben unverändert —
+            # aus ihnen ließen sich gleichzeitig offene Zonen nicht rekonstruieren, weil sie
+            # nur die jeweils jüngste tragen. Ein Fehler hier darf den Indikator nicht kippen:
+            # die Reihen sind das Wesentliche, die Zonen sind Darstellung.
+            provider = _zone_provider(spec.id)
+            if provider is not None:
+                zone_index = _resampled_data(target_tf).wrapper.index if target_tf else df.index
+                try:
+                    zone_inputs = [col_map[default_input_source[n]] for n in provider['inputs']]
+                    if target_tf:
+                        zone_inputs = [_resampled_data(target_tf).get(default_input_source[n])
+                                       for n in provider['inputs']]
+                    raw_zones = provider['fn'](*[np.asarray(v, dtype=np.float64) for v in zone_inputs],
+                                               **params)
+                    entry['zones'] = _zones_to_times(raw_zones, zone_index)
+                except Exception as e:
+                    errors.append({'name': spec.name, 'client_id': spec.client_id,
+                                   'id': spec.id, 'error': f'Zonen nicht berechenbar: {e}'})
+            results.append(entry)
         except HTTPException:
             raise
         except Exception as e:

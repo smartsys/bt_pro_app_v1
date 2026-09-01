@@ -501,3 +501,421 @@ dwsLookaheadOracle = vbt.IF(
     lookahead=6,
     threshold=0.0,
 )
+
+
+# ---------------------------------------------------------------------------
+# Gaussian Channel (Ehlers-Tiefpass nach @DonovanWall)
+# ---------------------------------------------------------------------------
+
+@njit
+def _gauss_filter_nb(x, alpha, poles):
+    """N-Pol-Gaussian-Tiefpass, exakt wie Pine `f_filt9x`.
+
+    Rekursion: f[n] = alpha^N * s[n] + Summe über k=1..N von
+    (-1)^(k+1) * C(N,k) * (1-alpha)^k * f[n-k]. Die Vorzeichen wechseln ab k=1
+    beginnend mit Plus; die Gewichte sind die Binomialkoeffizienten, die Pine als
+    feste Tabelle (_m2.._m9) ausschreibt.
+
+    Fehlende Historie zählt als 0 (Pine `nz(_f[k])`), ebenso ein NaN im Quellwert
+    (Pine `nz(_s)`).
+
+    Args:
+        x: Quellreihe als 1d-Array.
+        alpha: Glättungsfaktor der Kaskade.
+        poles: Polzahl 1..9.
+
+    Returns:
+        numpy-Array mit der gefilterten Reihe.
+    """
+    n = x.shape[0]
+    out = np.zeros(n)
+    beta_x = 1.0 - alpha
+
+    # Binomialkoeffizienten C(poles, k) fuer k = 1..poles
+    coef = np.zeros(poles + 1)
+    c = 1.0
+    for k in range(1, poles + 1):
+        c = c * (poles - k + 1) / k
+        coef[k] = c
+
+    a_pow = alpha ** poles
+    for i in range(n):
+        v = x[i]
+        if np.isnan(v):
+            v = 0.0
+        acc = a_pow * v
+        for k in range(1, poles + 1):
+            if i - k < 0:
+                continue
+            sign = 1.0 if (k % 2 == 1) else -1.0
+            acc += sign * coef[k] * (beta_x ** k) * out[i - k]
+        out[i] = acc
+    return out
+
+
+@njit
+def _true_range_nb(high, low, close):
+    """True Range wie Pine `ta.tr(true)`.
+
+    Der erste Balken liefert High-Low (das `true` in `ta.tr(true)`), nicht NaN wie
+    `talib.TRANGE`.
+    """
+    n = high.shape[0]
+    out = np.full(n, np.nan)
+    for i in range(n):
+        hl = high[i] - low[i]
+        if i == 0:
+            out[i] = hl
+            continue
+        pc = close[i - 1]
+        if np.isnan(pc):
+            out[i] = hl
+            continue
+        hc = abs(high[i] - pc)
+        lc = abs(low[i] - pc)
+        m = hl
+        if hc > m:
+            m = hc
+        if lc > m:
+            m = lc
+        out[i] = m
+    return out
+
+
+def _select_source(source, open_, high, low, close):
+    """Wählt die Preisreihe wie die Pine-Eingabe `Source`.
+
+    Das Projekt kann Indikator-Inputs nur auf rohe OHLCV-Felder abbilden — eine
+    abgeleitete Reihe wie `hlc3` ist als Input nicht referenzierbar. Deshalb ist die
+    Quellwahl hier ein Parameter und wird aus den vier Preisreihen gerechnet.
+    """
+    key = str(source).strip().lower()
+    if key == 'hlc3':
+        return (high + low + close) / 3.0
+    if key == 'hl2':
+        return (high + low) / 2.0
+    if key == 'ohlc4':
+        return (open_ + high + low + close) / 4.0
+    if key == 'close':
+        return close
+    if key == 'open':
+        return open_
+    if key == 'high':
+        return high
+    if key == 'low':
+        return low
+    raise ValueError(
+        f"Unbekannte Quelle {source!r} für dwsGaussianChannel. "
+        f"Erlaubt: hlc3, hl2, ohlc4, close, open, high, low"
+    )
+
+
+def gaussian_channel_inc(open_, high, low, close, source='hlc3', poles=4, period=144,
+                         mult=1.414, reduced_lag=False, fast_response=False):
+    """Gaussian Channel — Ehlers-Tiefpassfilter mit Band aus gefilterter True Range.
+
+    Nachbau des TradingView-Skripts `trend_gaussian_channel_001_str_1` (Filter nach
+    @DonovanWall). Preisreihe und True Range laufen durch denselben N-Pol-Tiefpass;
+    das Band ist die gefilterte True Range mal Faktor um die Mittellinie.
+
+    Gehandelt wird in der Vorlage ausschließlich gegen `hband` — `filt` und `lband`
+    sind dort Anzeige.
+
+    Args:
+        open_: Open-Serie (nur für `source='ohlc4'` gebraucht).
+        high: High-Serie.
+        low: Low-Serie.
+        close: Close-Serie.
+        source: Preisreihe für den Filter — hlc3 (Vorgabe), hl2, ohlc4, close, open, high, low.
+        poles: Polzahl der Filterkaskade, 1..9 (Vorgabe 4).
+        period: Abtastperiode (Vorgabe 144).
+        mult: Faktor auf die gefilterte True Range (Vorgabe 1.414).
+        reduced_lag: Vorhalt auf Quelle und True Range (Pine „Reduced Lag Mode").
+        fast_response: Mittelwert aus N-Pol- und 1-Pol-Filter (Pine „Fast Response Mode").
+
+    Returns:
+        Tuple (filt, hband, lband) — Mittellinie, obere und untere Kanallinie.
+    """
+    poles = int(poles)
+    if not 1 <= poles <= 9:
+        raise ValueError(f"dwsGaussianChannel: poles muss zwischen 1 und 9 liegen, ist {poles}")
+    period = int(period)
+    if period < 2:
+        raise ValueError(f"dwsGaussianChannel: period muss mindestens 2 sein, ist {period}")
+
+    open_ = np.ascontiguousarray(np.asarray(open_, dtype=np.float64))
+    high = np.ascontiguousarray(np.asarray(high, dtype=np.float64))
+    low = np.ascontiguousarray(np.asarray(low, dtype=np.float64))
+    close = np.ascontiguousarray(np.asarray(close, dtype=np.float64))
+
+    src = np.ascontiguousarray(_select_source(source, open_, high, low, close))
+    tr = _true_range_nb(high, low, close)
+
+    # beta/alpha wie Pine: 4*asin(1) ist 2*pi
+    beta = (1.0 - np.cos(2.0 * np.pi / period)) / (np.power(1.414, 2.0 / poles) - 1.0)
+    alpha = -beta + np.sqrt(beta * beta + 2.0 * beta)
+
+    if reduced_lag:
+        lag = int((period - 1) / (2 * poles))
+        if lag > 0:
+            srcdata = np.full_like(src, np.nan)
+            trdata = np.full_like(tr, np.nan)
+            srcdata[lag:] = src[lag:] + (src[lag:] - src[:-lag])
+            trdata[lag:] = tr[lag:] + (tr[lag:] - tr[:-lag])
+        else:
+            srcdata, trdata = src, tr
+    else:
+        srcdata, trdata = src, tr
+
+    filtn = _gauss_filter_nb(np.ascontiguousarray(srcdata), alpha, poles)
+    filtntr = _gauss_filter_nb(np.ascontiguousarray(trdata), alpha, poles)
+
+    if fast_response:
+        filt1 = _gauss_filter_nb(np.ascontiguousarray(srcdata), alpha, 1)
+        filt1tr = _gauss_filter_nb(np.ascontiguousarray(trdata), alpha, 1)
+        filt = (filtn + filt1) / 2.0
+        filttr = (filtntr + filt1tr) / 2.0
+    else:
+        filt = filtn
+        filttr = filtntr
+
+    hband = filt + filttr * mult
+    lband = filt - filttr * mult
+    return filt, hband, lband
+
+
+# dwsGaussianChannel — Ehlers-Tiefpass mit True-Range-Band, Nachbau des TradingView-
+# Skripts trend_gaussian_channel_001_str_1. Preisskaliert (Overlay).
+# Vorlagen-Logik: Einstieg bei Crossover close ueber hband, Ausstieg bei Crossunder.
+# Die Defaults haengen zusaetzlich an with_apply_func, damit run() ohne explizite
+# Parameter durchlaeuft.
+dwsGaussianChannel = vbt.IF(
+    class_name='dwsGaussianChannel',
+    input_names=['open', 'high', 'low', 'close'],
+    param_names=['source', 'poles', 'period', 'mult', 'reduced_lag', 'fast_response'],
+    output_names=['filt', 'hband', 'lband'],
+).with_apply_func(
+    gaussian_channel_inc,
+    takes_1d=True,
+    source='hlc3',
+    poles=4,
+    period=144,
+    mult=1.414,
+    reduced_lag=False,
+    fast_response=False,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fair Value Gap (Dreikerzen-Kurslücke)
+# ---------------------------------------------------------------------------
+
+@njit
+def _fvg_nb(high, low, close, threshold, auto):
+    """Fair-Value-Gap-Erkennung und -Mitigation, Balken für Balken.
+
+    Verankert am **dritten** Balken des Musters (wie die LuxAlgo-Fassung), damit der
+    Wert an Balken i nur aus i, i-1 und i-2 entsteht — kein Blick nach vorn.
+
+    Returns:
+        Tuple (signal, bull_top, bull_bottom, bear_top, bear_bottom).
+    """
+    n = high.shape[0]
+    signal = np.zeros(n)
+    bull_top = np.full(n, np.nan)
+    bull_bot = np.full(n, np.nan)
+    bear_top = np.full(n, np.nan)
+    bear_bot = np.full(n, np.nan)
+
+    # GEÄNDERT: Zonen werden vollstaendig protokolliert, nicht nur solange sie offen sind.
+    # Grund: die Chart-Darstellung braucht jede Zone mit Anfang und Ende, die Reihen oben
+    # tragen aber nur die jeweils juengste offene. Die Reihen-Semantik bleibt unveraendert.
+    # zone_* haelt ALLE erkannten Zonen, open_idx die Positionen der noch offenen darin.
+    zone_start = np.empty(n, dtype=np.int64)
+    zone_end = np.full(n, -1, dtype=np.int64)   # -1 = bis zum Ende offen geblieben
+    zone_top = np.empty(n)
+    zone_bot = np.empty(n)
+    zone_bull = np.empty(n, dtype=np.int64)
+    zone_count = 0
+
+    # Offene Zonen als Stapel von Verweisen; der zuletzt eingetragene Eintrag ist der juengste.
+    open_idx = np.empty(n, dtype=np.int64)
+    z_count = 0
+
+    cum_ratio = 0.0
+
+    for i in range(n):
+        # Schwelle: fester Wert oder expandierender Mittelwert der relativen Spannen
+        if auto:
+            if low[i] > 0.0 and not np.isnan(high[i]) and not np.isnan(low[i]):
+                cum_ratio += (high[i] - low[i]) / low[i]
+            thr = cum_ratio / i if i > 0 else 0.0
+        else:
+            thr = threshold
+
+        # --- Erkennung am dritten Balken ---
+        if i >= 2:
+            h2 = high[i - 2]
+            l2 = low[i - 2]
+            c1 = close[i - 1]
+            if (not np.isnan(h2)) and h2 > 0.0 and low[i] > h2 and c1 > h2 \
+                    and (low[i] - h2) / h2 > thr:
+                zone_start[zone_count] = i
+                zone_top[zone_count] = low[i]
+                zone_bot[zone_count] = h2
+                zone_bull[zone_count] = 1
+                open_idx[z_count] = zone_count
+                zone_count += 1
+                z_count += 1
+                signal[i] = 1.0
+            elif (not np.isnan(l2)) and high[i] > 0.0 and high[i] < l2 and c1 < l2 \
+                    and (l2 - high[i]) / high[i] > thr:
+                zone_start[zone_count] = i
+                zone_top[zone_count] = l2
+                zone_bot[zone_count] = high[i]
+                zone_bull[zone_count] = -1
+                open_idx[z_count] = zone_count
+                zone_count += 1
+                z_count += 1
+                signal[i] = -1.0
+
+        # --- Mitigation: bullisch wenn Schluss unter die untere Kante faellt,
+        #     baerisch wenn er ueber die obere steigt (Schlusskurs, nicht Docht) ---
+        c = close[i]
+        if not np.isnan(c) and z_count > 0:
+            keep = 0
+            for j in range(z_count):
+                k = open_idx[j]
+                if zone_bull[k] == 1:
+                    mitigated = c < zone_bot[k]
+                else:
+                    mitigated = c > zone_top[k]
+                if mitigated:
+                    zone_end[k] = i
+                else:
+                    open_idx[keep] = k
+                    keep += 1
+            z_count = keep
+
+        # --- Juengste offene Zone je Richtung ausgeben ---
+        for j in range(z_count - 1, -1, -1):
+            k = open_idx[j]
+            if zone_bull[k] == 1 and np.isnan(bull_top[i]):
+                bull_top[i] = zone_top[k]
+                bull_bot[i] = zone_bot[k]
+            elif zone_bull[k] == -1 and np.isnan(bear_top[i]):
+                bear_top[i] = zone_top[k]
+                bear_bot[i] = zone_bot[k]
+
+    return (signal, bull_top, bull_bot, bear_top, bear_bot,
+            zone_start[:zone_count], zone_end[:zone_count], zone_top[:zone_count],
+            zone_bot[:zone_count], zone_bull[:zone_count])
+
+
+def fvg_inc(high, low, close, threshold=0.0, auto=False):
+    """Fair Value Gap — Dreikerzen-Kurslücke mit Mitigations-Verfolgung.
+
+    Nachbau der LuxAlgo-Fassung (`Fair Value Gap [LuxAlgo] DWS Kopie`), nicht der
+    Variante aus dem Paket `smart-money-concepts`: jene verankert am mittleren Balken
+    und greift dabei auf den folgenden zu, ist also nicht kausal, und sie zählt eine
+    Zone schon bei der ersten Dochtberührung der nahen Kante als mitigiert.
+
+    Erkennung am dritten Balken des Musters:
+
+    - bullisch: `low > high[-2]` und `close[-1] > high[-2]` und
+      `(low - high[-2]) / high[-2] > threshold` — Zone von `high[-2]` bis `low`
+    - bärisch: `high < low[-2]` und `close[-1] < low[-2]` und
+      `(low[-2] - high) / high > threshold` — Zone von `high` bis `low[-2]`
+
+    Der bärische Mindestabstand misst gegen `high`, der bullische gegen `high[-2]`.
+    Diese Asymmetrie stammt aus der Vorlage und ist bewusst übernommen.
+
+    Eine Zone gilt als mitigiert, sobald der **Schlusskurs** die ferne Kante
+    durchläuft (bullisch unter die Unterkante, bärisch über die Oberkante). Danach
+    wird sie nicht mehr ausgegeben.
+
+    Args:
+        high: High-Serie.
+        low: Low-Serie.
+        close: Close-Serie.
+        threshold: Mindestabstand als Dezimalanteil (0.01 entspricht 1 %). Vorgabe 0.
+        auto: Statt des festen Werts den expandierenden Mittelwert von
+            `(high - low) / low` als Schwelle nutzen (Pine „Auto").
+
+    Returns:
+        Tuple (signal, bull_top, bull_bottom, bear_top, bear_bottom). `signal` ist +1
+        am Bestätigungsbalken einer neuen bullischen Zone, -1 bei einer bärischen,
+        sonst 0. Die vier Kantenreihen tragen die jeweils jüngste **offene** Zone der
+        Richtung, sonst NaN.
+    """
+    high = np.ascontiguousarray(np.asarray(high, dtype=np.float64))
+    low = np.ascontiguousarray(np.asarray(low, dtype=np.float64))
+    close = np.ascontiguousarray(np.asarray(close, dtype=np.float64))
+    signal, bull_top, bull_bot, bear_top, bear_bot = _fvg_nb(
+        high, low, close, float(threshold), bool(auto))[:5]
+    return signal, bull_top, bull_bot, bear_top, bear_bot
+
+
+def fvg_zones(high, low, close, threshold=0.0, auto=False):
+    """Alle Fair-Value-Gap-Zonen als Liste — für die Chart-Darstellung als Rechtecke.
+
+    Gleiche Erkennung und Mitigation wie `fvg_inc`; hier wird jede Zone einzeln
+    ausgegeben statt nur die jeweils jüngste offene je Richtung. Ohne das ließen sich
+    gleichzeitig offene Zonen aus den Reihen nicht rekonstruieren.
+
+    Args:
+        high: High-Serie.
+        low: Low-Serie.
+        close: Close-Serie.
+        threshold: Mindestabstand als Dezimalanteil (0.01 entspricht 1 %). Vorgabe 0.
+        auto: Statt des festen Werts den expandierenden Mittelwert von
+            `(high - low) / low` als Schwelle nutzen (Pine „Auto").
+
+    Returns:
+        Liste von Dicts mit `start_index` (Bestätigungsbalken), `end_index`
+        (Balken der Mitigation, `None` wenn die Zone offen blieb), `top`, `bottom`
+        und `bullish`.
+    """
+    high = np.ascontiguousarray(np.asarray(high, dtype=np.float64))
+    low = np.ascontiguousarray(np.asarray(low, dtype=np.float64))
+    close = np.ascontiguousarray(np.asarray(close, dtype=np.float64))
+    _, _, _, _, _, z_start, z_end, z_top, z_bot, z_bull = _fvg_nb(
+        high, low, close, float(threshold), bool(auto))
+    zones = []
+    for i in range(len(z_start)):
+        zones.append({
+            'start_index': int(z_start[i]),
+            'end_index': None if z_end[i] < 0 else int(z_end[i]),
+            'top': float(z_top[i]),
+            'bottom': float(z_bot[i]),
+            'bullish': bool(z_bull[i] == 1),
+        })
+    return zones
+
+
+# dwsFVG — Fair Value Gap nach der LuxAlgo-Fassung, am dritten Balken verankert
+# (kausal, kein Lookahead). Preisskaliert (Overlay).
+# Beispiel-Regel „Preis in der juengsten offenen bullischen Zone":
+#   close <= indicator:fvg:bull_top UND close >= indicator:fvg:bull_bottom
+# GEÄNDERT: Zonen-Anbieter. Indikatoren, die nicht nur Reihen, sondern Preis-Zonen
+# beschreiben (Rechtecke von einem Balken bis zu ihrem Ende), tragen sich hier ein.
+# Der Chart-Playground liest die Tabelle über den Modulnamen und liefert die Zonen
+# zusätzlich zu den Reihen aus; Regeln und Backtest bleiben davon unberührt.
+# Signatur einer Zonen-Funktion: (*inputs, **params) -> Liste von Dicts mit
+# start_index / end_index / top / bottom / bullish.
+ZONE_PROVIDERS = {
+    'dwsFVG': {'fn': fvg_zones, 'inputs': ['high', 'low', 'close']},
+}
+
+
+dwsFVG = vbt.IF(
+    class_name='dwsFVG',
+    input_names=['high', 'low', 'close'],
+    param_names=['threshold', 'auto'],
+    output_names=['signal', 'bull_top', 'bull_bottom', 'bear_top', 'bear_bottom'],
+).with_apply_func(
+    fvg_inc,
+    takes_1d=True,
+    threshold=0.0,
+    auto=False,
+)

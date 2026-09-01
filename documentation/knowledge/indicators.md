@@ -92,13 +92,19 @@ Muster: `vbt.IF(class_name=..., input_names=[...], param_names=[...], output_nam
 | Name | input_names | param_names | output_names | Zweck |
 |---|---|---|---|---|
 | `dwsFastSMA` | `source` | `length, multiplier` | `result` | Gewichtetes SMA (WSMA) |
+| `dwsVWMA` | `source, volume` | `length, below_pct` | `result` | VWMA, um einen Prozentsatz nach unten versetzt |
+| `dwsVWMABand` | `source, volume, below_series` | `length` | `result` | VWMA mit einer Serie als Versatz statt einer Konstante |
 | `dwsAssetDD` | `source` | `window` | `result` | Drawdown vom rollenden Peak |
 | `dwsVolumeRatio` | `volume` | `window` | `result` | Volumen / rollender Durchschnitt |
 | `dwsCrossover` | `series_a, series_b` | (keine) | `result` | Bidirektionaler Crossover (Pine `ta.cross`), 1.0/0.0 |
 | `dwsSMI` | `high, low, close` | `k_length, smooth1, smooth2, signal` | `smi, signal` | Stochastic Momentum Index (Blau, Skala ±100, TradingView-treu) |
-| `dwsTrendlineTouch` | `high, low, close` | `up_th, down_th, atr_length, touch_tol_atr, break_tol_atr, dev_max_atr, min_touch, max_touch` | `short_line, long_line, short_signal, long_signal` | TAP: 3./4. Trendlinien-Berührung mit Abpraller (Pivot-basiert) |
+| `dwsConst` | `source` | `value` | `result` | Konstante Serie — Baustein für zusammengesetzte Bänder |
+| `dwsGaussianChannel` | `open, high, low, close` | `source, poles, period, mult, reduced_lag, fast_response` | `filt, hband, lband` | Ehlers-Tiefpass (N-Pol-Kaskade) mit Band aus gefilterter True Range; Nachbau von `trend_gaussian_channel_001_str_1` |
+| `dwsFVG` | `high, low, close` | `threshold, auto` | `signal, bull_top, bull_bottom, bear_top, bear_bottom` | Fair Value Gap, am **dritten** Balken verankert (kausal); Nachbau der LuxAlgo-Fassung |
 | `dwsRandomEntry` | `source` | `seed, prob` | `result` | Zufalls-Einstieg ohne Marktbezug — **Messwerkzeug** (Negativkontrolle) |
 | `dwsLookaheadOracle` | `source` | `seed, prob, skill, lookahead, threshold` | `result` | **WARNUNG: blickt in die Zukunft.** Reines Messwerkzeug (Positivkontrolle), **niemals in einer Handelsstrategie verwenden** |
+
+> **`dwsGaussianChannel` trägt die Quellwahl als Parameter, nicht als Input.** Input-Referenzen lösen nur rohe OHLCV-Felder oder `indicator:<id>:<output>` auf (`_OHLCV_MAP` in `indicator_factory.py`) — eine abgeleitete Reihe wie `hlc3` ist als Input nicht referenzierbar. Deshalb heißt der Parameter `source` und nimmt `hlc3` (Vorgabe), `hl2`, `ohlc4`, `close`, `open`, `high`, `low`. String-Parameter trägt der Spec-Runner (`_expand_range`).
 
 > **Messwerkzeuge, keine Handelsindikatoren.** `dwsRandomEntry` und `dwsLookaheadOracle` dienen ausschließlich der Kalibrierung von Signifikanzmaßen (z.B. Deflated Sharpe Ratio): der eine als informationsfreier Einstieg, der andere als per Konstruktion überlegener. `dwsLookaheadOracle` liest `source[t + lookahead]` und ist damit ein absichtlicher Zukunftsblick — der schwerste Fehler, den ein Backtest haben kann. Er gehört in keine Iteration, die eine Handelsentscheidung begründen soll. Bei `skill=0` verhält er sich bit-genau wie `dwsRandomEntry`, bei `skill=1` als perfektes Orakel.
 

@@ -1041,6 +1041,10 @@ tr.dt-hasChild td.dt-control::before {
   border-radius: 6px;
   padding: 8px 10px;
   background: rgba(128, 128, 128, 0.04);
+  /* GEÄNDERT: Die Karte darf nie breiter werden als das Panel — sonst wächst sie mit
+     ihrem Inhalt, statt ihn umbrechen zu lassen. */
+  min-width: 0;
+  max-width: 100%;
 }
 .cp-adv-card-title {
   font-size: 0.7rem;
@@ -1050,6 +1054,37 @@ tr.dt-hasChild td.dt-control::before {
   margin-bottom: 6px;
 }
 .cp-adv-fields {
+  display: flex;
+  /* GEÄNDERT: Umbruch statt Überlauf — Band und Zonen bringen zusätzliche Felder mit
+     (Kantenstärken, Zonen-Länge, vier Zonen-Farben), die sonst seitlich aus der Karte
+     und aus dem Panel herauslaufen und nicht mehr bedienbar sind. */
+  flex-wrap: wrap;
+  gap: 12px;
+  row-gap: 10px;
+  align-items: end;
+}
+/* GEÄNDERT: Farbwähler brauchen nur ihre eigene Breite, nicht die des Labels. */
+.cp-adv-fields .form-control-color {
+  width: 48px;
+}
+/* GEÄNDERT: Farbwähler mit vorangestelltem Sichtbarkeits-Schalter. Die Checkbox ist
+   kleiner als die übrigen im Panel — sie sitzt direkt an einem 48px-Farbfeld. */
+.cp-zone-color-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cp-zone-color-field .cp-zone-vis-check {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
+/* GEÄNDERT: Eine Feldgruppe, die immer geschlossen in einer eigenen Zeile steht
+   (die vier Zonen-Farben) — sonst reißt der Umbruch sie je nach Fensterbreite auseinander. */
+.cp-adv-fields > .cp-adv-subrow {
+  flex: 0 0 100%;
   display: flex;
   gap: 12px;
   align-items: end;
