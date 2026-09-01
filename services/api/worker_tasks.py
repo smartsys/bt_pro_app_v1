@@ -303,7 +303,10 @@ def _install_binance_progress_hook() -> None:
     global _progress_hook_installed
     if _progress_hook_installed:
         return
-    from vectorbtpro.utils.pbar import ProgressBar
+    # GEÄNDERT: Import über das Paket-Wurzelverzeichnis statt über den internen
+    # Modulpfad — der lag früher unter `vectorbtpro.utils.pbar` und liegt seit
+    # vbt 2026.6.27 unter `vectorbtpro.pbar.core`.
+    from vectorbtpro import ProgressBar
 
     _orig_update = ProgressBar.update
 
@@ -377,7 +380,12 @@ def run_ohlc_download_job(job_id: int) -> bool:
     vbt.settings['data']['custom']['binance']['show_progress'] = False
 
     tf_seconds = _TF_SECONDS.get(timeframe)
-    _install_binance_progress_hook()
+    # GEÄNDERT: Der Fortschritts-Hook ist reine Anzeige-Hilfe und darf den Download
+    # nicht abbrechen, wenn sich vbt-Interna ändern.
+    try:
+        _install_binance_progress_hook()
+    except Exception as exc:
+        logger.warning(f"[OHLC-DL] Fortschritts-Hook nicht aktiv: {exc}")
 
     def _write_progress(total=None, done=None) -> None:
         """Schreibt total/done in die Job-Zeile (eigene Kurz-Session, fehlertolerant)."""
