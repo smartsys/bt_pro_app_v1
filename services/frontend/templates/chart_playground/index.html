@@ -7,6 +7,21 @@
   /* Chart-Playground: kein Page-Body-Padding, Chart-Höhen */
   .page-body { padding-top: 0; margin-top: 0.5rem; }
   #chartMain { width: 100%; height: 400px; }
+  /* GEÄNDERT: Hoher Chart-Modus (Höhe-Button) blendet die Top-Navigation aus,
+     damit der Inhalt nach oben rückt; die gewonnene Höhe bekommt der Chart. */
+  body.cp-tall-chart .navbar { display: none; }
+  /* GEÄNDERT: Ziehleiste unter dem Hauptchart — stufenloses Anpassen der Chart-Höhe */
+  #cpChartResizer {
+    height: 5px; cursor: ns-resize; position: relative; z-index: 1003;
+    background: rgba(128,128,128,0.12);
+  }
+  #cpChartResizer::after {
+    content: ''; position: absolute; left: 50%; top: 2px;
+    width: 44px; margin-left: -22px; height: 1px;
+    background: #d63939;
+  }
+  #cpChartResizer:hover { background: rgba(59,130,246,0.35); }
+  body.cp-resizing-chart { cursor: ns-resize; user-select: none; }
   .subplot-chart { width: 100%; height: 160px; border-top: 1px solid rgba(128,128,128,0.25); }
   /* GEÄNDERT: Short-Blöcke optisch als Short-Position kennzeichnen */
   .cp-rule-block--short { border-left: 3px solid #d63939 !important; background: rgba(214, 57, 57, 0.08); }
@@ -112,13 +127,13 @@
         <button type="button" class="tf-btn nav-btn" id="cpFitBtn" title="Alles anzeigen">Fit</button>
         <span class="tf-separator"></span>
         <button type="button" class="tf-btn" id="cpRulerBtn" title="Preis-Differenz messen">Lineal</button>
-        <button type="button" class="tf-btn" id="cpHeightBtn" title="Charthöhe umschalten (400/560)">Höhe</button>
+        <button type="button" class="tf-btn" id="cpHeightBtn" title="Charthöhe umschalten (400/700)">Höhe</button>
         <span class="tf-separator"></span>
         <!-- GEÄNDERT: View-Schalter (Candles/Equity/Long/Short) als an-/abwählbare Toggle-Buttons.
              Checkbox-Input bleibt erhalten (gleiche IDs) — gesamte JS-Logik unverändert; die .active-Klasse
              spiegelt den checked-Status (cpSyncViewBtns). -->
-        <label class="tf-btn cp-view-btn" title="Candles anzeigen/ausblenden"><input type="checkbox" id="cpToggleCandles" checked>Candles</label>
         <label class="tf-btn cp-view-btn" title="Equity anzeigen/ausblenden"><input type="checkbox" id="cpToggleEquity" checked>Equity</label>
+        <label class="tf-btn cp-view-btn" title="Candles anzeigen/ausblenden"><input type="checkbox" id="cpToggleCandles" checked>Candles</label>
         <label class="tf-btn cp-view-btn" title="Long-Positionen anzeigen/ausblenden"><input type="checkbox" id="cpToggleLong" checked>Long</label>
         <label class="tf-btn cp-view-btn" title="Short-Positionen anzeigen/ausblenden"><input type="checkbox" id="cpToggleShort" checked>Short</label>
       </div>
@@ -146,9 +161,25 @@
 
       <div id="chartLoading"><div class="spinner-border text-success"></div></div>
       <div id="chartMain"></div>
+      <!-- GEÄNDERT: gemerkte Chart-Höhe sofort anwenden, bevor der Chart erzeugt wird (kein Springen) -->
+      <script>
+        var CP_CHART_MIN_HEIGHT = 200;
+        var CP_CHART_MAX_HEIGHT = 1600;
+        var CP_CHART_HEIGHT_KEY = 'cpChartHeight';
+        (function applyStoredChartHeight() {
+          try {
+            var stored = parseInt(localStorage.getItem(CP_CHART_HEIGHT_KEY), 10);
+            if (isNaN(stored)) return;
+            var clamped = Math.min(CP_CHART_MAX_HEIGHT, Math.max(CP_CHART_MIN_HEIGHT, stored));
+            document.getElementById('chartMain').style.height = clamped + 'px';
+          } catch (e) { /* Speicher nicht verfügbar */ }
+        })();
+      </script>
       <div id="cpEquityTooltip" style="display:none;position:absolute;z-index:1002;background:rgba(59,130,246,0.95);color:#fff;border-radius:4px;padding:4px 8px;font-size:12px;font-weight:600;pointer-events:none;white-space:nowrap;"></div>
       <svg id="cpRulerOverlay" style="position:absolute;inset:0;pointer-events:none;z-index:1000;display:none;"></svg>
       <div id="cpRulerLabel" class="ruler-label"></div>
+      <!-- GEÄNDERT: Ziehleiste zum stufenlosen Anpassen der Chart-Höhe -->
+      <div id="cpChartResizer" title="Chart-Höhe ziehen (Doppelklick: zurück auf 400px)"></div>
       <div id="cpSubplots"></div>
     </div>
   </div>
@@ -1146,9 +1177,21 @@
   }
 
   // Rendert ein einzelnes Wertfeld nach Wertform: Boolean -> Schalter,
-  // Range-Objekt -> start/stop/step, Skalar (Zahl/String) -> ein Feld.
-  function renderValueWidget(ind, key, curVal, dflt) {
+  // Range-Objekt -> start/stop/step, feste Werteliste -> Auswahlfeld, Skalar -> ein Feld.
+  function renderValueWidget(ind, key, curVal, dflt, options) {
     const effVal = (curVal === undefined ? dflt : curVal);
+    // GEÄNDERT: Parameter mit fester Werteliste (Katalog liefert 'options') als Auswahlfeld.
+    // Das data-paramscalar-Attribut bleibt gleich, damit die bestehende Auslese-Logik greift.
+    if (Array.isArray(options) && options.length && (effVal === null || typeof effVal !== 'object')) {
+      const curStr = (effVal == null ? '' : String(effVal));
+      const choices = options.includes(curStr) ? options : options.concat([curStr]);
+      const optHtml = choices.map(o => `<option value="${o}"${o === curStr ? ' selected' : ''}>${o}</option>`).join('');
+      return `
+        <div class="cp-param-group">
+          <label class="form-label">${key}</label>
+          <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-paramscalar="${key}" data-numeric="0">${optHtml}</select>
+        </div>`;
+    }
     if (typeof effVal === 'boolean') {
       return `
         <div class="cp-param-group">
@@ -1230,8 +1273,8 @@
         </div>`;
     }
     // kind === 'value'
-    const dflt = (ctx.metaByName[key] || {}).default;
-    return renderValueWidget(ind, key, ind.params ? ind.params[key] : undefined, dflt);
+    const paramMeta = ctx.metaByName[key] || {};
+    return renderValueWidget(ind, key, ind.params ? ind.params[key] : undefined, paramMeta.default, paramMeta.options);
   }
 
   function renderIndicatorList() {
@@ -4221,14 +4264,58 @@
     // subscribeVisibleLogicalRangeChange-Abo (cpUpdateFitButtonState) gesetzt, kein kurzes Blinken mehr.
     if (state.chart) { state.chart.timeScale().fitContent(); cpUpdateFitButtonState(); }
   });
-  // Charthöhe zwischen 400 und 560 umschalten (autoSize folgt dem Container automatisch)
+  // Charthöhe zwischen 400 und 700 umschalten (autoSize folgt dem Container automatisch).
+  // GEÄNDERT: Im hohen Modus wird zusätzlich die Top-Navigation ausgeblendet, damit der
+  // Inhalt nach oben rückt.
   document.getElementById('cpHeightBtn').addEventListener('click', function(e) {
     e.stopPropagation(); this.blur();
     const chartEl = document.getElementById('chartMain');
-    const isTall = chartEl.offsetHeight > 480;
-    chartEl.style.height = isTall ? '400px' : '560px';
+    const isTall = document.body.classList.contains('cp-tall-chart');
+    document.body.classList.toggle('cp-tall-chart', !isTall);
+    chartEl.style.height = isTall ? '400px' : '700px';
     this.classList.toggle('active', !isTall);
   });
+  // GEÄNDERT: Stufenloses Ziehen der Chart-Höhe über die Leiste unter dem Chart.
+  // Der Chart läuft mit autoSize und folgt der Container-Höhe von selbst.
+  (function initChartResizer() {
+    const resizerEl = document.getElementById('cpChartResizer');
+    const chartEl = document.getElementById('chartMain');
+    const MIN_CHART_HEIGHT = CP_CHART_MIN_HEIGHT;
+    const MAX_CHART_HEIGHT = CP_CHART_MAX_HEIGHT;
+    let dragStartY = 0;
+    let dragStartHeight = 0;
+
+    // GEÄNDERT: gezogene Höhe über Seitenwechsel hinweg merken (angewendet wird sie
+    // beim Seitenaufbau direkt am #chartMain-Element)
+    function storeChartHeight(height) {
+      try { localStorage.setItem(CP_CHART_HEIGHT_KEY, String(height)); } catch (e) { /* Speicher nicht verfügbar */ }
+    }
+
+    function onDragMove(ev) {
+      const wanted = dragStartHeight + (ev.clientY - dragStartY);
+      const clamped = Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, wanted));
+      chartEl.style.height = clamped + 'px';
+    }
+    function onDragEnd() {
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', onDragEnd);
+      document.body.classList.remove('cp-resizing-chart');
+      storeChartHeight(chartEl.offsetHeight);
+    }
+    resizerEl.addEventListener('mousedown', function(ev) {
+      ev.preventDefault();
+      dragStartY = ev.clientY;
+      dragStartHeight = chartEl.offsetHeight;
+      document.body.classList.add('cp-resizing-chart');
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', onDragEnd);
+    });
+    // Doppelklick setzt die Standardhöhe zurück
+    resizerEl.addEventListener('dblclick', function() {
+      chartEl.style.height = '400px';
+      storeChartHeight(400);
+    });
+  })();
   document.getElementById('cpNavStartBtn').addEventListener('click', function(e) {
     e.stopPropagation(); this.blur();
     if (!state.chart || !state.ohlcv.length) return;

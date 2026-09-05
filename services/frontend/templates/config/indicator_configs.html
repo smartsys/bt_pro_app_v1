@@ -147,6 +147,10 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
         <span id="bulk-delete-count">0</span> löschen
       </button>
+      <!-- GEÄNDERT: Filter nach Konzept, links neben der Suchleiste -->
+      <select class="form-select form-select-sm dt-filter-select" id="concept-filter" style="width: 220px;" title="Nach Konzept filtern">
+        <option value="">Alle Konzepte</option>
+      </select>
       <div class="dt-search-input" style="width: 260px;">
         <span class="dt-search-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
@@ -188,11 +192,39 @@ document.addEventListener("DOMContentLoaded", function() {
      auf verschiedenen Seiten wäre unmöglich. */
   var selectedIds = new Set();
 
+  /* GEÄNDERT: Konzept-Filter — Auswahlwerte aus den geladenen Configs, exakter
+     Spaltenfilter auf die Konzept-Spalte (Index 4). Configs ohne Konzept sind über
+     die eigene Option erreichbar. */
+  var CONCEPT_COLUMN = 4;
+  var conceptFilterEl = document.getElementById("concept-filter");
+
+  function _fillConceptFilter(rows) {
+    var prev = conceptFilterEl.value;
+    var names = [];
+    var hasEmpty = false;
+    rows.forEach(function(r) {
+      if (r.strategy_concept_name) {
+        if (names.indexOf(r.strategy_concept_name) === -1) { names.push(r.strategy_concept_name); }
+      } else {
+        hasEmpty = true;
+      }
+    });
+    names.sort(function(a, b) { return a.localeCompare(b); });
+    var html = '<option value="">Alle Konzepte</option>';
+    names.forEach(function(n) {
+      html += '<option value="' + n + '">' + n + '</option>';
+    });
+    if (hasEmpty) { html += '<option value="__none__">(ohne Konzept)</option>'; }
+    conceptFilterEl.innerHTML = html;
+    if (prev) { conceptFilterEl.value = prev; }
+  }
+
   var table = new DataTable("#configs-table", {
     ajax: {
       url: "/api/config/indicator",
       dataSrc: function(json) {
         document.getElementById("configs-total").textContent = json.data.length;
+        _fillConceptFilter(json.data);
         return json.data;
       }
     },
@@ -220,7 +252,12 @@ document.addEventListener("DOMContentLoaded", function() {
       },
       {
         data: "strategy_concept_name",
-        render: function(d) { return d ? '<span class="badge bg-blue-lt">' + d + '</span>' : '<span class="text-muted">-</span>'; }
+        // GEÄNDERT: Für Filter/Sortierung den reinen Namen zurückgeben — der Konzept-Filter
+        // vergleicht exakt, und die Freitextsuche greift nicht mehr ins Badge-Markup
+        render: function(d, type) {
+          if (type === 'filter' || type === 'sort' || type === 'type') { return d || ''; }
+          return d ? '<span class="badge bg-blue-lt">' + d + '</span>' : '<span class="text-muted">-</span>';
+        }
       },
       {
         // GEÄNDERT: Versionsnummer + Name, anklickbar — öffnet die Iteration im Bearbeitungsmodus (neues Tab)
@@ -299,10 +336,17 @@ document.addEventListener("DOMContentLoaded", function() {
       search: "Suche:",
       lengthMenu: "_MENU_ pro Seite",
       info: "_START_ bis _END_ von _TOTAL_",
+      infoFiltered: "(gefiltert von _MAX_ Einträgen)",
       infoEmpty: "Keine Configs",
       zeroRecords: "Keine Configs gefunden",
       paginate: { first: "Erste", last: "Letzte", next: "Weiter", previous: "Zurück" }
     }
+  });
+
+  conceptFilterEl.addEventListener("change", function() {
+    var val = conceptFilterEl.value;
+    var term = val === '' ? '' : (val === '__none__' ? '^$' : '^' + val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+    table.column(CONCEPT_COLUMN).search(term, true, false).draw();
   });
 
   /* Suche; X-Sichtbarkeit per CSS, Klick via Delegation */

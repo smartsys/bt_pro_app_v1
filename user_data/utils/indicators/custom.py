@@ -582,6 +582,9 @@ def _true_range_nb(high, low, close):
     return out
 
 
+GAUSSIAN_SOURCE_OPTIONS = ['hlc3', 'hl2', 'ohlc4', 'close', 'open', 'high', 'low']
+
+
 def _select_source(source, open_, high, low, close):
     """Wählt die Preisreihe wie die Pine-Eingabe `Source`.
 
@@ -606,7 +609,7 @@ def _select_source(source, open_, high, low, close):
         return low
     raise ValueError(
         f"Unbekannte Quelle {source!r} für dwsGaussianChannel. "
-        f"Erlaubt: hlc3, hl2, ohlc4, close, open, high, low"
+        f"Erlaubt: {', '.join(GAUSSIAN_SOURCE_OPTIONS)}"
     )
 
 
@@ -905,6 +908,14 @@ def fvg_zones(high, low, close, threshold=0.0, auto=False):
 # start_index / end_index / top / bottom / bullish.
 ZONE_PROVIDERS = {
     'dwsFVG': {'fn': fvg_zones, 'inputs': ['high', 'low', 'close']},
+}
+
+
+# Parameter mit fester Werteliste: {Indikator-Name: {Parameter: [erlaubte Werte]}}.
+# Der Playground-Katalog reicht die Liste ans Frontend weiter, das daraus ein
+# Auswahlfeld statt eines Freitextfelds rendert.
+PARAM_OPTIONS = {
+    'dwsGaussianChannel': {'source': GAUSSIAN_SOURCE_OPTIONS},
 }
 
 

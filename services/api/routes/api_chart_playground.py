@@ -350,6 +350,23 @@ def _list_custom_indicators() -> list:
     return items
 
 
+def _param_options(indicator_name: str) -> dict:
+    """Auswahlwerte der Parameter eines Custom-Indikators.
+
+    Args:
+        indicator_name: Name ohne Gruppen-Prefix, z.B. 'dwsGaussianChannel'.
+
+    Returns:
+        {Parameter: [erlaubte Werte]} aus der Registry PARAM_OPTIONS, sonst leeres Dict.
+    """
+    try:
+        module = importlib.import_module('user_data.utils.indicators.custom')
+    except Exception:
+        return {}
+    registry = getattr(module, 'PARAM_OPTIONS', {}) or {}
+    return registry.get(indicator_name, {})
+
+
 def _zone_provider(indicator_id: str) -> Optional[dict]:
     """Zonen-Anbieter zu einem Indikator, falls das Custom-Modul einen führt.
 
@@ -412,12 +429,18 @@ def _build_catalog() -> dict:
         params = list(getattr(factory, 'param_names', ()) or ())
         outputs = list(getattr(factory, 'output_names', ()) or ())
         defaults = _factory_param_defaults(factory)
+        # GEÄNDERT: Parameter mit fester Werteliste bekommen ihre Auswahlwerte mit —
+        # das Frontend rendert daraus ein Auswahlfeld statt eines Freitextfelds.
+        options = _param_options(cname)
         groups.setdefault('custom', []).append({
             'id': full_id,
             'name': cname,
             'group': 'custom',
             'inputs': inputs,
-            'params': [{'name': p, 'default': defaults.get(p)} for p in params],
+            'params': [
+                {'name': p, 'default': defaults.get(p), **({'options': options[p]} if p in options else {})}
+                for p in params
+            ],
             'outputs': outputs,
             'plot_type': _guess_plot_type(cname, outputs, full_id),
         })

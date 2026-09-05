@@ -117,6 +117,10 @@ div.dt-search {
 .dt-search-input .form-control:not(:placeholder-shown) {
   padding-right: 2rem;
 }
+/* GEÄNDERT: Filter-Auswahlfeld neben der Suchleiste — gleiche Höhe wie das Suchfeld */
+.dt-filter-select {
+  height: 2rem;
+}
 .dt-search-icon {
   position: absolute;
   left: 0.625rem;
@@ -764,9 +768,15 @@ tr.dt-hasChild td.dt-control::before {
    Flex-Spalte, damit die Aktions-Leiste per margin-top:auto an den unteren Card-Rand rutscht. */
 .cp-ind-panel > .card-body,
 .cp-rules-panel > .card-body {
-  background: rgba(0, 0, 0, 0.38);
+  /* GEÄNDERT: heller Absatz als Default — der dunkle Wert galt vorher für beide Themes
+     und färbte die Karten im Hell-Modus fast schwarz */
+  background: rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
+}
+[data-bs-theme="dark"] .cp-ind-panel > .card-body,
+[data-bs-theme="dark"] .cp-rules-panel > .card-body {
+  background: rgba(0, 0, 0, 0.38);
 }
 
 /* Aktions-Leisten (Speichern etc.) an den unteren Card-Rand schieben */

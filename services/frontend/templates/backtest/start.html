@@ -559,16 +559,28 @@ document.addEventListener("DOMContentLoaded", function() {
   function _fillTsIndicators(configs) {
     // GEÄNDERT: Label "Name — Concept/Iteration", vorherige Auswahl beibehalten
     var prev = tsSelIndicator.value;
+    // GEÄNDERT: Bei gewähltem Konzept nur dessen Indicator-Configs anbieten (vorher
+    // standen alle Configs im Dropdown, die fremden nur weiter unten einsortiert)
+    var conceptId = tsSelConcept.value;
+    var shown = conceptId
+      ? configs.filter(function(c) { return String(c.strategy_concept_id) === String(conceptId); })
+      : configs;
+    if (conceptId && shown.length === 0) {
+      tsSelIndicator.innerHTML = '<option value="">-- Keine Indicator-Config zu diesem Konzept --</option>';
+      document.getElementById("ts-ind-config-details").style.display = 'none';
+      _updateTsStartButton();
+      return;
+    }
     tsSelIndicator.innerHTML = '<option value="">-- Indicator-Config wählen --</option>';
-    configs.forEach(function(c) {
+    shown.forEach(function(c) {
       tsSelIndicator.innerHTML += '<option value="' + c.id + '">' + _buildIndLabel(c) + '</option>';
     });
-    if (prev && configs.find(function(c) { return c.id == prev; })) {
+    if (prev && shown.find(function(c) { return c.id == prev; })) {
       tsSelIndicator.value = prev;
-    } else if (configs.length > 0) {
-      tsSelIndicator.value = configs[0].id;
+    } else if (shown.length > 0) {
+      tsSelIndicator.value = shown[0].id;
     }
-    var current = configs.find(function(c) { return c.id == tsSelIndicator.value; });
+    var current = shown.find(function(c) { return c.id == tsSelIndicator.value; });
     if (current) _showTsIndDetails(current);
     _updateTsStartButton();
   }
