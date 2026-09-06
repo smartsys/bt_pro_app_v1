@@ -1677,12 +1677,12 @@
                 </div>
               </div>
               <!-- GEÄNDERT: Aktionen als vertikale Spalte rechts neben der Visualisierungs-Card —
-                   X (Löschen) oben, Label "Indikator aktiv", darunter der Schiebeschalter (X und Label
-                   stehen über dem Schalter, nicht daneben). Invalidierung über data-ind-enabled-Handler
-                   bzw. den data-remove-onclick. -->
+                   Papierkorb (Löschen) oben, Label "Indikator aktiv", darunter der Schiebeschalter
+                   (Papierkorb und Label stehen über dem Schalter, nicht daneben). Invalidierung über
+                   data-ind-enabled-Handler bzw. den data-remove-onclick. -->
               <div class="cp-ind-action-col ms-auto">
-                <button class="btn btn-sm btn-ghost-danger btn-icon" data-remove="${ind.client_id}" title="Indikator entfernen">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
+                <button class="btn btn-sm btn-ghost-danger btn-icon" data-remove="${ind.client_id}" title="Indikator löschen">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
                 </button>
                 <label class="form-check form-switch cp-ind-enabled-switch mb-0" title="Indikator aktiv: deaktivierter Indikator wird nicht gebaut und ist für Regeln nicht verfügbar">
                   <span class="cp-ind-enabled-label">Indikator aktiv</span>
@@ -1705,8 +1705,18 @@
     if (stopsPos >= indRows.length) panel.appendChild(buildStopsRow());
     renderStops();   // GEÄNDERT: Stops-Felder in die eingefügte Zeile rendern
     // Event-Binding
+    // GEÄNDERT: Löschen erst nach Sicherheitsabfrage (Name im Text, damit klar ist, welcher Indikator es trifft)
     panel.querySelectorAll('[data-remove]').forEach(btn => {
-      btn.onclick = () => { state.indicators = state.indicators.filter(i => i.client_id !== btn.dataset.remove); removeIndFromChart(btn.dataset.remove); renderIndicatorList(); renderRules(); invalidateLiteResult(); };
+      btn.onclick = () => {
+        const cid = btn.dataset.remove;
+        const ind = state.indicators.find(i => i.client_id === cid);
+        if (!confirm('Indikator "' + (ind ? ind.name : cid) + '" wirklich löschen?')) return;
+        state.indicators = state.indicators.filter(i => i.client_id !== cid);
+        removeIndFromChart(cid);
+        renderIndicatorList();
+        renderRules();
+        invalidateLiteResult();
+      };
     });
     // GEÄNDERT: Child-Row "Erweiterte Optionen" auf-/zuklappen; Zustand am Indikator merken (übersteht Re-Render)
     panel.querySelectorAll('[data-advtoggle]').forEach(btn => {
