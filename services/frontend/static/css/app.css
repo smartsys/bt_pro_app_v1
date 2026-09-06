@@ -1077,20 +1077,6 @@ tr.dt-hasChild td.dt-control::before {
 .cp-adv-fields .form-control-color {
   width: 48px;
 }
-/* GEÄNDERT: Farbwähler mit vorangestelltem Sichtbarkeits-Schalter. Die Checkbox ist
-   kleiner als die übrigen im Panel — sie sitzt direkt an einem 48px-Farbfeld. */
-.cp-zone-color-field {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.cp-zone-color-field .cp-zone-vis-check {
-  width: 0.9rem;
-  height: 0.9rem;
-  margin: 0;
-  flex: none;
-  cursor: pointer;
-}
 /* GEÄNDERT: Eine Feldgruppe, die immer geschlossen in einer eigenen Zeile steht
    (die vier Zonen-Farben) — sonst reißt der Umbruch sie je nach Fensterbreite auseinander. */
 .cp-adv-fields > .cp-adv-subrow {
@@ -1103,6 +1089,52 @@ tr.dt-hasChild td.dt-control::before {
   font-size: 0.7rem;
   margin-bottom: 2px;
   color: var(--tblr-muted, #6b7280);
+}
+/* GEÄNDERT: Einheitliche Tabelle der Darstellungs-Elemente (Indikator, Ausgabereihen, Bandkanten,
+   Zonenarten). Alle Zeilen teilen dasselbe Spaltenraster: Name, An/Aus, Farbe, Linienstil,
+   Linienstärke — damit gleiche Dinge überall gleich aussehen und untereinander stehen. */
+.cp-adv-fields > .cp-vis-table {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  padding-top: 8px;
+}
+.cp-vis-row {
+  display: grid;
+  grid-template-columns: 8rem 2rem 3.5rem 9rem 5rem;
+  align-items: center;
+  gap: 8px;
+}
+.cp-vis-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-vis-name {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-vis-row .cp-vis-check {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+}
+.cp-vis-row .form-control-color {
+  width: 100%;
+}
+.cp-vis-row .form-select {
+  width: 100%;
+}
+/* Platzhalter für Eigenschaften, die es bei diesem Element nicht gibt (z.B. Linienstil einer Zone) */
+.cp-vis-dash {
+  color: var(--tblr-muted, #6b7280);
+  opacity: 0.5;
+  font-size: 0.8rem;
 }
 .cp-adv-opacity {
   display: flex;

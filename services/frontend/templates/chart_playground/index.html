@@ -22,7 +22,15 @@
   }
   #cpChartResizer:hover { background: rgba(59,130,246,0.35); }
   body.cp-resizing-chart { cursor: ns-resize; user-select: none; }
-  .subplot-chart { width: 100%; height: 160px; border-top: 1px solid rgba(128,128,128,0.25); }
+  /* GEÄNDERT: Trennlinie zwischen den Chart-Panes bekommt denselben roten Griff wie die
+     Ziehleiste unter dem Chart — die reine Farbfläche der Bibliothek ist auf grauem Grund
+     kaum zu sehen. Das Pseudo-Element liegt über dem Ziehfeld der Bibliothek und nimmt
+     bewusst keine Mausereignisse an, damit das Ziehen unverändert dort ankommt. */
+  #chartMain td[colspan="3"]::after {
+    content: ''; position: absolute; left: 50%; top: -1px;
+    width: 44px; margin-left: -22px; height: 3px; border-radius: 2px;
+    background: #d63939; pointer-events: none; z-index: 51;
+  }
   /* GEÄNDERT: Short-Blöcke optisch als Short-Position kennzeichnen */
   .cp-rule-block--short { border-left: 3px solid #d63939 !important; background: rgba(214, 57, 57, 0.08); }
   /* GEÄNDERT: Indikator-Konfig-Dropdown — Zeile zeigt nur den Namen; Beschreibung als schwebender Tooltip (verschiebt nichts) */
@@ -166,6 +174,8 @@
         var CP_CHART_MIN_HEIGHT = 200;
         var CP_CHART_MAX_HEIGHT = 1600;
         var CP_CHART_HEIGHT_KEY = 'cpChartHeight';
+        // GEÄNDERT: Untergrenze einer Subplot-Pane (Panes-Umbau)
+        var CP_SUBPLOT_MIN_HEIGHT = 60;
         (function applyStoredChartHeight() {
           try {
             var stored = parseInt(localStorage.getItem(CP_CHART_HEIGHT_KEY), 10);
@@ -180,7 +190,6 @@
       <div id="cpRulerLabel" class="ruler-label"></div>
       <!-- GEÄNDERT: Ziehleiste zum stufenlosen Anpassen der Chart-Höhe -->
       <div id="cpChartResizer" title="Chart-Höhe ziehen (Doppelklick: zurück auf 400px)"></div>
-      <div id="cpSubplots"></div>
     </div>
   </div>
 </div>
@@ -538,7 +547,21 @@
     chart: null,
     candleSeries: null,
     overlaySeriesByClientId: {},
-    subplotChartsByClientId: {},
+    // GEÄNDERT: Subplots sind keine eigenen Charts mehr, sondern Panes desselben Charts
+    // (lightweight-charts 5 Panes-API). Damit teilen sie sich die Zeitachse des Hauptcharts —
+    // Zoom und Scroll laufen ohne Sync-Code exakt gleich, und die Trennlinien zwischen den
+    // Panes sind von Haus aus ziehbar. Wert: {series: [...], paneHeight: N}.
+    subplotSeriesByClientId: {},
+    // GEÄNDERT: Höhe der Kerzen-Pane (ohne Subplots). Die Container-Höhe ergibt sich als
+    // diese Höhe plus die Höhen aller sichtbaren Subplot-Panes. Startwert aus dem Speicher
+    // des Browsers (derselbe Schlüssel wie bisher — der Wert meinte schon immer die Kerzen).
+    mainPaneHeight: (function () {
+      try {
+        const stored = parseInt(localStorage.getItem(CP_CHART_HEIGHT_KEY), 10);
+        if (isNaN(stored)) return 400;
+        return Math.min(CP_CHART_MAX_HEIGHT, Math.max(CP_CHART_MIN_HEIGHT, stored));
+      } catch (e) { return 400; }
+    })(),
     backgroundSeriesByClientId: {},
     backgroundPrimitivesByClientId: {}, // GEÄNDERT: Hintergrund-Indikator als Custom Series Primitive (an candleSeries attached) statt HistogramSeries
     bandPrimitivesByClientId: {},        // GEÄNDERT: Kanal-Indikator als gefülltes Band (Custom Series Primitive, an candleSeries attached)
@@ -675,7 +698,12 @@
     const container = document.getElementById('chartMain');
     container.innerHTML = '';
     const chart = LightweightCharts.createChart(container, {
-      layout: { background: { color: 'transparent' }, textColor: getComputedStyle(document.body).color },
+      layout: {
+        background: { color: 'transparent' }, textColor: getComputedStyle(document.body).color,
+        // GEÄNDERT: Subplots liegen als Panes im selben Chart. enableResize gibt die Trennlinie
+        // zwischen den Panes zum Ziehen frei (Vorgabe der Bibliothek, hier bewusst explizit).
+        panes: { enableResize: true, separatorColor: 'rgba(128,128,128,0.35)', separatorHoverColor: 'rgba(59,130,246,0.35)' },
+      },
       grid: { vertLines: { color: 'rgba(128,128,128,0.12)' }, horzLines: { color: 'rgba(128,128,128,0.12)' } },
       crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
       timeScale: { timeVisible: true, secondsVisible: false },
@@ -703,11 +731,126 @@
     // GEÄNDERT: Fit-Button-Zustand an den Sichtbereich koppeln — aktiv solange die Ansicht "alles"
     // zeigt, automatisch aus sobald der User zoomt/scrollt.
     chart.timeScale().subscribeVisibleLogicalRangeChange(cpUpdateFitButtonState);
-    // Alle Subplots bereinigen
-    Object.values(state.subplotChartsByClientId).forEach(c => { try { c.chart.remove(); } catch (e) {} });
-    state.subplotChartsByClientId = {};
+    // Alle Subplots bereinigen — die Panes verschwinden mit dem alten Chart, es bleibt nur
+    // der State abzuräumen.
+    state.subplotSeriesByClientId = {};
     state.overlaySeriesByClientId = {};
-    document.getElementById('cpSubplots').innerHTML = '';
+    cpApplyPaneHeights();
+  }
+
+  // ========= Pane-Höhen =========
+  // GEÄNDERT: Die Kerzen-Pane behält ihre eingestellte Höhe; jeder Subplot bringt seine eigene
+  // Höhe zusätzlich mit. Der Container wächst also mit der Zahl der Subplots, statt dass die
+  // Kerzen enger werden. Nach dem Setzen der Container-Höhe bekommt jede Subplot-Pane ihre
+  // Wunschhöhe zugewiesen — sonst verteilt die Bibliothek den Zuwachs anteilig auf alle Panes.
+  const CP_SUBPLOT_DEFAULT_HEIGHT = 160;
+
+  function cpSubplotHeightOf(ind) {
+    const h = parseInt(ind.subplotHeight, 10);
+    return (isNaN(h) || h < CP_SUBPLOT_MIN_HEIGHT) ? CP_SUBPLOT_DEFAULT_HEIGHT : h;
+  }
+
+  // Subplots in der Reihenfolge ihrer Panes — nur die, die tatsächlich als Pane im Chart hängen.
+  function cpSubplotPaneEntries() {
+    return state.indicators
+      .filter(i => state.subplotSeriesByClientId[i.client_id])
+      .map(i => ({ ind: i, height: cpSubplotHeightOf(i) }));
+  }
+
+  // Verteilt die im State hinterlegten Höhen auf die Panes. Muss nach jeder Größenänderung des
+  // Containers erneut laufen: die Bibliothek verteilt zusätzliche Höhe anteilig auf alle Panes
+  // und würde die Wunschhöhen sonst wieder verwässern.
+  // Bewusst über die Streckfaktoren statt über setHeight: setHeight wirkt je Pane und schiebt die
+  // Differenz auf die übrigen, sodass sich bei mehreren Subplots jede Zuweisung die vorige wieder
+  // verdirbt. Die Faktoren beschreiben dagegen die Verteilung in einem Rutsch — und weil die
+  // Container-Höhe unten genau als Summe der Wunschhöhen (plus Zeitachse und Trennlinien) gesetzt
+  // wird, ergibt jeder Faktor exakt seine Pixelhöhe.
+  // Panes in der Reihenfolge der Indikatorliste anordnen (Pane 0 bleibt die Kerzen-Pane). Ohne das
+  // hängt sich ein neu gezeichneter Indikator hinten an und ein Subplot wandert bei jeder
+  // Darstellungsänderung an eine andere Position.
+  function cpOrderSubplotPanes() {
+    cpSubplotPaneEntries().forEach((e, i) => {
+      const sp = state.subplotSeriesByClientId[e.ind.client_id];
+      if (!sp || !sp.series.length) return;
+      try {
+        const pane = sp.series[0].getPane();
+        if (pane.paneIndex() !== i + 1) pane.moveTo(i + 1);
+      } catch (err) { /* Pane bereits entfernt */ }
+    });
+  }
+
+  function cpPushPaneHeights() {
+    if (!state.chart || !state.candleSeries) return;
+    cpOrderSubplotPanes();
+    try { state.candleSeries.getPane().setStretchFactor(state.mainPaneHeight); } catch (e) { /* Chart noch nicht bereit */ }
+    cpSubplotPaneEntries().forEach(e => {
+      const sp = state.subplotSeriesByClientId[e.ind.client_id];
+      if (!sp || !sp.series.length) return;
+      try { sp.series[0].getPane().setStretchFactor(e.height); } catch (err) { /* Pane bereits entfernt */ }
+    });
+  }
+
+  function cpApplyPaneHeights() {
+    const chartEl = document.getElementById('chartMain');
+    if (!chartEl) return;
+    const entries = cpSubplotPaneEntries();
+    // Zeitachse und die 1px-Trennlinien liegen im selben Container und gehen sonst von der
+    // Kerzenhöhe ab — deshalb kommen sie oben drauf.
+    let axisHeight = 28;
+    try { if (state.chart) axisHeight = state.chart.timeScale().height(); } catch (e) { /* Chart noch nicht bereit */ }
+    const total = state.mainPaneHeight + axisHeight
+      + entries.reduce((sum, e) => sum + e.height + 1, 0);
+    chartEl.style.height = total + 'px';
+    cpPushPaneHeights();
+    // Eine frisch angelegte oder entfernte Pane ordnet die Höhen selbst neu — teils erst beim
+    // nächsten Zeichnen. Deshalb im Folgeframe noch einmal nachsetzen; ohne das verrutschen die
+    // Höhen z.B. nach jedem Neuzeichnen eines Indikators (Farbwechsel).
+    requestAnimationFrame(() => { if (state.chart) cpPushPaneHeights(); });
+  }
+
+  // GEÄNDERT: Der Chart folgt der Container-Höhe über autoSize, und zwar erst nachdem der Browser
+  // das neue Kastenmaß gemeldet hat. Erst danach greifen feste Pane-Höhen zuverlässig — deshalb
+  // werden sie über einen Beobachter der Container-Größe nachgezogen.
+  (function watchChartContainerSize() {
+    const chartEl = document.getElementById('chartMain');
+    if (!chartEl) return;
+    if (typeof ResizeObserver !== 'undefined') {
+      // Der Chart selbst hört über autoSize ebenfalls auf die Container-Größe und verteilt die
+      // neue Höhe anteilig. Erst danach dürfen die festen Höhen gesetzt werden — deshalb der
+      // Umweg über den nächsten Frame.
+      new ResizeObserver(() => {
+        if (!state.chart) return;
+        requestAnimationFrame(() => { if (state.chart) cpPushPaneHeights(); });
+      }).observe(chartEl);
+    }
+    // Eine an der Trennlinie gezogene Pane-Höhe meldet die Bibliothek nicht. Nach jedem Ziehen
+    // im Chart wird der Stand deshalb übernommen — sonst würde er beim nächsten Nachziehen der
+    // Höhen (neuer Subplot, Fenstergröße) wieder auf den alten Wert springen.
+    chartEl.addEventListener('mouseup', () => {
+      if (!state.chart) return;
+      cpReadPaneHeights();
+      try { localStorage.setItem(CP_CHART_HEIGHT_KEY, String(state.mainPaneHeight)); } catch (e) { /* Speicher nicht verfügbar */ }
+    });
+  })();
+
+  // GEÄNDERT: Vom User gezogene Pane-Höhen zurück in den State holen. Es gibt kein Resize-Ereignis
+  // der Bibliothek — deshalb wird vor dem Speichern (Setup/Chart-Höhe) einmal aktiv abgelesen.
+  function cpReadPaneHeights() {
+    if (!state.chart) return;
+    try {
+      if (state.candleSeries) {
+        const h = state.candleSeries.getPane().getHeight();
+        if (h > 0) state.mainPaneHeight = Math.round(h);
+      }
+    } catch (e) { /* Chart noch nicht bereit */ }
+    state.indicators.forEach(ind => {
+      const sp = state.subplotSeriesByClientId[ind.client_id];
+      if (!sp || !sp.series.length) return;
+      try {
+        const h = sp.series[0].getPane().getHeight();
+        if (h > 0) ind.subplotHeight = Math.round(h);
+      } catch (e) { /* Pane bereits entfernt */ }
+    });
   }
 
   // GEÄNDERT: Fit-Button leuchtet, solange der sichtbare Bereich (nahezu) die kompletten Daten abdeckt.
@@ -1111,6 +1254,105 @@
   }
 
   // ========= Indicator-Panel =========
+
+  // ===== Einheitliche Darstellungs-Zeile =====
+  // Jede zeichenbare Einheit (der Indikator selbst, eine Ausgabereihe, eine Bandkante, eine
+  // Zonenart) wird nach demselben Muster bedient: An/Aus, Farbe, Linienstil, Linienstärke.
+  // Was für die jeweilige Einheit nichts bewirkt, steht als Strich da — so fluchten die Spalten
+  // über alle Zeilen und man sieht auf einen Blick, was einstellbar ist und was nicht.
+  const CP_LINE_STYLES = [['solid', 'Durchgezogen'], ['dashed', 'Gestrichelt'], ['dotted', 'Gepunktet'], ['largedashed', 'Lang gestrichelt']];
+  const CP_LINE_WIDTHS = [1, 2, 3, 4];
+  // GEÄNDERT: Obere Kante, Mittellinie und untere Kante eines Bandes lassen sich einzeln ausblenden.
+  const BAND_VISIBLE_DEFAULTS = { upper: true, middle: true, lower: true };
+  function bandVisibleOf(ind) {
+    return { ...BAND_VISIBLE_DEFAULTS, ...(ind.bandVisible || {}) };
+  }
+
+  function visRowHead() {
+    return `<div class="cp-vis-row cp-vis-head">
+      <span>Element</span><span>An</span><span>Farbe</span><span>Linienstil</span><span>Stärke</span>
+    </div>`;
+  }
+
+  function visRow(o) {
+    const dash = '<span class="cp-vis-dash" title="Für dieses Element ohne Wirkung">–</span>';
+    const toggle = o.toggle
+      ? `<input class="form-check-input cp-vis-check" type="checkbox" data-cid="${o.cid}" ${o.toggle} title="Im Chart anzeigen" ${o.toggleOn ? 'checked' : ''}>`
+      : dash;
+    const color = o.color
+      ? `<input type="color" class="form-control form-control-sm form-control-color" data-cid="${o.cid}" ${o.color} value="${o.colorValue}" title="Farbe">`
+      : dash;
+    const style = o.style
+      ? `<select class="form-select form-select-sm" data-cid="${o.cid}" ${o.style} title="Linienstil">${CP_LINE_STYLES.map(([v, lbl]) => `<option value="${v}" ${v === o.styleValue ? 'selected' : ''}>${lbl}</option>`).join('')}</select>`
+      : dash;
+    const width = o.width
+      ? `<select class="form-select form-select-sm" data-cid="${o.cid}" ${o.width} title="Linienstärke">${CP_LINE_WIDTHS.map(w => `<option value="${w}" ${w === o.widthValue ? 'selected' : ''}>${w} px</option>`).join('')}</select>`
+      : dash;
+    return `<div class="cp-vis-row"><span class="cp-vis-name" title="${o.hint || o.label}">${o.label}</span>${toggle}${color}${style}${width}</div>`;
+  }
+
+  // Baut die Zeilen einer Indikator-Karte: erst der Indikator selbst, darunter seine Einzelteile.
+  // Welche Teile es gibt, hängt an der Betriebsart — Linien haben Farbe und Stil, Bandkanten
+  // folgen der Richtungsfarbe, Zonen sind Flächen ohne Linieneigenschaften.
+  function visRowsForIndicator(ind) {
+    const isBand = ind.plot_type === 'band';
+    const isZones = ind.plot_type === 'zones';
+    const isBackground = ind.plot_type === 'background';
+    const asLines = !isBand && !isZones && !isBackground;
+    const rows = [visRow({
+      cid: ind.client_id,
+      label: 'Indikator',
+      hint: asLines
+        ? 'Vorgabe für alle Linien dieses Indikators'
+        : 'Der Indikator als Ganzes; Farbe und Linie regeln beim Band die Richtung bzw. bei Zonen die Zonenfarben',
+      toggle: 'data-chartvisible="1"', toggleOn: ind.chartVisible !== false,
+      color: asLines ? 'data-color="1"' : null, colorValue: ind.color,
+      style: asLines ? 'data-linestyle="1"' : null, styleValue: ind.lineStyle || 'solid',
+      width: asLines ? 'data-linewidth="1"' : null, widthValue: ind.lineWidth || 1,
+    })];
+    if (isBand) {
+      const vis = bandVisibleOf(ind);
+      rows.push(visRow({
+        cid: ind.client_id, label: 'Obere Kante', hint: 'Obere Kanallinie; die Farbe folgt der Bandrichtung',
+        toggle: 'data-bandvisible="upper"', toggleOn: vis.upper,
+        width: 'data-bandupperwidth="1"', widthValue: ind.bandUpperWidth || 1,
+      }));
+      rows.push(visRow({
+        cid: ind.client_id, label: 'Mittellinie', hint: 'Mittellinie des Kanals; die Farbe folgt der Bandrichtung',
+        toggle: 'data-bandvisible="middle"', toggleOn: vis.middle,
+        width: 'data-linewidth="1"', widthValue: ind.lineWidth || 1,
+      }));
+      rows.push(visRow({
+        cid: ind.client_id, label: 'Untere Kante', hint: 'Untere Kanallinie; die Farbe folgt der Bandrichtung',
+        toggle: 'data-bandvisible="lower"', toggleOn: vis.lower,
+        width: 'data-bandlowerwidth="1"', widthValue: ind.bandLowerWidth || 1,
+      }));
+    } else if (isZones) {
+      const vis = zoneVisibleOf(ind);
+      ZONE_COLOR_FIELDS.forEach(([key, label, hint]) => {
+        rows.push(visRow({
+          cid: ind.client_id, label, hint,
+          toggle: `data-zonevisible="${key}"`, toggleOn: vis[key],
+          color: `data-zonecolor="${key}"`, colorValue: (ind.zoneColors && ind.zoneColors[key]) || ZONE_COLOR_DEFAULTS[key],
+        }));
+      });
+    } else if (asLines && (ind.outputNames || []).length > 1) {
+      // Mehr-Output-Indikatoren (ADX mit adx/dx/plus_di/minus_di, MACD, BBANDS): je Ausgabereihe
+      // eine eigene Zeile. Ohne eigene Einstellung folgt die Reihe der Zeile "Indikator".
+      ind.outputNames.forEach(on => {
+        const st = indOutputStyle(ind, on);
+        rows.push(visRow({
+          cid: ind.client_id, label: on, hint: `Ausgabereihe ${on}`,
+          toggle: `data-outvisible="${on}"`, toggleOn: st.visible,
+          color: `data-outcolor="${on}"`, colorValue: st.color,
+          style: `data-outstyle="${on}"`, styleValue: st.lineStyle,
+          width: `data-outwidth="${on}"`, widthValue: st.lineWidth,
+        }));
+      });
+    }
+    return rows.join('');
+  }
+
   // GEÄNDERT: Parameterwert (Skalar oder Sweep-Range-Dict) in start/stop/step für die Anzeige zerlegen.
   //   Range-Dict {type:arange,start,stop,step} -> Felder direkt; Skalar -> nur start; nichts -> p.default als start.
   function paramRangeFields(value, dflt) {
@@ -1365,11 +1607,9 @@
       const inputsHtml = (ind.inputNames || []).map(k => renderField(ind, k, 'input', ctx)).join('');
       const valuesHtml = valueKeys.map(k => renderField(ind, k, 'value', ctx)).join('');
       const tfHtml = renderField(ind, 'tf', 'timeframe', ctx);
-      // GEÄNDERT: Linien-Settings mit Fallback-Defaults (greifen auch für Alt-Indikatoren ohne diese Felder)
+      // GEÄNDERT: Transparenz als Prozentwert für den Schieberegler; alle übrigen Linien-Einstellungen
+      // liegen in der Elemente-Tabelle (visRowsForIndicator).
       const opacityPct = Math.round((ind.opacity == null ? 1 : ind.opacity) * 100);
-      const lineW = ind.lineWidth || 1;
-      const lineS = ind.lineStyle || 'solid';
-      const LINE_STYLES = [['solid', 'Durchgezogen'], ['dashed', 'Gestrichelt'], ['dotted', 'Gepunktet'], ['largedashed', 'Lang gestrichelt']];
       body.innerHTML = `
         <div class="cp-field-group cp-ind-identity-group">
           <span class="cp-ind-drag" title="Ziehen zum Verschieben (Reihenfolge)">
@@ -1397,30 +1637,8 @@
               <div class="cp-adv-card">
                 <div class="cp-adv-card-title">Visualisierung</div>
                 <div class="cp-adv-fields">
-                  <div>
-                    <label class="form-label">Farbe</label>
-                    <input type="color" class="form-control form-control-sm form-control-color" data-cid="${ind.client_id}" data-color="1" value="${ind.color}">
-                  </div>
-                  <div>
-                    <label class="form-label">Transparenz</label>
-                    <div class="cp-adv-opacity">
-                      <input type="range" class="form-range" min="0" max="100" step="5" data-cid="${ind.client_id}" data-opacity="1" value="${opacityPct}">
-                      <span class="cp-adv-opacity-val">${opacityPct}%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label class="form-label">Linienstärke</label>
-                    <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-linewidth="1">
-                      ${[1, 2, 3, 4].map(w => `<option value="${w}" ${w === lineW ? 'selected' : ''}>${w} px</option>`).join('')}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label">Linienstil</label>
-                    <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-linestyle="1">
-                      ${LINE_STYLES.map(([v, lbl]) => `<option value="${v}" ${v === lineS ? 'selected' : ''}>${lbl}</option>`).join('')}
-                    </select>
-                  </div>
-                  <!-- GEÄNDERT: Typ (Plot-Position) in die Visualisierungs-Card verschoben (rein visuell). -->
+                  <!-- GEÄNDERT: Typ, Transparenz und Versatz gelten für den ganzen Indikator und
+                       stehen deshalb über der Elemente-Tabelle. -->
                   <div>
                     <label class="form-label">Typ</label>
                     <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-plot="1">
@@ -1431,46 +1649,31 @@
                       <option value="zones" ${ind.plot_type === 'zones' ? 'selected' : ''}>Zonen</option>
                     </select>
                   </div>
-                  <!-- GEÄNDERT: Reiner Anzeige-Versatz in ganzen angezeigten Kerzen (positiv = rechts). -->
+                  <div>
+                    <label class="form-label">Transparenz</label>
+                    <div class="cp-adv-opacity">
+                      <input type="range" class="form-range" min="0" max="100" step="5" data-cid="${ind.client_id}" data-opacity="1" value="${opacityPct}">
+                      <span class="cp-adv-opacity-val">${opacityPct}%</span>
+                    </div>
+                  </div>
                   <div>
                     <label class="form-label" title="Verschiebt nur die Darstellung um N angezeigte Kerzen (positiv = nach rechts), nicht die Berechnung">Versatz (Kerzen)</label>
                     <input type="number" step="1" class="form-control form-control-sm" data-cid="${ind.client_id}" data-displayoffset="1" value="${ind.displayOffset || 0}">
                   </div>
-                  <!-- GEÄNDERT: Beim Band tragen obere Kante, Mittellinie und untere Kante eigene
-                       Stärken. Die Mittellinie nimmt dabei das allgemeine Feld "Linienstärke". -->
-                  ${ind.plot_type === 'band' ? `
-                  <div>
-                    <label class="form-label" title="Stärke der oberen Kanallinie">Obere Kante</label>
-                    <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-bandupperwidth="1">
-                      ${[1, 2, 3, 4].map(w => `<option value="${w}" ${w === (ind.bandUpperWidth || 1) ? 'selected' : ''}>${w} px</option>`).join('')}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label" title="Stärke der unteren Kanallinie">Untere Kante</label>
-                    <select class="form-select form-select-sm" data-cid="${ind.client_id}" data-bandlowerwidth="1">
-                      ${[1, 2, 3, 4].map(w => `<option value="${w}" ${w === (ind.bandLowerWidth || 1) ? 'selected' : ''}>${w} px</option>`).join('')}
-                    </select>
-                  </div>` : ''}
                   <!-- GEÄNDERT: Zonen haben eine feste Länge wie in der TradingView-Vorlage
                        (box.new(n-2, ..., n+extend, ...) mit Extend-Vorgabe 20). -->
                   ${ind.plot_type === 'zones' ? `
                   <div>
                     <label class="form-label" title="Länge einer Zone in Kerzen ab dem Bestätigungsbalken (Vorlage: Extend, Vorgabe 20)">Zonen-Länge</label>
                     <input type="number" step="1" min="0" class="form-control form-control-sm" data-cid="${ind.client_id}" data-zoneextend="1" value="${ind.zoneExtend == null ? ZONE_EXTEND_DEFAULT : ind.zoneExtend}">
-                  </div>
-                  <!-- GEÄNDERT: Die vier Zonen-Farben stehen als geschlossene Gruppe in einer
-                       eigenen Zeile unter den übrigen Einstellungen, statt sich je nach
-                       Fensterbreite auf zwei Zeilen zu verteilen. -->
-                  <div class="cp-adv-subrow">
-                    ${ZONE_COLOR_FIELDS.map(([key, label, hint]) => `
-                    <div>
-                      <label class="form-label" title="${hint}">${label}</label>
-                      <div class="cp-zone-color-field">
-                        <input class="form-check-input cp-zone-vis-check" type="checkbox" data-cid="${ind.client_id}" data-zonevisible="${key}" title="Diese Zonen im Chart anzeigen" ${zoneVisibleOf(ind)[key] ? 'checked' : ''}>
-                        <input type="color" class="form-control form-control-sm form-control-color" data-cid="${ind.client_id}" data-zonecolor="${key}" value="${(ind.zoneColors && ind.zoneColors[key]) || ZONE_COLOR_DEFAULTS[key]}">
-                      </div>
-                    </div>`).join('')}
                   </div>` : ''}
+                  <!-- GEÄNDERT: Alle zeichenbaren Einheiten in einer Tabelle mit gleichem Aufbau:
+                       An/Aus, Farbe, Linienstil, Linienstärke — für den Indikator selbst wie für
+                       seine Ausgabereihen, Bandkanten oder Zonenarten. -->
+                  <div class="cp-adv-subrow cp-vis-table">
+                    ${visRowHead()}
+                    ${visRowsForIndicator(ind)}
+                  </div>
                 </div>
               </div>
               <!-- GEÄNDERT: Aktionen als vertikale Spalte rechts neben der Visualisierungs-Card —
@@ -1731,6 +1934,31 @@
         if (ind) { ind.lineStyle = inp.value; renderIndRespectingTf(ind); }
       };
     });
+    // GEÄNDERT: Farbe, Stärke und Stil je Ausgabereihe. Ein Eintrag entsteht erst, wenn die
+    // Reihe tatsächlich abweichend eingestellt wird — ohne Eintrag gilt weiter der Indikator.
+    function setOutputStyle(ind, outputName, field, value) {
+      ind.outputStyles = { ...(ind.outputStyles || {}) };
+      ind.outputStyles[outputName] = { ...(ind.outputStyles[outputName] || {}), [field]: value };
+      renderIndRespectingTf(ind);
+    }
+    panel.querySelectorAll('[data-outcolor]').forEach(inp => {
+      inp.oninput = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (ind) setOutputStyle(ind, inp.dataset.outcolor, 'color', inp.value);
+      };
+    });
+    panel.querySelectorAll('[data-outwidth]').forEach(inp => {
+      inp.onchange = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (ind) setOutputStyle(ind, inp.dataset.outwidth, 'lineWidth', parseInt(inp.value, 10) || 1);
+      };
+    });
+    panel.querySelectorAll('[data-outstyle]').forEach(inp => {
+      inp.onchange = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (ind) setOutputStyle(ind, inp.dataset.outstyle, 'lineStyle', inp.value);
+      };
+    });
     // GEÄNDERT: Anzeige-Versatz (ganze Berechnungs-Kerzen, rein visuell) — kein Re-Build, nur Neuzeichnen
     panel.querySelectorAll('[data-displayoffset]').forEach(inp => {
       inp.onchange = () => {
@@ -1751,8 +1979,28 @@
         const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
         if (!ind) return;
         ind.chartVisible = inp.checked;
+        // GEÄNDERT: Der Schalter steht zweimal in der Zeile — kompakt oben und in der
+        // Elemente-Tabelle. Beide zeigen denselben Zustand, also beide nachziehen.
+        panel.querySelectorAll(`[data-chartvisible][data-cid="${ind.client_id}"]`).forEach(other => { other.checked = inp.checked; });
         removeIndFromChart(ind.client_id);
         if (ind.chartVisible) renderIndRespectingTf(ind);
+      };
+    });
+    // GEÄNDERT: Ein- und Ausschalter je Ausgabereihe (z.B. nur adx zeigen, plus_di/minus_di/dx aus).
+    panel.querySelectorAll('[data-outvisible]').forEach(inp => {
+      inp.onchange = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (ind) setOutputStyle(ind, inp.dataset.outvisible, 'visible', inp.checked);
+      };
+    });
+    // GEÄNDERT: Ein- und Ausschalter je Bandlinie (obere Kante, Mittellinie, untere Kante).
+    panel.querySelectorAll('[data-bandvisible]').forEach(inp => {
+      inp.onchange = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (!ind) return;
+        ind.bandVisible = bandVisibleOf(ind);
+        ind.bandVisible[inp.dataset.bandvisible] = inp.checked;
+        renderIndRespectingTf(ind);
       };
     });
     // GEÄNDERT: logik-wirksamer enabled-Schalter; invalidateLiteResult direkt verdrahtet
@@ -1776,14 +2024,22 @@
       }
       delete state.overlaySeriesByClientId[clientId];
     }
-    if (state.subplotChartsByClientId[clientId]) {
-      const sp = state.subplotChartsByClientId[clientId];
-      // GEÄNDERT: Sync-Handler vom Haupt-Chart abmelden, bevor der Subplot zerstört wird —
-      // sonst bleibt der Handler hängen und feuert später auf den disposed Chart.
-      try { if (sp.syncHandler) state.chart.timeScale().unsubscribeVisibleTimeRangeChange(sp.syncHandler); } catch (e) {}
-      try { sp.chart.remove(); } catch (e) {}
-      try { sp.container.remove(); } catch (e) {}
-      delete state.subplotChartsByClientId[clientId];
+    // GEÄNDERT: Subplot-Pane abräumen. Die Pane selbst wird explizit entfernt, sobald ihre letzte
+    // Serie weg ist — sonst bliebe ein leerer Streifen stehen und die Pane-Indizes der folgenden
+    // Subplots stimmten nicht mehr mit dem Zustand überein.
+    if (state.subplotSeriesByClientId[clientId]) {
+      const sp = state.subplotSeriesByClientId[clientId];
+      let paneIndex = null;
+      try { if (sp.series.length) paneIndex = sp.series[0].getPane().paneIndex(); } catch (e) {}
+      sp.series.forEach(s => { try { state.chart.removeSeries(s); } catch (e) {} });
+      delete state.subplotSeriesByClientId[clientId];
+      if (paneIndex !== null && paneIndex > 0) {
+        try {
+          const pane = state.chart.panes()[paneIndex];
+          if (pane && pane.getSeries().length === 0) state.chart.removePane(paneIndex);
+        } catch (e) { /* Pane von der Bibliothek bereits abgeräumt */ }
+      }
+      cpApplyPaneHeights();
     }
     if (state.backgroundSeriesByClientId[clientId]) {
       state.backgroundSeriesByClientId[clientId].forEach(s => {
@@ -1819,7 +2075,7 @@
     const valid = new Set(state.indicators.map(i => i.client_id));
     const tracked = new Set([
       ...Object.keys(state.overlaySeriesByClientId),
-      ...Object.keys(state.subplotChartsByClientId),
+      ...Object.keys(state.subplotSeriesByClientId),
       ...Object.keys(state.backgroundSeriesByClientId),
       ...Object.keys(state.backgroundPrimitivesByClientId), // GEÄNDERT: Hintergrund-Primitive ebenfalls auf Geister prüfen
       ...Object.keys(state.bandPrimitivesByClientId),       // GEÄNDERT: Band-Primitive ebenfalls auf Geister prüfen
@@ -1833,17 +2089,32 @@
     const LS = LightweightCharts.LineStyle;
     return ({ solid: LS.Solid, dashed: LS.Dashed, dotted: LS.Dotted, largedashed: LS.LargeDashed })[style] ?? LS.Solid;
   }
-  function indLineColor(ind) {
-    const o = (ind.opacity == null) ? 1 : ind.opacity;
-    const h = (ind.color || '#000000').replace('#', '');
+  // GEÄNDERT: Darstellung je Ausgabereihe. Indikatoren mit mehreren Ausgaben (ADX mit
+  // adx/dx/plus_di/minus_di, MACD, BBANDS) zeichneten sonst jede Linie in derselben Farbe und
+  // Stärke und waren im Subplot nicht auseinanderzuhalten. Ohne eigenen Eintrag gilt weiterhin
+  // die Einstellung des Indikators.
+  function indOutputStyle(ind, outputName) {
+    const own = (outputName && ind.outputStyles) ? (ind.outputStyles[outputName] || {}) : {};
+    return {
+      visible: own.visible !== false,
+      color: own.color || ind.color || '#000000',
+      opacity: (own.opacity == null) ? ((ind.opacity == null) ? 1 : ind.opacity) : own.opacity,
+      lineWidth: own.lineWidth || ind.lineWidth || 1,
+      lineStyle: own.lineStyle || ind.lineStyle || 'solid',
+    };
+  }
+  function indLineColor(ind, outputName) {
+    const st = indOutputStyle(ind, outputName);
+    const h = st.color.replace('#', '');
     const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${o})`;
+    return `rgba(${r}, ${g}, ${b}, ${st.opacity})`;
   }
   // GEÄNDERT: optionaler Output-Name im Titel — bei Mehr-Output-Indikatoren tragen sonst
   // alle Reihen denselben Namen in der Legende.
   function indLineOptions(ind, outputName) {
     const title = outputName ? `${ind.display_name}.${outputName}` : ind.display_name;
-    return { color: indLineColor(ind), lineWidth: ind.lineWidth || 1, lineStyle: indLineStyleVal(ind.lineStyle), title, priceFormat: cpPriceFormat() };
+    const st = indOutputStyle(ind, outputName);
+    return { color: indLineColor(ind, outputName), lineWidth: st.lineWidth, lineStyle: indLineStyleVal(st.lineStyle), title, priceFormat: cpPriceFormat() };
   }
 
   // GEÄNDERT: Display-Re-Render (Farbe/Linie/Sichtbarkeit/Plot) unter Berücksichtigung des aktiven
@@ -1993,23 +2264,28 @@
 
           // GEÄNDERT: obere und untere Kante tragen eigene Stärken, deshalb zwei Pfade
           // statt eines gemeinsamen.
+          // GEÄNDERT: Breite 0 heisst "ausgeschaltet" — die Linie wird dann nicht gezeichnet.
           ctx.strokeStyle = seg.colors.line;
-          const upperLine = new Path2D();
-          upperLine.moveTo(pts[0].x, pts[0].upper);
-          for (const pt of pts) upperLine.lineTo(pt.x, pt.upper);
-          ctx.lineWidth = this._data.widths.upper;
-          ctx.stroke(upperLine);
+          if (this._data.widths.upper > 0) {
+            const upperLine = new Path2D();
+            upperLine.moveTo(pts[0].x, pts[0].upper);
+            for (const pt of pts) upperLine.lineTo(pt.x, pt.upper);
+            ctx.lineWidth = this._data.widths.upper;
+            ctx.stroke(upperLine);
+          }
 
-          const lowerLine = new Path2D();
-          lowerLine.moveTo(pts[0].x, pts[0].lower);
-          for (const pt of pts) lowerLine.lineTo(pt.x, pt.lower);
-          ctx.lineWidth = this._data.widths.lower;
-          ctx.stroke(lowerLine);
+          if (this._data.widths.lower > 0) {
+            const lowerLine = new Path2D();
+            lowerLine.moveTo(pts[0].x, pts[0].lower);
+            for (const pt of pts) lowerLine.lineTo(pt.x, pt.lower);
+            ctx.lineWidth = this._data.widths.lower;
+            ctx.stroke(lowerLine);
+          }
 
           // GEÄNDERT: Mittellinie im selben Segment und damit in derselben Farbe wie das Band.
           // Als LineSeries ginge das nicht — lightweight-charts kennt keine Farbe je Punkt.
           const withMid = pts.filter(pt => pt.middle !== null);
-          if (withMid.length > 1) {
+          if (withMid.length > 1 && this._data.widths.middle > 0) {
             const midLine = new Path2D();
             midLine.moveTo(withMid[0].x, withMid[0].middle);
             for (const pt of withMid) midLine.lineTo(pt.x, pt.middle);
@@ -2102,10 +2378,13 @@
       points.push({ time: up.time, upper: up.value, lower: low, middle: midValue, dir });
     }
     if (points.length < 2) return;
+    // GEÄNDERT: Ausgeschaltete Bandlinien bekommen die Breite 0 — der Renderer überspringt sie
+    // dann, die Füllfläche des Kanals bleibt erhalten.
+    const bandVis = bandVisibleOf(ind);
     const prim = new BandPrimitive(points, {
-      upper: ind.bandUpperWidth || 1,
-      middle: ind.lineWidth || 1,
-      lower: ind.bandLowerWidth || 1,
+      upper: bandVis.upper ? (ind.bandUpperWidth || 1) : 0,
+      middle: bandVis.middle ? (ind.lineWidth || 1) : 0,
+      lower: bandVis.lower ? (ind.bandLowerWidth || 1) : 0,
     });
     state.candleSeries.attachPrimitive(prim);
     state.bandPrimitivesByClientId[ind.client_id] = prim;
@@ -2438,7 +2717,7 @@
       // GEÄNDERT: Die Mittellinie zeichnet das Primitive (in Bandfarbe). Die Serie bleibt trotzdem
       // bestehen, aber durchsichtig — sie trägt Legenden-Eintrag und Preis-Label, die ein Primitive
       // nicht liefern kann. Ohne sie stünde im Chart kein Wert der Mittellinie.
-      if (middleKey) {
+      if (middleKey && bandVisibleOf(ind).middle) {
         const midSeries = state.chart.addSeries(LightweightCharts.LineSeries, {
           ...indLineOptions(ind, middleKey), color: 'rgba(0, 0, 0, 0)',
           lastValueVisible: true, priceLineVisible: false, crosshairMarkerVisible: false,
@@ -2449,9 +2728,15 @@
       return;
     }
 
+    // GEÄNDERT: Ausgeschaltete Ausgabereihen gar nicht erst zeichnen. Der Filter greift erst hier,
+    // damit Band, Zonen und Hintergrund oben noch alle Reihen zur Verfügung haben (die Kanten eines
+    // Bandes sind ebenfalls Ausgabereihen).
+    const drawKeys = multi ? keys.filter(k => indOutputStyle(ind, k).visible) : keys;
+    if (!drawKeys.length) return;
+
     if (mode === 'overlay') {
       const seriesList = [];
-      for (const key of keys) {
+      for (const key of drawKeys) {
         const s = state.chart.addSeries(LightweightCharts.LineSeries, {
           ...indLineOptions(ind, multi ? key : null), lastValueVisible: true, priceLineVisible: false,
         });
@@ -2462,30 +2747,18 @@
       return;
     }
 
-    const container = document.createElement('div');
-    container.className = 'subplot-chart';
-    document.getElementById('cpSubplots').appendChild(container);
-    const chart = LightweightCharts.createChart(container, {
-      layout: { background: { color: 'transparent' }, textColor: getComputedStyle(document.body).color },
-      grid: { vertLines: { color: 'rgba(128,128,128,0.08)' }, horzLines: { color: 'rgba(128,128,128,0.08)' } },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: 'rgba(128,128,128,0.3)' },
-      rightPriceScale: { borderColor: 'rgba(128,128,128,0.3)' },
-      autoSize: true,
-    });
-    const series = keys.map(key => {
-      const se = chart.addSeries(LightweightCharts.LineSeries, indLineOptions(ind, multi ? key : null));
+    // GEÄNDERT: Subplot als eigene Pane desselben Charts statt als zweiter Chart. Die Pane
+    // entsteht dadurch, dass ein noch nicht vergebener Pane-Index angegeben wird. Zeitachse,
+    // Zoom und Scroll teilt sie sich damit von Haus aus mit den Kerzen — der frühere Sync über
+    // setVisibleRange konnte am Rand der Indikator-Daten hängenbleiben und lief dann weg.
+    const paneIndex = state.chart.panes().length;
+    const series = drawKeys.map(key => {
+      const se = state.chart.addSeries(LightweightCharts.LineSeries, indLineOptions(ind, multi ? key : null), paneIndex);
       se.setData(prepared[key]);
       return se;
     });
-    // Zeit-Sync: Main -> Subplot. Synchronisation über den Zeit-Bereich statt logischem Bar-Index —
-    // Subplot-Serien sind durch Warmup-Trim kürzer als die Candles, ein Index-Sync würde ins Leere
-    // zeigen. Handler-Referenz wird gemerkt, damit er beim Entfernen des Subplots wieder abgemeldet
-    // werden kann (sonst feuern tote Handler auf bereits zerstörte Charts -> "Object is disposed").
-    const syncHandler = range => { if (range) { try { chart.timeScale().setVisibleRange(range); } catch (e) {} } };
-    state.chart.timeScale().subscribeVisibleTimeRangeChange(syncHandler);
-    // Initialer Sync auf den aktuell sichtbaren Zeitbereich des Haupt-Charts
-    try { const cur = state.chart.timeScale().getVisibleRange(); if (cur) chart.timeScale().setVisibleRange(cur); } catch (e) {}
-    state.subplotChartsByClientId[ind.client_id] = { chart, series, container, syncHandler };
+    state.subplotSeriesByClientId[ind.client_id] = { series };
+    cpApplyPaneHeights();
   }
 
   function renderIndFromCache(ind) {
@@ -3564,6 +3837,9 @@
   // ========= Setups =========
   // GEÄNDERT: vier separate JSON-Felder statt eines flachen config_json
   function collectSetupConfig() {
+    // GEÄNDERT: Vom User an den Trennlinien gezogene Pane-Höhen vor dem Einsammeln übernehmen —
+    // die Bibliothek meldet ein Pane-Resize nicht, der Stand wird deshalb hier aktiv abgelesen.
+    cpReadPaneHeights();
     // Nur 'indicator' (Bibliotheks-Feld) und 'tf' (TF-Dropdown) sind Sonderfelder mit eigenem Widget.
     // Alle anderen Keys sind normale, anzuzeigende/speichernde Felder.
     const META_KEYS = new Set(['indicator', 'tf']);
@@ -3610,9 +3886,15 @@
         line_style: i.lineStyle || 'solid',
         // GEÄNDERT: reiner Anzeige-Versatz (ganze Berechnungs-Kerzen)
         display_offset: i.displayOffset || 0,
+        // GEÄNDERT: Höhe der Subplot-Pane mitspeichern (vom User an der Trennlinie gezogen)
+        subplot_height: cpSubplotHeightOf(i),
+        // GEÄNDERT: abweichende Darstellung einzelner Ausgabereihen mitspeichern
+        output_styles: { ...(i.outputStyles || {}) },
         // GEÄNDERT: Darstellungs-Einstellungen von Band und Zonen mitspeichern.
         band_upper_width: i.bandUpperWidth || 1,
         band_lower_width: i.bandLowerWidth || 1,
+        // GEÄNDERT: Sichtbarkeit der einzelnen Bandlinien mitspeichern
+        band_visible: { ...BAND_VISIBLE_DEFAULTS, ...(i.bandVisible || {}) },
         zone_extend: (i.zoneExtend == null) ? ZONE_EXTEND_DEFAULT : i.zoneExtend,
         zone_colors: { ...ZONE_COLOR_DEFAULTS, ...(i.zoneColors || {}) },
         zone_visible: { ...ZONE_VISIBLE_DEFAULTS, ...(i.zoneVisible || {}) },
@@ -3732,9 +4014,15 @@
         lineStyle: uiInd.line_style || 'solid',
         // GEÄNDERT: Anzeige-Versatz laden (Default 0 für Alt-Setups)
         displayOffset: uiInd.display_offset || 0,
+        // GEÄNDERT: Subplot-Höhe laden (Vorgabe für Alt-Setups ohne das Feld)
+        subplotHeight: uiInd.subplot_height || CP_SUBPLOT_DEFAULT_HEIGHT,
+        // GEÄNDERT: Reihen-Darstellung laden (leer für Alt-Setups — dann gilt der Indikator)
+        outputStyles: { ...(uiInd.output_styles || {}) },
         // GEÄNDERT: Band- und Zonen-Darstellung laden (Vorgaben für Alt-Setups ohne die Felder)
         bandUpperWidth: uiInd.band_upper_width || 1,
         bandLowerWidth: uiInd.band_lower_width || 1,
+        // GEÄNDERT: Sichtbarkeit der Bandlinien laden (alles an für Alt-Setups ohne das Feld)
+        bandVisible: { ...BAND_VISIBLE_DEFAULTS, ...(uiInd.band_visible || {}) },
         zoneExtend: (uiInd.zone_extend == null) ? ZONE_EXTEND_DEFAULT : uiInd.zone_extend,
         zoneColors: { ...ZONE_COLOR_DEFAULTS, ...(uiInd.zone_colors || {}) },
         zoneVisible: { ...ZONE_VISIBLE_DEFAULTS, ...(uiInd.zone_visible || {}) },
@@ -4305,17 +4593,19 @@
   // Inhalt nach oben rückt.
   document.getElementById('cpHeightBtn').addEventListener('click', function(e) {
     e.stopPropagation(); this.blur();
-    const chartEl = document.getElementById('chartMain');
     const isTall = document.body.classList.contains('cp-tall-chart');
     document.body.classList.toggle('cp-tall-chart', !isTall);
-    chartEl.style.height = isTall ? '400px' : '700px';
+    // GEÄNDERT: schaltet die Höhe der Kerzen-Pane um; die Subplots behalten ihre eigene Höhe
+    state.mainPaneHeight = isTall ? 400 : 700;
+    cpApplyPaneHeights();
     this.classList.toggle('active', !isTall);
   });
   // GEÄNDERT: Stufenloses Ziehen der Chart-Höhe über die Leiste unter dem Chart.
   // Der Chart läuft mit autoSize und folgt der Container-Höhe von selbst.
+  // GEÄNDERT: Die Leiste regelt jetzt die Höhe der Kerzen-Pane. Die Subplot-Panes behalten dabei
+  // ihre eigene Höhe (die zieht man an ihrer jeweiligen Trennlinie im Chart selbst).
   (function initChartResizer() {
     const resizerEl = document.getElementById('cpChartResizer');
-    const chartEl = document.getElementById('chartMain');
     const MIN_CHART_HEIGHT = CP_CHART_MIN_HEIGHT;
     const MAX_CHART_HEIGHT = CP_CHART_MAX_HEIGHT;
     let dragStartY = 0;
@@ -4329,26 +4619,30 @@
 
     function onDragMove(ev) {
       const wanted = dragStartHeight + (ev.clientY - dragStartY);
-      const clamped = Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, wanted));
-      chartEl.style.height = clamped + 'px';
+      state.mainPaneHeight = Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, wanted));
+      cpApplyPaneHeights();
     }
     function onDragEnd() {
       document.removeEventListener('mousemove', onDragMove);
       document.removeEventListener('mouseup', onDragEnd);
       document.body.classList.remove('cp-resizing-chart');
-      storeChartHeight(chartEl.offsetHeight);
+      storeChartHeight(state.mainPaneHeight);
     }
     resizerEl.addEventListener('mousedown', function(ev) {
       ev.preventDefault();
+      // Vor dem Ziehen den tatsächlichen Stand übernehmen — der User kann die Trennlinien
+      // zwischen den Panes zwischenzeitlich selbst verschoben haben.
+      cpReadPaneHeights();
       dragStartY = ev.clientY;
-      dragStartHeight = chartEl.offsetHeight;
+      dragStartHeight = state.mainPaneHeight;
       document.body.classList.add('cp-resizing-chart');
       document.addEventListener('mousemove', onDragMove);
       document.addEventListener('mouseup', onDragEnd);
     });
     // Doppelklick setzt die Standardhöhe zurück
     resizerEl.addEventListener('dblclick', function() {
-      chartEl.style.height = '400px';
+      state.mainPaneHeight = 400;
+      cpApplyPaneHeights();
       storeChartHeight(400);
     });
   })();
