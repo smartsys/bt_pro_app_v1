@@ -175,10 +175,46 @@
   // Tooltip-Hilfsfunktionen
   // -----------------------------------------------------------------------
 
-  function buildTooltipHtml(hit) {
+  /**
+   * Balkenzeit als UTC-Text. Der Zeitstempel eines Trades ist der INDEX des
+   * Balkens, also dessen Beginn — nicht der Moment der Ausführung.
+   */
+  function formatBarTime(tsSec) {
+    var d = new Date(tsSec * 1000);
+    return d.toLocaleDateString('de-DE', { timeZone: 'UTC' }) + ' ' +
+           d.toLocaleTimeString('de-DE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+  }
+
+  /**
+   * Beschreibt, WO im Balken die Order gefüllt wurde — die Angabe, die der
+   * Balkenzeit oben fehlt.
+   *
+   * Signal-Orders füllt VBT zum Schlusskurs (from_signals ohne price-Argument),
+   * also am Balkenende: bei einer 1D-Kerze vom 15.9. um 23:59 UTC. Stop-Orders
+   * (SL/TSL/TTP/TP/TD) lösen dagegen irgendwann INNERHALB des Balkens aus — dort
+   * gibt es keinen bestimmbaren Zeitpunkt, deshalb nur "im Balken".
+   *
+   * @param {number} barTsSec Balkenzeit (Beginn) in Sekunden
+   * @param {number|null} barSeconds Balkendauer des Rechen-Timeframes in Sekunden
+   * @param {string} stopType Stop-Typ der Order ('' bei Signal-Order)
+   * @returns {string} z.B. "Close 23:59 UTC" oder "SL im Balken"
+   */
+  function formatFillNote(barTsSec, barSeconds, stopType) {
+    if (stopType && stopType !== 'None') return stopType + ' im Balken';
+    if (!barSeconds) return 'Close';
+    var closeDate = new Date((barTsSec + barSeconds - 60) * 1000);
+    var closeTime = closeDate.toLocaleTimeString('de-DE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+    return 'Close ' + closeTime + ' UTC';
+  }
+
+  function buildTooltipHtml(hit, barSeconds) {
     var t = hit.trade;
     var isEntry = hit.type === 'Entry';
-    var time = isEntry ? t.entry_time : t.exit_time;
+    // GEÄNDERT: Für die Anzeige die ECHTE Balkenzeit des Rechen-Timeframes nehmen.
+    // entry_time/exit_time sind bei aktivem Anzeige-TF auf das gröbere Raster
+    // gerundet (Marker müssen auf einem Bar liegen, sonst sind sie unsichtbar) —
+    // der Tooltip zeigte dadurch eine verschobene Uhrzeit.
+    var time = isEntry ? (t.entry_bar_time || t.entry_time) : (t.exit_bar_time || t.exit_time);
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
@@ -186,8 +222,8 @@
     // Felder trade_id/trade_idx gibt es dort nicht — das Label zeigte deshalb "undefined").
     var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
-    var date = new Date(time * 1000);
-    var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    var dateStr = formatBarTime(time);
+    var fillNote = formatFillNote(time, barSeconds, isEntry ? '' : (t.exit_stop_type || ''));
     var priceStr = price.toLocaleString('de-DE', { minimumFractionDigits: prec, maximumFractionDigits: prec });
 
     // Dauer clientseitig berechnen (exit_time - entry_time)
@@ -205,7 +241,10 @@
     html += '<span style="color:#888">Seite: ' + (t.direction || 'long') + '</span><br>';
     html += 'Preis: ' + priceStr + '<br>';
     if (durationStr) html += 'Dauer: ' + durationStr + '<br>';
-    html += 'Zeit: ' + dateStr;
+    html += 'Zeit: ' + dateStr + '<br>';
+    // GEÄNDERT: Die Balkenzeit oben ist der Beginn der Kerze, gefüllt wird aber am
+    // Balkenende (Signal) bzw. irgendwo im Balken (Stop) — das steht jetzt dabei.
+    html += '<span style="color:#888">Ausführung: ' + fillNote + '</span>';
     if (!isEntry && t.entry_price && t.exit_price) {
       html += '<br>Entry: ' + t.entry_price.toLocaleString('de-DE', { minimumFractionDigits: prec, maximumFractionDigits: prec });
       html += ' / Exit: ' + t.exit_price.toLocaleString('de-DE', { minimumFractionDigits: prec, maximumFractionDigits: prec });
@@ -295,6 +334,12 @@
     var containerEl = opts.containerEl || null;
     var tooltipEl = opts.tooltipEl || null;
 
+    // GEÄNDERT: Balkendauer des RECHEN-Timeframes am Container ablegen statt im
+    // Closure zu halten — die Tooltip-Handler werden pro Container nur einmal
+    // registriert, ein späterer Timeframe-Wechsel muss aber durchschlagen.
+    // Analog zu containerEl._currentPrimitive.
+    if (containerEl) containerEl._barSeconds = opts.barSeconds || null;
+
     function doRender(trades) {
       if (!trades || trades.length === 0) return null;
       var primitive = new OrderPrimitive(trades, chart, candleSeries, isDark);
@@ -315,7 +360,7 @@
           var mx = e.clientX - rect.left, my = e.clientY - rect.top;
           var hit = findHitArea(mx, my, containerEl._currentPrimitive);
           if (hit) {
-            tooltipEl.innerHTML = buildTooltipHtml(hit);
+            tooltipEl.innerHTML = buildTooltipHtml(hit, containerEl._barSeconds);
             tooltipEl.style.display = 'block';
             tooltipEl.style.borderColor = '#585b70';
             tooltipEl.style.left = '0'; tooltipEl.style.top = '0';
@@ -340,7 +385,7 @@
             tooltipPinned = false; tooltipEl.style.display = 'none'; containerEl.style.cursor = 'default';
           } else if (hit) {
             tooltipPinned = true;
-            tooltipEl.innerHTML = buildTooltipHtml(hit);
+            tooltipEl.innerHTML = buildTooltipHtml(hit, containerEl._barSeconds);
             tooltipEl.style.display = 'block';
             tooltipEl.style.borderColor = '#3b82f6';
             navigator.clipboard && navigator.clipboard.writeText(tooltipEl.textContent).catch(function() {});
@@ -439,6 +484,10 @@
     // OrderPrimitive öffentlich machen für TF-Resampling im Playground
     OrderPrimitive: OrderPrimitive,
     buildTooltipHtml: buildTooltipHtml,
+    // GEÄNDERT: Zeit-/Ausführungs-Formatierung teilen — result_chart.html hat eine
+    // eigene Tooltip-Kopie und soll dieselbe Darstellung zeigen.
+    formatBarTime: formatBarTime,
+    formatFillNote: formatFillNote,
   };
 
 })(window);

@@ -248,6 +248,10 @@ document.addEventListener("DOMContentLoaded", function() {
   // GEÄNDERT: Basis-Timeframe des Runs als Konstante — Referenz für das Resampling
   // der einzelnen Serien beim Toggle-On (siehe resampleForActiveTf).
   var BASE_TF = "{{ run.timeframe }}";
+  // GEÄNDERT: Balkendauer des gerechneten Timeframes — daraus leitet der Tooltip
+  // den Ausführungszeitpunkt am Balkenende ab.
+  var BASE_TF_SEC = ({ "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200,
+                       "4h": 14400, "6h": 21600, "12h": 43200, "1d": 86400, "1w": 604800 })[BASE_TF] || null;
 
   // ========================================================================
   // Custom Primitive: Order-Rechtecke + Pfeile
@@ -421,7 +425,9 @@ document.addEventListener("DOMContentLoaded", function() {
   function buildTooltipHtml(hit) {
     var t = hit.trade;
     var isEntry = hit.type === 'Entry';
-    var time = isEntry ? t.entry_time : t.exit_time;
+    // GEÄNDERT: Für die Anzeige die ECHTE Balkenzeit nehmen — entry_time/exit_time
+    // sind bei gewechseltem Anzeige-TF auf das gröbere Raster gerundet.
+    var time = isEntry ? (t.entry_bar_time || t.entry_time) : (t.exit_bar_time || t.exit_time);
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
@@ -430,8 +436,10 @@ document.addEventListener("DOMContentLoaded", function() {
     var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
 
-    var date = new Date(time * 1000);
-    var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+    // GEÄNDERT: Zeit- und Ausführungsangabe aus overlay.js — dieselbe Darstellung
+    // wie im Chart-Playground, damit die Logik nur an einer Stelle liegt.
+    var dateStr = ResultOverlay.formatBarTime(time);
+    var fillNote = ResultOverlay.formatFillNote(time, BASE_TF_SEC, isEntry ? '' : (t.exit_stop_type || ''));
     var priceStr = price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec});
     var sizeStr = t.size.toFixed(8);
 
@@ -439,7 +447,10 @@ document.addEventListener("DOMContentLoaded", function() {
     html += '<span style="color:#888">Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + ' | Spalte: ' + (t.column || '-') + '</span><br>';
     html += 'Preis: ' + priceStr + '<br>';
     html += 'Menge: ' + sizeStr + '<br>';
-    html += 'Zeit: ' + dateStr;
+    html += 'Zeit: ' + dateStr + '<br>';
+    // GEÄNDERT: Die Balkenzeit oben ist der Beginn der Kerze, gefüllt wird aber am
+    // Balkenende (Signal) bzw. irgendwo im Balken (Stop) — das steht jetzt dabei.
+    html += '<span style="color:#888">Ausführung: ' + fillNote + '</span>';
     if (!isEntry && t.return_pct !== null && t.return_pct !== undefined) {
       var plStr = (t.return_pct >= 0 ? '+' : '') + t.return_pct.toFixed(2) + '%';
       var plColor = t.return_pct >= 0 ? '#a6e3a1' : '#f38ba8';
@@ -490,7 +501,8 @@ document.addEventListener("DOMContentLoaded", function() {
   function buildClipboardText(hit) {
     var t = hit.trade;
     var isEntry = hit.type === 'Entry';
-    var time = isEntry ? t.entry_time : t.exit_time;
+    // GEÄNDERT: echte Balkenzeit, nicht die aufs Anzeige-Raster gerundete
+    var time = isEntry ? (t.entry_bar_time || t.entry_time) : (t.exit_bar_time || t.exit_time);
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
@@ -498,13 +510,14 @@ document.addEventListener("DOMContentLoaded", function() {
     // Felder trade_id/trade_idx gibt es dort nicht — das Label zeigte deshalb "undefined").
     var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
-    var date = new Date(time * 1000);
-    var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+    var dateStr = ResultOverlay.formatBarTime(time);
+    var fillNote = ResultOverlay.formatFillNote(time, BASE_TF_SEC, isEntry ? '' : (t.exit_stop_type || ''));
     var text = side + (tradeId != null ? ' ' + tradeId : '') + ' | ' + (t.direction || 'Long') + '\n';
     text += 'Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + '\n';
     text += 'Preis: ' + price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec}) + '\n';
     text += 'Menge: ' + t.size.toFixed(8) + '\n';
-    text += 'Zeit: ' + dateStr;
+    text += 'Zeit: ' + dateStr + '\n';
+    text += 'Ausführung: ' + fillNote;
     if (!isEntry && t.return_pct !== null && t.return_pct !== undefined) {
       text += '\nP&L: ' + (t.return_pct >= 0 ? '+' : '') + t.return_pct.toFixed(2) + '%';
     }
@@ -1044,6 +1057,10 @@ document.addEventListener("DOMContentLoaded", function() {
         var snappedTrades = tradeDataCache.map(function(t) {
           if (isBase) return t;
           var snapped = Object.assign({}, t);
+          // GEÄNDERT: ungesnappte Balkenzeit für den Tooltip erhalten — gesnappt
+          // wird nur die Marker-Position auf das gröbere Anzeige-Raster.
+          snapped.entry_bar_time = t.entry_time;
+          snapped.exit_bar_time = t.exit_time;
           snapped.entry_time = Math.floor(t.entry_time / targetSec) * targetSec;
           snapped.exit_time = Math.floor(t.exit_time / targetSec) * targetSec;
           // Entry und Exit im selben Bucket: Exit um einen Bucket verschieben

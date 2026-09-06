@@ -3271,8 +3271,13 @@
     // Sonst liegen die Roh-Zeiten (Basis-TF, z.B. 4h-Offsets) zwischen den
     // resampelten Bars und timeToCoordinate() liefert null -> Marker unsichtbar.
     const markerTargetSec = visualTf ? CHART_TF_SEC[visualTf] : null;
+    // GEÄNDERT: Die ungesnappte Balkenzeit als entry_bar_time/exit_bar_time mitführen.
+    // Gesnappt wird nur für die Marker-POSITION; der Tooltip soll die echte Zeit des
+    // gerechneten Balkens zeigen, nicht die aufs Anzeige-Raster gerundete.
     const snapped = markerTargetSec ? filtered.map(t => ({
       ...t,
+      entry_bar_time: t.entry_time,
+      exit_bar_time: t.exit_time,
       entry_time: Math.floor(t.entry_time / markerTargetSec) * markerTargetSec,
       exit_time: Math.floor(t.exit_time / markerTargetSec) * markerTargetSec,
     })) : filtered;
@@ -3281,6 +3286,9 @@
       containerEl: document.getElementById('cpChartContainer'),
       tooltipEl: cpGetOrderTooltip(),
       isDark: document.documentElement.getAttribute('data-bs-theme') === 'dark',
+      // GEÄNDERT: Balkendauer des RECHEN-Timeframes (nicht des Anzeige-Rasters) —
+      // daraus leitet der Tooltip den Ausführungszeitpunkt am Balkenende ab.
+      barSeconds: CHART_TF_SEC[document.getElementById('cpTimeframe').value] || null,
       onPrimitive: (prim) => { cpCurrentOrderPrimitive = prim; },
     });
   }
