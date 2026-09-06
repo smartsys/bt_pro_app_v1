@@ -182,7 +182,9 @@
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
-    var tradeId = t.trade_id !== undefined ? t.trade_id : t.trade_idx;
+    // GEÄNDERT: Trade-Nummer heißt in beiden Trade-Quellen exit_trade_id (die früher gelesenen
+    // Felder trade_id/trade_idx gibt es dort nicht — das Label zeigte deshalb "undefined").
+    var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
     var date = new Date(time * 1000);
     var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -199,7 +201,7 @@
       else durationStr = Math.round(durSec / 60) + 'min';
     }
 
-    var html = '<b>' + side + ' #' + tradeId + '</b> | ' + (t.direction || 'long') + '<br>';
+    var html = '<b>' + side + (tradeId != null ? ' ' + tradeId : '') + '</b> | ' + (t.direction || 'long') + '<br>';
     html += '<span style="color:#888">Seite: ' + (t.direction || 'long') + '</span><br>';
     html += 'Preis: ' + priceStr + '<br>';
     if (durationStr) html += 'Dauer: ' + durationStr + '<br>';

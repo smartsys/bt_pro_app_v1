@@ -425,7 +425,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
-    var tradeId = t.trade_id !== undefined ? t.trade_id : t.trade_idx;
+    // GEÄNDERT: Trade-Nummer heißt in beiden Trade-Quellen exit_trade_id (die früher gelesenen
+    // Felder trade_id/trade_idx gibt es dort nicht — das Label zeigte deshalb "undefined").
+    var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
 
     var date = new Date(time * 1000);
@@ -433,7 +435,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var priceStr = price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec});
     var sizeStr = t.size.toFixed(8);
 
-    var html = '<b>' + side + ' #' + tradeId + '</b> | ' + (t.direction || 'Long') + '<br>';
+    var html = '<b>' + side + (tradeId != null ? ' ' + tradeId : '') + '</b> | ' + (t.direction || 'Long') + '<br>';
     html += '<span style="color:#888">Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + ' | Spalte: ' + (t.column || '-') + '</span><br>';
     html += 'Preis: ' + priceStr + '<br>';
     html += 'Menge: ' + sizeStr + '<br>';
@@ -492,11 +494,13 @@ document.addEventListener("DOMContentLoaded", function() {
     var price = isEntry ? t.entry_price : t.exit_price;
     var orderId = isEntry ? t.entry_order_id : t.exit_order_id;
     var side = isEntry ? 'Buy' : 'Sell';
-    var tradeId = t.trade_id !== undefined ? t.trade_id : t.trade_idx;
+    // GEÄNDERT: Trade-Nummer heißt in beiden Trade-Quellen exit_trade_id (die früher gelesenen
+    // Felder trade_id/trade_idx gibt es dort nicht — das Label zeigte deshalb "undefined").
+    var tradeId = t.exit_trade_id;
     var prec = price > 100 ? 2 : (price > 1 ? 4 : 8);
     var date = new Date(time * 1000);
     var dateStr = date.toLocaleDateString('de-DE') + ' ' + date.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
-    var text = side + ' #' + tradeId + ' | ' + (t.direction || 'Long') + '\n';
+    var text = side + (tradeId != null ? ' ' + tradeId : '') + ' | ' + (t.direction || 'Long') + '\n';
     text += 'Order-ID: ' + (orderId !== undefined ? orderId : '-') + ' | Pos: ' + (t.position_id !== undefined ? t.position_id : '-') + '\n';
     text += 'Preis: ' + price.toLocaleString('de-DE', {minimumFractionDigits: prec, maximumFractionDigits: prec}) + '\n';
     text += 'Menge: ' + t.size.toFixed(8) + '\n';

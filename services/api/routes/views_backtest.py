@@ -47,6 +47,10 @@ def _resolve_ind_params(ind_config: dict, actual_params: dict) -> dict:
     """
     ind_params: dict = {}
     for ind_name, cfg in ind_config.items():
+        # GEÄNDERT: Meta-Keys überspringen. Keys mit '_'-Präfix (_stops, _stops_pos) beschreiben
+        # keinen Indikator; _stops_pos ist eine Zahl und ließ die Auflösung vorher scheitern.
+        if str(ind_name).startswith('_'):
+            continue
         cls = str(cfg.get('indicator', '')).split(':')[-1].lower()
         prefixes = [p for p in {cls, str(ind_name).lower()} if p]
         params: dict = {}

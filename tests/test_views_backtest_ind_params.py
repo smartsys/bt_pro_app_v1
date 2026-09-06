@@ -75,6 +75,18 @@ class TestResolveIndParams:
         result = _resolve_ind_params(ind_config, actual_params)
         assert result == {}
 
+    def test_meta_keys_are_not_treated_as_indicators(self) -> None:
+        """Meta-Keys der IndicatorConfig ('_'-Praefix) beschreiben keinen Indikator.
+        '_stops_pos' ist eine Zahl — ohne Filter scheiterte die Aufloesung daran."""
+        ind_config = {
+            'fast_sma': {'indicator': 'custom:dwsFastSMA'},
+            '_stops': {'tp_stop': 0.05, 'sl_stop': 0.02},
+            '_stops_pos': 2,
+        }
+        actual_params = {'fast_sma_length': 5}
+        result = _resolve_ind_params(ind_config, actual_params)
+        assert result == {'fast_sma': {'length': 5}}
+
     def test_missing_indicator_field_falls_back_to_spec_key_only(self) -> None:
         """Fehlendes 'indicator'-Feld -> nur Spec-Key-Praefix greift, kein Crash."""
         ind_config = {'fast_sma': {}}
