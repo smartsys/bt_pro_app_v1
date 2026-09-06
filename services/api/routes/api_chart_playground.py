@@ -796,7 +796,8 @@ class SetupOut(BaseModel):
 def list_setups() -> dict:
     session = get_session()
     try:
-        rows = session.query(ChartPlaygroundSetup).order_by(ChartPlaygroundSetup.name).all()
+        # GEÄNDERT: Sortierung nach ID absteigend (neueste Setups zuerst im Playground-Dropdown)
+        rows = session.query(ChartPlaygroundSetup).order_by(ChartPlaygroundSetup.id.desc()).all()
         items = [SetupOut.model_validate(r).model_dump(mode='json') for r in rows]
         return {'data': {'items': items}, 'error': None}
     finally:
