@@ -6,6 +6,14 @@ FROM bt_pro_app_v1-vbt:latest AS runtime
 
 WORKDIR /app
 
+# GEÄNDERT: Ausgabe nicht puffern. App, Worker und Scheduler sind langlebige Prozesse,
+# die nicht in ein Terminal schreiben; Python sammelt ihre Ausgabe dann blockweise und
+# gibt sie verzögert oder bruchstückhaft heraus. Im Docker-Protokoll fehlte dadurch der
+# Verlauf des Rechenwegs (`spec_runner` schreibt ihn mit print), obwohl der Lauf
+# einwandfrei rechnete. Hier statt in den Compose-Dateien, damit es für alle drei
+# Umgebungen und alle Dienste aus diesem Image gleichermaßen gilt.
+ENV PYTHONUNBUFFERED=1
+
 # GEÄNDERT: PostgreSQL-Client 17 für Seed-Export/-Import über die GUI (pg_dump/pg_restore).
 # Debian 13 (trixie, Basis dieses Images) liefert postgresql-client-17 nativ — passend zur
 # TimescaleDB-Server-Version (pg17), kein PGDG-Repo nötig. Ohne diese Tools kann der

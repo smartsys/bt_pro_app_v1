@@ -136,9 +136,19 @@ def test_download_endpoint_legt_einen_job_je_symbol_an(db_engine):
     assert result['error'] is None
     assert result['data']['count'] == 3  # Duplikat entfernt
 
+    # GEÄNDERT (Ticket 108): nur die selbst erzeugten Zeilen prüfen — db_engine ist
+    # session-scoped und leert die Tabelle nicht, daher würde ein ungefilterter
+    # query().all() bei wiederholtem Einzellauf der Datei fremde Altzeilen mitzählen.
+    job_ids = [job['id'] for job in result['data']['jobs']]
+
     check = Session()
     try:
-        jobs = check.query(OhlcDownloadJob).order_by(OhlcDownloadJob.id).all()
+        jobs = (
+            check.query(OhlcDownloadJob)
+            .filter(OhlcDownloadJob.id.in_(job_ids))
+            .order_by(OhlcDownloadJob.id)
+            .all()
+        )
         assert len(jobs) == 3
         symbols = sorted(j.symbols[0] for j in jobs)
         assert symbols == ['BTCUSDT', 'ETHUSDT', 'FETUSDT']
