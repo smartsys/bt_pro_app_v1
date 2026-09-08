@@ -900,6 +900,7 @@ def assess_run_usability(
     warmup: Optional[dict] = None,
     metrics_note: Optional[str] = None,
     risk_note: Optional[str] = None,
+    leverage_note: Optional[str] = None,
 ) -> dict:
     """Bewertet nach dem Lauf, ob er verwertbar ist, und schreibt das Urteil an den Run.
 
@@ -924,6 +925,9 @@ def assess_run_usability(
             Stopabstand blieben. Wird wie ``metrics_note`` angehängt, damit sie
             am Run hängt statt nur im Worker-Protokoll zu stehen — und damit
             auch bei einem Testset-Lauf ankommt, dessen Runs denselben Weg gehen.
+        leverage_note: Selbstauskunft des Hebels je Entry-Block (Ticket 106,
+            Anforderung 3): Meldung, wenn VBT eine Order wegen Unterdeckung auf
+            Konto x Hebel gekürzt hat. Wird wie ``risk_note`` angehängt.
 
     Returns:
         Dict mit 'usability', 'note', 'n_results' und 'total_trades'.
@@ -967,6 +971,10 @@ def assess_run_usability(
     # GEÄNDERT: Ticket 104 — Meldung der risikobasierten Größe anhängen.
     if risk_note:
         note = f'{note} Risikobasierte Größe: {risk_note}'
+
+    # GEÄNDERT: Ticket 106 — Meldung des Block-Hebels anhängen.
+    if leverage_note:
+        note = f'{note} Block-Hebel: {leverage_note}'
 
     update_backtest_run_usability(run_id, usability, note)
     return {

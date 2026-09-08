@@ -51,6 +51,13 @@ import pandas as pd
 import vectorbtpro as vbt
 from numba import njit
 
+# GEÄNDERT: Ticket 106 — Hebel je Entry-Block. block_leverage kennt weder
+# rules_engine noch spec_runner, der Import ist damit zirkelfrei.
+from user_data.strategies.generic.block_leverage import (
+    BLOCK_LEVERAGE_MODE,
+    read_block_leverage,
+)
+
 
 # GEÄNDERT: Vier-Masken-Rückgabe für Long/Short-Unterstützung im Masken-Pfad
 class SignalMasks(NamedTuple):
@@ -1088,6 +1095,12 @@ def _state_exit_signal_func_nb(
     risk_delta_format: np.int64,    # Delta-Format des sl_stop (Absolute/Percent/Percent100)
     risk_sl_arr: np.ndarray,        # (T, n_combo) float64 — sl_stop-Wert je Balken/Combo
     risk_size_arr: np.ndarray,      # (T, N) float64 — dasselbe Array geht als 'size' an VBT
+    # GEÄNDERT: Ticket 106 — Hebel je Entry-Block.
+    lev_enabled: bool,              # False = der Zweig greift nicht (Config-Hebel)
+    long_block_lev: np.ndarray,     # (T, n_combo) float64 — höchster Long-Block-Hebel je Balken
+    short_block_lev: np.ndarray,    # (T, n_combo) float64 — dito für Short-Blöcke
+    leverage_arr: np.ndarray,       # (T, N) float64 — geht zugleich als 'leverage' an VBT
+    lev_entry_arr: np.ndarray,      # (T, N) bool — markiert die Einstiegsbalken
 ) -> tuple:
     """Numba-signal_func_nb für State-basierte Exit-Conditions in DNF.
 
@@ -1112,6 +1125,12 @@ def _state_exit_signal_func_nb(
     allen Lesestellen von size_, der Wert wirkt also im selben Balken. Ohne
     risk_enabled bleibt das Array unberührt (Platzhalter) und die Rechnung
     unverändert.
+
+    Ist 'lev_enabled' gesetzt (mindestens ein Entry-Block trägt einen Hebel
+    ungleich 1), wird an jedem Balken mit wirksamem Einstiegssignal der Hebel des
+    feuernden Blocks in leverage_arr geschrieben — dasselbe Array, das
+    from_signals als 'leverage' bekommt (Modus 'lazymult'). Ohne lev_enabled
+    bleibt das Array unberührt (Platzhalter) und die Rechnung unverändert.
 
     entry_mask / short_entry_mask sind immer 2D (T, N), static_block /
     short_static_block immer 3D (n_blocks, T, W) — auch für Single-Combo,
@@ -1271,6 +1290,24 @@ def _state_exit_signal_func_nb(
             risk_size_arr[i, col] = (account_value * risk_pct) / price_distance
         else:
             risk_size_arr[i, col] = np.nan
+
+    # GEÄNDERT: Ticket 106 — Hebel des feuernden Entry-Blocks im Einstiegsbalken.
+    # Steht wie der Risiko-Zweig NACH der Entry-Unterdrückung, damit nur
+    # tatsächlich wirksame Einstiegssignale einen Hebel bekommen. Feuern mehrere
+    # Blöcke im selben Balken, gilt der höchste — die Vorberechnung in
+    # evaluate_rules_native hat je Balken bereits das Maximum über die
+    # Long- bzw. Short-Blöcke gebildet, hier kommt nur noch das Maximum über
+    # beide Richtungen dazu (ein Balken kann Long- und Short-Signal tragen).
+    # lev_entry_arr merkt sich den Balken: nur so ist später eine Einstiegs-Order
+    # von einer Ausstiegs-Order zu unterscheiden.
+    if lev_enabled and (is_long_entry or is_short_entry):
+        block_lev = 1.0
+        if is_long_entry:
+            block_lev = long_block_lev[i, combo_col]
+        if is_short_entry and short_block_lev[i, combo_col] > block_lev:
+            block_lev = short_block_lev[i, combo_col]
+        leverage_arr[i, col] = block_lev
+        lev_entry_arr[i, col] = True
 
     return is_long_entry, is_long_exit, is_short_entry, is_short_exit
 
@@ -1816,6 +1853,31 @@ def _build_risk_size_args(
     )
 
 
+def _expand_mask_on_combo_axis(mask: Any, combo_columns: Any) -> Any:
+    """Bringt eine Maske auf die gemeinsame Combo-Achse.
+
+    GEÄNDERT: Ticket 106 — die Einzel-Block-Masken des Block-Hebels laufen
+    durch dieselbe Expansion wie die zusammengefasste Entry-Maske in
+    ``evaluate_rules_native``. Eine Maske, die die Achse schon trägt oder gar
+    keine hat, bleibt unangetastet.
+
+    Args:
+        mask: pandas-Maske (Series oder DataFrame).
+        combo_columns: Ziel-Spaltenindex der Combo-Achse (oder ``None``).
+
+    Returns:
+        Die Maske auf der Ziel-Achse.
+    """
+    if (
+        combo_columns is not None
+        and isinstance(mask, pd.DataFrame)
+        and mask.shape[1] > 1
+        and not mask.columns.equals(combo_columns)
+    ):
+        return vbt.broadcast(mask, columns_from=combo_columns, align_index=False)
+    return mask
+
+
 # GEÄNDERT: Bugfix — Anzahl der Stop-Sweep-Kombinationen aus den
 # from_signals-Stop-kwargs bestimmen. Unabhängige vbt.Param (Default-Level)
 # multiplizieren sich, gleich-gelevelte Param (gekoppeltes TSL-Paar, level=0)
@@ -2053,6 +2115,7 @@ def evaluate_rules_native(
     stops_swept: bool = False,
     stop_ref_series: Optional[dict] = None,
     risk_sizing: Optional[Any] = None,
+    block_leverage: Optional[Any] = None,
 ) -> Any:
     """Nativer Pfad: Portfolio direkt per from_signals(signal_func_nb=...) aufbauen.
 
@@ -2114,6 +2177,19 @@ def evaluate_rules_native(
             die gewünschte gegen die ausgeführte Größe halten kann
             (``risk_sizing.summarize_truncation``). ``None`` = feste Größe, der
             Zweig greift nicht und die Rechnung bleibt unverändert.
+        block_leverage: Optional — ``block_leverage.BlockLeverageSpec`` für den
+            Hebel je Entry-Block (Ticket 106). Ist sie gesetzt, wird je Balken
+            und Combo-Spalte der höchste Hebel der dort feuernden Entry-Blöcke
+            vorberechnet; die Signal-Funktion schreibt ihn im Einstiegsbalken in
+            ein ``leverage``-Array, das zugleich als ``leverage``-Argument an
+            ``from_signals`` geht, und der Lauf rechnet im Modus ``lazymult``
+            (nur die multiplizierenden Modi vervielfachen die Ordergröße). Das
+            beschriebene Array und die Maske der Einstiegsbalken werden in
+            ``spec.applied_leverage`` bzw. ``spec.entry_bars`` zurückgegeben,
+            damit der Aufrufer die gewollte gegen die ausgeführte Größe halten
+            kann (``block_leverage.summarize_leverage_truncation``). ``None`` =
+            kein Block-Hebel, der Zweig greift nicht und die Rechnung bleibt
+            bit-genau unverändert.
 
     Returns:
         vbt.Portfolio-Objekt.
@@ -2467,6 +2543,48 @@ def evaluate_rules_native(
         risk_size_arr,
     ) = _build_risk_size_args(risk_sizing, stop_ref_operands, T, n_combo, n_total)
 
+    # GEÄNDERT: Ticket 106 — Argumente des Block-Hebels. Das leverage-Array geht
+    # doppelt: als signal_arg (die Signal-Funktion beschreibt es) und als
+    # 'leverage' an from_signals (dort wird es gelesen). Die Vorberechnung je
+    # Richtung bildet das Maximum über die Blöcke — damit ist "der höchste Hebel
+    # gewinnt" unabhängig von der Reihenfolge der Blöcke.
+    def _block_leverage_axis(blocks: list[dict]) -> np.ndarray:
+        """Höchster Block-Hebel je Balken und Combo-Spalte (Grundwert 1,0).
+
+        Args:
+            blocks: Die aktiven Entry-Blöcke einer Richtung.
+
+        Returns:
+            Array (T, n_combo) mit dem Hebel je Balken und Combo-Spalte.
+        """
+        axis = np.ones((T, n_combo), dtype=np.float64)
+        for blk in blocks:
+            lev = read_block_leverage(blk)
+            if lev == 1.0:
+                continue
+            blk_mask = _evaluate_rule_group({'blocks': [blk]}, ohlc_data, indicators)
+            blk_mask = _expand_mask_on_combo_axis(blk_mask, combo_columns)
+            blk_arr = _to_2d(blk_mask)
+            if blk_arr.shape[1] == 1 and n_combo > 1:
+                blk_arr = np.repeat(blk_arr, n_combo, axis=1)
+            axis = np.where(blk_arr & (lev > axis), lev, axis)
+        return axis
+
+    lev_enabled = block_leverage is not None
+    if lev_enabled:
+        long_block_lev = _block_leverage_axis(long_entry_blocks)
+        short_block_lev = _block_leverage_axis(short_entry_blocks)
+        leverage_arr = np.ones((T, n_total), dtype=np.float64)
+        lev_entry_arr = np.zeros((T, n_total), dtype=np.bool_)
+        block_leverage.applied_leverage = leverage_arr
+        block_leverage.entry_bars = lev_entry_arr
+    else:
+        # Platzhalter in derselben Typform, damit Numba einen Typ kompiliert.
+        long_block_lev = np.ones((1, 1), dtype=np.float64)
+        short_block_lev = np.ones((1, 1), dtype=np.float64)
+        leverage_arr = np.ones((1, 1), dtype=np.float64)
+        lev_entry_arr = np.zeros((1, 1), dtype=np.bool_)
+
     # signal_args zusammenbauen (alles als numpy-Arrays für Numba)
     # GEÄNDERT: Short-Entry-Maske + Short-Exit-Kodierung hinzugefügt
     # GEÄNDERT: Bugfix — combo_col_map als erstes Arg (Multi-Combo-Mapping)
@@ -2518,6 +2636,11 @@ def evaluate_rules_native(
         risk_delta_format_nb,
         risk_sl_arr,
         risk_size_arr,
+        lev_enabled,
+        long_block_lev,
+        short_block_lev,
+        leverage_arr,
+        lev_entry_arr,
     )
 
     # Portfolio via from_signals mit signal_func_nb aufbauen (N1: KEIN entries/exits)
@@ -2543,6 +2666,15 @@ def evaluate_rules_native(
     if risk_enabled:
         pf_build_kwargs['size'] = risk_size_arr
         pf_build_kwargs['size_type'] = 'amount'
+
+    # GEÄNDERT: Ticket 106 — bei Block-Hebel ersetzt das zur Laufzeit
+    # beschriebene Array den skalaren Hebel der BacktestConfig (der dann laut
+    # build_block_leverage_spec ohnehin 1 sein muss), und der Hebelmodus wird
+    # durch 'lazymult' ersetzt: nur die multiplizierenden Modi vervielfachen die
+    # Ordergröße, in 'lazy'/'eager' bliebe der Block-Hebel wirkungslos.
+    if lev_enabled:
+        pf_build_kwargs['leverage'] = leverage_arr
+        pf_build_kwargs['leverage_mode'] = BLOCK_LEVERAGE_MODE
 
     portfolio = vbt.Portfolio.from_signals(
         close_mc,

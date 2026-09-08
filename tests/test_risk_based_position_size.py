@@ -527,7 +527,11 @@ class TestWorkerHandsTheWarningToTheRun:
 
         seen: list = []
 
-        def _assess(run_id, warmup=None, metrics_note=None, risk_note=None):
+        # GEÄNDERT: Ticket 106 — 'leverage_note' kam als weiterer Kanal dazu
+        # (Meldung des Block-Hebels). Die Attrappe muss ihn annehmen, prüft aber
+        # weiterhin nur den Kanal dieses Tests.
+        def _assess(run_id, warmup=None, metrics_note=None, risk_note=None,
+                    leverage_note=None):
             seen.append(risk_note)
             return {'usability': 'usable', 'note': 'x', 'n_results': 1, 'total_trades': 5}
 

@@ -241,10 +241,12 @@ ergänzen" — KEIN kompletter Body nötig:
         "live":true,"ratchet":true}) — die --tp/--sl/...-Flags casten jeden Wert zu Skalar/String
         und koennen keine Referenz-Dicts tragen. Fragment wird in _stops gemergt, Rest bleibt.
   Regeln (spec_json.rules):
-    iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json
+    iteration-condition-add --id N [--exit] [--block K | --new-block [--short] [--leverage X]] --file cond.json
     iteration-condition-remove --id N [--exit] --block K [--index J | --remove-block]
         cond.json = eine Bedingung, z.B. {"op":">","lhs":"close","rhs":"indicator:sma:real"} (opt. lhs_shift/rhs_shift).
         Ohne --block hängt condition-add an Block 1 (UND-verknüpft); --new-block macht einen ODER-Block.
+        --leverage X (Ticket 106) setzt den Block-Hebel — nur zusammen mit --new-block und nur
+        an Entry-Blöcken (--exit + --leverage ist ein Fehler); Default 1 = kein Hebel.
 
 Ändern (PUT, voller Body per --file): <bereich>-update --id <n> --file body.json
   Voll-Replace für den ganzen Body. Für gezielte Teiländerungen die "Gezielt bearbeiten"-Verben
@@ -566,6 +568,11 @@ def render_spec(spec: dict) -> None:
                 tags.append("SHORT")
             if not b.get("enabled", True):
                 tags.append("deaktiviert")
+            # GEÄNDERT: Ticket 106 — Block-Hebel nur bei Entry und nur, wenn gesetzt/ungleich 1
+            # anzeigen (kein Rauschen für den unveränderten Regelfall Hebel 1).
+            leverage = b.get("leverage")
+            if kind == "entry" and leverage is not None and float(leverage) != 1.0:
+                tags.append(f"Hebel {float(leverage):g}")
             suffix = f" [{', '.join(tags)}]" if tags else ""
             conds = b.get("conditions", [])
             cond_txt = " UND ".join(fmt_cond(c) for c in conds) if conds else "(leer)"
@@ -2862,6 +2869,34 @@ def _print_risk_sizing(risk: dict | None) -> None:
             print(f"  - **{probe['note']}**")
 
 
+def _print_block_leverage(block_leverage: dict | None) -> None:
+    """Gibt den Block-Hebel-Ausweis aus (Ticket 106, Anforderung 6).
+
+    Trägt kein aktiver Entry-Block einen Hebel ungleich 1, liefert die Route
+    ``block_leverage: null`` — dann bleibt die Ausgabe stumm, derselbe Stil
+    wie ``_print_risk_sizing``.
+
+    Args:
+        block_leverage: Der 'block_leverage'-Block der Preflight-Antwort
+            (Felder 'blocks', 'n_entry_blocks', 'leverage_mode', 'note',
+            optional 'probe_report'), oder None.
+    """
+    if not block_leverage:
+        return
+    print("- Block-Hebel:")
+    print(f"  - {block_leverage.get('note') or '—'}")
+    probe = block_leverage.get("probe_report")
+    if probe:
+        if probe.get("checked"):
+            print(f"  - Probe-Kombination: {probe.get('n_entries', 0)} Einstiegs-Order(s) "
+                  f"geprüft, {probe.get('n_truncated', 0)} gekürzt (größte Kürzung "
+                  f"{probe.get('max_shortfall_pct', 0.0):.1f}%)")
+        elif probe.get("check_note"):
+            print(f"  - Probe-Kombination: {probe['check_note']}")
+        if probe.get("note"):
+            print(f"  - **{probe['note']}**")
+
+
 # GEÄNDERT: Preflight: billiger Vorlauf auf EINER
 # Kombination, adressiert über gespeicherte Objekte statt Playground-Request.
 def preflight_run(args: list) -> int:
@@ -2875,7 +2910,8 @@ def preflight_run(args: list) -> int:
     (check_warmup), die Kombinationszahl des vollen Rasters (count_total_combos)
     und eine grobe Laufzeit-Hochrechnung. Zusätzlich (Ticket 105) die Herkunft der
     Stop-Werte und — bei risikobasierter Größe oder Hebel — den Risiko-/Hebel-Ausweis
-    samt Probe-Bericht. Berichtet nur — startet nichts, verhindert nichts (Report
+    samt Probe-Bericht, sowie (Ticket 106) den Hebel je Entry-Block samt Probe-Bericht
+    zur Unterdeckungs-Kürzung. Berichtet nur — startet nichts, verhindert nichts (Report
     statt Gate).
     """
     f = _parse_flags(args)
@@ -2908,6 +2944,8 @@ def preflight_run(args: list) -> int:
     # GEÄNDERT: Ticket 105 — Stop-Herkunft und Risiko-/Hebel-Ausweis mitrendern.
     _print_stop_refs(d.get("stop_refs"))
     _print_risk_sizing(d.get("risk_sizing"))
+    # GEÄNDERT: Ticket 106 — Block-Hebel-Ausweis mitrendern.
+    _print_block_leverage(d.get("block_leverage"))
 
     nan = d.get("indicator_nan_ratio") or {}
     if nan:
@@ -4414,10 +4452,13 @@ def _rules_side(spec: dict, exit_side: bool) -> tuple:
 
 
 def iteration_condition_add(args: list) -> int:
-    """iteration-condition-add --id N [--exit] [--block K | --new-block [--short]] --file cond.json
+    """iteration-condition-add --id N [--exit] [--block K | --new-block [--short] [--leverage X]] --file cond.json
 
     Haengt eine Bedingung an einen Regel-Block. Ohne --block: Block 1 (erster).
     --new-block legt einen neuen ODER-Block an (--short markiert ihn als Short).
+    --leverage X setzt den Block-Hebel (Ticket 106) — nur zusammen mit --new-block
+    und nur an Entry-Blöcken; --exit zusammen mit --leverage ist ein Fehler
+    (Hebel gehört zum Einstieg, siehe block_leverage.py-Docstring).
     cond.json ist ein Bedingungs-Dict, z.B.
     {"op": ">", "lhs": "close", "rhs": "indicator:sma:real"} (optional lhs_shift/rhs_shift).
     """
@@ -4425,6 +4466,35 @@ def iteration_condition_add(args: list) -> int:
     iid = _require_id(f, "iteration-condition-add")
     cond = _read_json_file(_require(f, "file", "iteration-condition-add"))
     exit_side = bool(f.get("exit"))
+    leverage_raw = f.get("leverage")
+    if leverage_raw is not None:
+        if exit_side:
+            raise ValueError(
+                "iteration-condition-add: --leverage geht nicht zusammen mit --exit — "
+                "der Hebel gehört zum Einstieg und wirkt nur an Entry-Blöcken."
+            )
+        if not f.get("new-block"):
+            raise ValueError(
+                "iteration-condition-add: --leverage wirkt nur zusammen mit --new-block "
+                "(ein Hebel gilt für den ganzen Block, nicht nachträglich für einen "
+                "bestehenden)."
+            )
+        # GEÄNDERT: Ticket 106 Nachbesserung — --leverage ohne Wert liefert True
+        # (_parse_flags), nicht None. Ohne diese Prüfung würde float(True) == 1.0
+        # den Block still ohne Hebel anlegen, statt den fehlenden Wert zu melden.
+        if leverage_raw is True:
+            raise ValueError(
+                "iteration-condition-add: --leverage braucht eine Zahl (z.B. --leverage 2) — "
+                "ohne Wert wurde kein Hebel erkannt."
+            )
+        try:
+            leverage = float(leverage_raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"iteration-condition-add: --leverage muss eine Zahl sein, gefunden: {leverage_raw!r}")
+        if not (leverage > 0):
+            raise ValueError(f"iteration-condition-add: --leverage muss positiv sein, gefunden: {leverage_raw!r}")
+    else:
+        leverage = None
     spec = _iteration_get_spec(iid)
     rules, side = _rules_side(spec, exit_side)
     blocks = rules[side]["blocks"]
@@ -4432,6 +4502,8 @@ def iteration_condition_add(args: list) -> int:
         new_block = {"conditions": [cond]}
         if f.get("short"):
             new_block["is_short"] = True
+        if leverage is not None:
+            new_block["leverage"] = leverage
         blocks.append(new_block)
         pos = len(blocks)
     else:
@@ -4443,7 +4515,8 @@ def iteration_condition_add(args: list) -> int:
         blocks[idx].setdefault("conditions", []).append(cond)
         pos = idx + 1
     _iteration_put_spec(iid, spec)
-    print(f"## iteration-condition-add: OK — Iteration {iid}: Bedingung in {side}-Block {pos} ({fmt_cond(cond)})\n")
+    lev_suffix = f", Hebel {leverage:g}" if leverage is not None else ""
+    print(f"## iteration-condition-add: OK — Iteration {iid}: Bedingung in {side}-Block {pos} ({fmt_cond(cond)}{lev_suffix})\n")
     return 0
 
 

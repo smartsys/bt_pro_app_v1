@@ -1387,6 +1387,9 @@ def run_backtest_lite(req: RunBacktestIn) -> dict:
             # GEÄNDERT: Ticket 104, Anforderung 3 — Selbstauskunft der
             # risikobasierten Größe (None, wenn mit fester Größe gerechnet wurde).
             'risk_sizing_report': strategy_results.get('risk_sizing_report'),
+            # GEÄNDERT: Ticket 106, Anforderung 3/6 — Selbstauskunft des Hebels
+            # je Entry-Block (None, wenn kein Block einen Hebel ungleich 1 trägt).
+            'block_leverage_report': strategy_results.get('block_leverage_report'),
             'equity': equity,
             'trades_data': trades_data,
         },
@@ -1858,6 +1861,49 @@ def _preflight_risk_summary(portfolio: dict, stops_cfg: dict) -> dict:
     }
 
 
+def _preflight_block_leverage_summary(
+    rules_json: dict, portfolio: dict, stops_cfg: dict
+) -> Optional[dict]:
+    """Weist den Hebel je Entry-Block für den Preflight aus.
+
+    Ticket 106, Anforderung 6: vor dem Lauf muss erkennbar sein, welche Blöcke
+    welchen Hebel tragen und dass der Hebelmodus der BacktestConfig für einen
+    solchen Lauf durch 'lazymult' ersetzt wird. Die Prüfung ist dieselbe wie im
+    Lauf (``build_block_leverage_spec``) — eine unzulässige Kombination fällt
+    damit schon hier auf, nicht erst nach der Rechenzeit.
+
+    Args:
+        rules_json: Die Regeln der Iteration.
+        portfolio: Der Portfolio-Block der BacktestConfig.
+        stops_cfg: Der '_stops'-Block der Indikator-Config.
+
+    Returns:
+        dict mit 'blocks', 'leverage_mode' und 'note', oder ``None``, wenn kein
+        aktiver Entry-Block einen Hebel ungleich 1 trägt.
+
+    Raises:
+        ValueError: Bei einer unzulässigen Kombination (Meldung im Klartext).
+    """
+    from user_data.strategies.generic.block_leverage import (
+        BLOCK_LEVERAGE_MODE,
+        build_block_leverage_spec,
+        describe_block_leverage,
+    )
+    from user_data.strategies.generic.indicator_factory import STOP_PARAM_KEYS, is_stop_sweep
+
+    stops = stops_cfg or {}
+    stops_swept = any(is_stop_sweep(stops.get(key)) for key in STOP_PARAM_KEYS)
+    spec = build_block_leverage_spec(rules_json, portfolio or {}, stops_swept)
+    if spec is None:
+        return None
+    return {
+        'blocks': spec.blocks,
+        'n_entry_blocks': spec.n_entry_blocks,
+        'leverage_mode': BLOCK_LEVERAGE_MODE,
+        'note': describe_block_leverage(spec, (portfolio or {}).get('leverage_mode')),
+    }
+
+
 @router.post('/preflight')
 def preflight(req: PreflightIn) -> dict:
     """Billiger Vorlauf auf einer Kombination — gespeicherte Iteration + BacktestConfig
@@ -1872,7 +1918,9 @@ def preflight(req: PreflightIn) -> dict:
     einzige Zähl-Wahrheit), Referenz-Stops mit Indikator/Faktor/Live/Ratsche
     (`_preflight_stop_ref_summary`, Ticket 103 Anforderung 7), Risikoanteil/
     Hebel/Hebelmodus/Stopabstand-Quelle (`_preflight_risk_summary`, Ticket 104
-    Anforderung 5) und eine grobe Laufzeit-Hochrechnung.
+    Anforderung 5), den Hebel je Entry-Block mit den betroffenen Blöcken und dem
+    ersetzten Hebelmodus (`_preflight_block_leverage_summary`, Ticket 106
+    Anforderung 6) und eine grobe Laufzeit-Hochrechnung.
 
     Berichtet, blockiert nicht: auch ein Null-Signal-Fall liefert 200 mit den
     Zahlen, die das belegen — kein automatisches Verhindern des vollen Laufs.
@@ -1951,6 +1999,18 @@ def preflight(req: PreflightIn) -> dict:
         backtest_config.get('portfolio') or {}, indicators_full.get('_stops') or {}
     )
 
+    # GEÄNDERT: Ticket 106, Anforderung 6 — Block-Hebel lesbar ausweisen. Eine
+    # unzulässige Kombination (Stop-Sweep, from_ago, Config-Hebel, leverage an
+    # einem Exit-Block) bricht hier mit derselben Klartext-Meldung ab wie im Lauf.
+    try:
+        block_leverage_summary = _preflight_block_leverage_summary(
+            rules_json,
+            backtest_config.get('portfolio') or {},
+            indicators_full.get('_stops') or {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f'{e}')
+
     # Auf den Startwert reduzieren — exakt derselbe Baustein wie /run-backtest-lite.
     indicators_reduced = _reduce_to_start_values(indicators_full)
 
@@ -2000,6 +2060,15 @@ def preflight(req: PreflightIn) -> dict:
     if probe_report is not None:
         risk_summary = {**risk_summary, 'probe_report': probe_report}
 
+    # GEÄNDERT: Ticket 106 — dasselbe für den Block-Hebel: die Selbstauskunft
+    # der Probe-Kombination (u.a. eine Kürzung wegen Unterdeckung) ist damit
+    # schon vor dem vollen Lauf sichtbar.
+    probe_leverage_report = probe_results.get('block_leverage_report')
+    if block_leverage_summary is not None and probe_leverage_report is not None:
+        block_leverage_summary = {
+            **block_leverage_summary, 'probe_report': probe_leverage_report
+        }
+
     return {
         'data': {
             'iteration_id': req.iteration_id,
@@ -2011,6 +2080,7 @@ def preflight(req: PreflightIn) -> dict:
             'exit_signals': exit_signals,
             'stop_refs': stop_refs_summary,
             'risk_sizing': risk_summary,
+            'block_leverage': block_leverage_summary,
             'indicator_nan_ratio': nan_ratios,
             'single_combo_duration_ms': single_combo_ms,
             'estimated_full_runtime_ms': (

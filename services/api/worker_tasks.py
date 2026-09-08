@@ -227,6 +227,16 @@ def run_backtest_job(run_id: int) -> bool:
                 '[BACKTEST] Run #%d risikobasierte Größe: %s', run_id, risk_note
             )
 
+        # GEÄNDERT: Ticket 106, Anforderung 3 — dieselbe Weiterleitung für die
+        # Selbstauskunft des Block-Hebels: hat VBT eine Order wegen Unterdeckung
+        # auf Konto x Hebel gekürzt, hängt das am Run statt nur im Protokoll.
+        leverage_report = (strategy_results or {}).get('block_leverage_report')
+        leverage_note = leverage_report.get('note') if leverage_report else None
+        if leverage_note:
+            logger.warning(
+                '[BACKTEST] Run #%d Block-Hebel: %s', run_id, leverage_note
+            )
+
         # GEÄNDERT: Selbstauskunft: hat der Lauf überhaupt Substanz?
         # Reine Kennzeichnung am Run, die Results bleiben unangetastet.
         # GEÄNDERT: 'metrics_auto_note' kommt aus create_backtest_run
@@ -237,6 +247,7 @@ def run_backtest_job(run_id: int) -> bool:
             warmup,
             metrics_note=backtest_config_json.get('metrics_auto_note'),
             risk_note=risk_note,
+            leverage_note=leverage_note,
         )
         if verdict['usability'] == 'usable':
             logger.info('[BACKTEST] Run #%d verwertbar: %s', run_id, verdict['note'])

@@ -72,7 +72,7 @@ def test_tf_seconds_deckt_alle_form_timeframes():
 def test_progress_hook_zaehlt_nur_binance_chunks():
     """Pro update() der 'binance'-Leiste wird chunks*limit gemeldet; andere bar_ids
     werden ignoriert. Der Download-Pfad selbst wird nicht verändert."""
-    from vectorbtpro.utils.pbar import ProgressBar
+    from vectorbtpro import ProgressBar
 
     wt._install_binance_progress_hook()
     got: list = []
@@ -97,7 +97,7 @@ def test_progress_hook_zaehlt_nur_binance_chunks():
 
 def test_progress_hook_ohne_aktiven_job_ist_no_op():
     """Ohne gesetzten report-Callback bleibt update() ein reiner Durchlauf."""
-    from vectorbtpro.utils.pbar import ProgressBar
+    from vectorbtpro import ProgressBar
 
     wt._install_binance_progress_hook()
     wt._progress_ctx.clear()

@@ -3042,10 +3042,18 @@
   // weist leere Blöcke ab. Liefert eine neue Struktur, mutiert state.rules nicht.
   // GEÄNDERT: is_short pro Block wird mitgenommen
   // GEÄNDERT: enabled pro Block mitschreiben (deaktivierte Blöcke bleiben erhalten, aber leer-Blöcke werden gefiltert)
+  // GEÄNDERT: Ticket 106 — Block-Hebel (nur Entry-Blöcke tragen ihn) wird nur geschrieben,
+  // wenn ungleich 1: eine unveränderte Iteration zeigt nach Speichern/Laden keine unnötige
+  // Spec-Änderung, und Default 1 entspricht "kein Hebel" in block_leverage.read_block_leverage.
   function cleanRuleGroup(group) {
     if (!group || !Array.isArray(group.blocks)) return null;
     const blocks = group.blocks
-      .map(b => ({ conditions: (b.conditions || []).slice(), is_short: b.is_short ?? false, enabled: b.enabled !== false }))
+      .map(b => {
+        const out = { conditions: (b.conditions || []).slice(), is_short: b.is_short ?? false, enabled: b.enabled !== false };
+        const leverage = Number(b.leverage);
+        if (Number.isFinite(leverage) && leverage !== 1) out.leverage = leverage;
+        return out;
+      })
       .filter(b => b.conditions.length > 0 || b.enabled === false);  // deaktivierte Blöcke ohne Conditions behalten
     return { blocks };
   }
@@ -3178,13 +3186,22 @@
             <span class="form-check-label text-muted small">Entry anzeigen</span>
             <input class="form-check-input" type="checkbox" id="${bgToggleId}" data-entry-bg data-grp="${groupKey}" data-bi="${bi}" ${block._showBg ? 'checked' : ''}>
           </label>` : '';
+      // GEÄNDERT: Ticket 106 — Hebel-Feld je Entry-Block. Nur bei Entry (Exit-Blöcke tragen
+      // keinen Hebel), Default 1 = kein Hebel.
+      const leverageToggleId = `blockLeverage_${groupKey}_${bi}`;
+      const leverageValue = (typeof block.leverage === 'number' && Number.isFinite(block.leverage) && block.leverage > 0) ? block.leverage : 1;
+      const leverageHtml = groupKey === 'entry' ? `
+          <div class="d-flex align-items-center gap-1 ms-2" title="Hebel dieses Entry-Blocks: Die Positionsgröße wird bei einem über diesen Block ausgelösten Einstieg mit diesem Faktor multipliziert (Basisgröße aus der BacktestConfig). 1 = kein Hebel.">
+            <span class="text-muted small">Hebel</span>
+            <input type="number" class="form-control form-control-sm" style="width:64px" id="${leverageToggleId}" data-block-leverage data-grp="${groupKey}" data-bi="${bi}" value="${leverageValue}" min="0.01" step="0.1">
+          </div>` : '';
       footer.innerHTML = `
         <button class="btn btn-sm btn-outline-primary" data-add-cond data-grp="${groupKey}" data-bi="${bi}">+ Bedingung</button>
         <button class="btn btn-sm btn-ghost-danger" data-remove-block data-grp="${groupKey}" data-bi="${bi}" title="Diesen Block entfernen">Block entfernen</button>
         <label class="form-check form-check-inline mb-0 ms-2" title="Short-Position: Dieser Block erzeugt Short-Entries statt Long-Entries">
           <input class="form-check-input" type="checkbox" id="${shortToggleId}" data-short-toggle data-grp="${groupKey}" data-bi="${bi}" ${isShort ? 'checked' : ''}>
           <span class="form-check-label text-muted small">Short</span>
-        </label>
+        </label>${leverageHtml}
         <!-- GEÄNDERT: Aktiv- und Markieren-Schalter rechts übereinander gestapelt (ein Block, keine extra Zeile) -->
         <div class="ms-auto d-flex flex-column align-items-end gap-1">
           <label class="form-check form-switch mb-0 cp-block-enabled-switch" title="Block aktiv: deaktivierter Block wird bei der Auswertung übersprungen">
@@ -3253,6 +3270,22 @@
         const grp = t.dataset.grp, bi = parseInt(t.dataset.bi, 10);
         state.rules[grp].blocks[bi].is_short = t.checked;
         renderRuleGroup(grp, containerId);
+        invalidateLiteResult();
+      });
+    });
+    // GEÄNDERT: Ticket 106 — Hebel-Feld je Entry-Block: leverage pro Block setzen
+    // (Neu-Rendern nicht nötig, das Feld ändert nichts an Layout/Klassen des Blocks).
+    container.querySelectorAll('[data-block-leverage]').forEach(inp => {
+      inp.addEventListener('change', (e) => {
+        const t = e.currentTarget;
+        const grp = t.dataset.grp, bi = parseInt(t.dataset.bi, 10);
+        const val = parseFloat(t.value);
+        if (Number.isFinite(val) && val > 0) {
+          state.rules[grp].blocks[bi].leverage = val;
+        } else {
+          state.rules[grp].blocks[bi].leverage = 1;
+          t.value = 1;
+        }
         invalidateLiteResult();
       });
     });

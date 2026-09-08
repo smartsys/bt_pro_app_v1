@@ -143,7 +143,14 @@ from typing import Any, Callable, Optional
 # in einen Preisabstand umgerechnet wird. Zusätzlich meldet der Lauf, wenn VBT eine
 # Order auf das verfügbare Geld gekürzt hat ('risk_sizing_report'). Opt-in: ohne
 # 'risk_percent' greift der Zweig nicht, Specs laufen bit-identisch zu 4.3.0.
-VERSION = "4.4.0"
+#
+# GEÄNDERT: Minor-Bump 4.5.0: Ein Entry-Block darf ein Feld 'leverage' tragen
+# (Default 1). Feuert er, bekommt die Order seinen Hebel; feuern mehrere Blöcke im
+# selben Balken, gilt der höchste. Der Lauf rechnet dafür im Hebelmodus 'lazymult'
+# und meldet, wenn VBT eine Order wegen Unterdeckung auf Konto x Hebel gekürzt hat
+# ('block_leverage_report'). Opt-in: ohne einen Hebel ungleich 1 greift der Zweig
+# nicht, Specs laufen bit-identisch zu 4.4.0.
+VERSION = "4.5.0"
 
 # Zentraler Importpfad zum generischen Spec-Runner-Einstiegspunkt. Wird von API-Routen
 # als import_path in die BacktestConfig geschrieben — Single Source statt verstreuter Literale.
@@ -164,6 +171,12 @@ from user_data.strategies.generic.stop_refs import (
     is_stop_ref,
     parse_stop_refs,
     resolve_stop_refs,
+)
+from user_data.strategies.generic.block_leverage import (
+    build_block_leverage_spec,
+    describe_block_leverage,
+    merge_reports as merge_leverage_reports,
+    summarize_leverage_truncation,
 )
 from user_data.strategies.generic.risk_sizing import (
     build_risk_sizing_spec,
@@ -313,6 +326,13 @@ def run_spec_strategy(
             f"delta_format_code={risk_sizing.delta_format_code}"
         )
 
+    # GEÄNDERT: Ticket 106 — Hebel je Entry-Block. Die Prüfung läuft VOR dem
+    # Lauf: ein 'leverage' an einem Exit-Block, ein Stop-Sweep, from_ago != 0
+    # und ein Config-Hebel ungleich 1 brechen hier mit Klartext ab. Trägt kein
+    # aktiver Entry-Block einen Hebel ungleich 1, kommt None zurück und der Lauf
+    # bleibt bit-genau der alte.
+    block_leverage = build_block_leverage_spec(rules_json, pf_cfg, stops_swept)
+
     # GEÄNDERT: beide Stop-Enum-Felder werden roh an from_signals
     # durchgereicht. VBT löst sie selbst case-insensitiv auf (map_enum_fields); der
     # frühere Custom-Resolver _resolve_stop_exit_price war case-sensitiv und hätte
@@ -340,6 +360,12 @@ def run_spec_strategy(
     leverage_mode = pf_cfg.get('leverage_mode')
     if leverage_mode is None:
         leverage_mode = 'lazy'
+
+    # GEÄNDERT: Ticket 106, Anforderung 6 — Block-Hebel im Lauf-Protokoll
+    # ausweisen: welche Blöcke welchen Hebel tragen und dass der Hebelmodus der
+    # BacktestConfig für diesen Lauf ersetzt wird.
+    if block_leverage is not None:
+        print(f" - {describe_block_leverage(block_leverage, leverage_mode)}")
 
     close_series = ohlc_data.get('Close')
     open_series = ohlc_data.get('Open')
@@ -393,6 +419,7 @@ def run_spec_strategy(
         stops_swept=stops_swept,
         stop_ref_series=stop_ref_series,
         risk_sizing=risk_sizing,
+        block_leverage=block_leverage,
     )
 
     # GEÄNDERT: Ticket 104, Anforderung 3 — stille Kürzung sichtbar machen.
@@ -404,6 +431,21 @@ def run_spec_strategy(
         risk_report = summarize_truncation(portfolios, risk_sizing.desired_size)
         if risk_report['note']:
             print(f" ! Risikobasierte Größe: {risk_report['note']}")
+
+    # GEÄNDERT: Ticket 106, Anforderung 3 — stille Kürzung bei Unterdeckung
+    # sichtbar machen. Reicht das Konto für die gehebelte Nominale nicht, kürzt
+    # VBT auf Konto x Hebel, ohne dass es auffiele.
+    leverage_report = None
+    if block_leverage is not None:
+        leverage_report = summarize_leverage_truncation(
+            portfolios,
+            block_leverage,
+            size_type=pf_cfg['size_type'],
+            size_value=pf_cfg.get('size'),
+            desired_size=risk_sizing.desired_size if risk_sizing is not None else None,
+        )
+        if leverage_report['note']:
+            print(f" ! Block-Hebel: {leverage_report['note']}")
 
     # Roh-Signale nicht verfügbar (signal_func_nb produziert per-bar)
     long_entries = None
@@ -429,6 +471,9 @@ def run_spec_strategy(
         # GEÄNDERT: Ticket 104 — Selbstauskunft der risikobasierten Größe.
         # None, wenn der Lauf mit fester Größe rechnet.
         'risk_sizing_report': risk_report,
+        # GEÄNDERT: Ticket 106 — Selbstauskunft des Block-Hebels. None, wenn
+        # kein Entry-Block einen Hebel ungleich 1 trägt.
+        'block_leverage_report': leverage_report,
     }
 
 
@@ -504,6 +549,8 @@ def _run_chunked(
     # risikobasierten Größe wird über alle Chunks summiert. Sonst berichtete der
     # Lauf nur über seinen letzten Block.
     risk_reports: list[dict] = []
+    # GEÄNDERT: Ticket 106 — dasselbe für die Selbstauskunft des Block-Hebels.
+    leverage_reports: list[dict] = []
     # GEÄNDERT: Zahl der an die Senke abgegebenen Kombinationen. Bleibt bei
     # 0, wenn ein fortgesetzter Lauf gar keinen Chunk mehr rechnen musste.
     n_sunk = 0
@@ -591,6 +638,9 @@ def _run_chunked(
         block_risk_report = block_result.get('risk_sizing_report')
         if block_risk_report is not None:
             risk_reports.append(block_risk_report)
+        block_leverage_report = block_result.get('block_leverage_report')
+        if block_leverage_report is not None:
+            leverage_reports.append(block_leverage_report)
 
         # Chunk-Speicher freigeben
         del block_pf, block_result, block_metrics, block_columns
@@ -605,10 +655,18 @@ def _run_chunked(
     if merged_risk_report is not None and merged_risk_report['note']:
         print(f" ! Risikobasierte Größe (ganzer Lauf): {merged_risk_report['note']}")
 
+    # GEÄNDERT: Ticket 106 — Block-Hebel-Bericht über alle Chunks summieren.
+    merged_leverage_report = (
+        merge_leverage_reports(leverage_reports) if leverage_reports else None
+    )
+    if merged_leverage_report is not None and merged_leverage_report['note']:
+        print(f" ! Block-Hebel (ganzer Lauf): {merged_leverage_report['note']}")
+
     common = {
         'ann_factor': ann_factor,
         'indicators_results': last_indicators_results,
         'risk_sizing_report': merged_risk_report,
+        'block_leverage_report': merged_leverage_report,
         'signals': {
             'long_entries': None,
             'long_exits': None,

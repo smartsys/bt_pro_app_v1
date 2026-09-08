@@ -353,6 +353,67 @@ def test_usability_note_carries_the_risk_sizing_warning(session, monkeypatch):
     assert 'Risikobasierte Größe: 7 von 9' in row.usability_note
 
 
+def test_usability_note_carries_the_block_leverage_warning(session, monkeypatch):
+    """Die Meldung des Block-Hebels landet am Run, nicht nur im Log.
+
+    Ticket 106, Anforderung 3: Kürzt VBT eine Order wegen Unterdeckung auf
+    Konto x Hebel, geht die Meldung denselben Weg wie die der risikobasierten
+    Größe — über ``leverage_note`` an die Verwertbarkeits-Note. Beide Kanäle
+    stehen nebeneinander und dürfen sich nicht verdrängen.
+    """
+    import user_data.utils.database.repository as repo
+
+    _insert_run(session, 900006)
+    _insert_result(session, 900051, 900006, 12)
+    session.commit()
+
+    monkeypatch.setattr(repo, 'get_engine', lambda: session.get_bind())
+    verdict = repo.assess_run_usability(
+        900006,
+        warmup={'level': 'ok', 'note': 'x'},
+        risk_note='7 von 9 risikobasierten Orders wurden gekürzt.',
+        leverage_note='4 von 9 Einstiegs-Orders wurden auf Konto x Hebel gekürzt.',
+    )
+
+    assert verdict['usability'] == 'usable'
+    assert 'Risikobasierte Größe: 7 von 9' in verdict['note']
+    assert 'Block-Hebel: 4 von 9' in verdict['note']
+
+    row = session.execute(text(
+        'SELECT usability_note FROM backtest_runs WHERE id = 900006'
+    )).fetchone()
+    assert 'Block-Hebel: 4 von 9' in row.usability_note
+
+
+def test_usability_note_unchanged_when_no_block_leverage_warning_is_reported(
+    session, monkeypatch
+):
+    """Gegenprobe: ohne Block-Hebel hängt nichts an der Note.
+
+    Ein Lauf ohne Hebel je Entry-Block liefert gar keinen Bericht, einer mit
+    ausreichender Deckung einen ohne Meldung — beide Male kommt hier
+    ``leverage_note=None`` an.
+    """
+    import user_data.utils.database.repository as repo
+
+    _insert_run(session, 900007)
+    _insert_result(session, 900061, 900007, 12)
+    session.commit()
+
+    monkeypatch.setattr(repo, 'get_engine', lambda: session.get_bind())
+    with_none = repo.assess_run_usability(
+        900007, warmup={'level': 'ok', 'note': 'x'}, leverage_note=None
+    )
+    without_argument = repo.assess_run_usability(900007, warmup={'level': 'ok', 'note': 'x'})
+
+    assert with_none['note'] == without_argument['note']
+    assert 'Block-Hebel' not in with_none['note']
+    row = session.execute(text(
+        'SELECT usability_note FROM backtest_runs WHERE id = 900007'
+    )).fetchone()
+    assert 'Block-Hebel' not in row.usability_note
+
+
 def test_usability_note_unchanged_when_no_risk_warning_is_reported(session, monkeypatch):
     """Gegenprobe: ohne Meldung bleibt die Note die reine Verwertbarkeits-Bewertung.
 
