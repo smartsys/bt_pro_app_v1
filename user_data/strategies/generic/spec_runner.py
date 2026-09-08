@@ -316,7 +316,7 @@ def run_spec_strategy(
     stop_ref_series = resolve_stop_refs(stops_cfg, ohlc_data, indicators)
     if stop_ref_series:
         logger.info(" - Referenz-Stops: %s", sorted(stop_ref_series.keys()))
-    stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
+    stops_swept = any(is_stop_sweep(stops_cfg.get(k), k) for k in STOP_PARAM_KEYS)
 
     # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße. Die Prüfung
     # läuft VOR dem Lauf: fehlendes risk_pct, fehlender sl_stop, Stop-Sweep,
@@ -930,8 +930,8 @@ def build_stop_kwargs(stops_cfg: dict) -> dict:
     if not stops_cfg:
         return {key: None for key in STOP_PARAM_KEYS}
 
-    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'))
-    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'))
+    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'), 'tsl_th')
+    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'), 'tsl_stop')
     tsl_pair_coupled = tsl_th_swept and tsl_stop_swept
 
     # Bei Kopplung brauchen ALLE Sweep-Achsen ein explizites Level.
@@ -951,7 +951,7 @@ def build_stop_kwargs(stops_cfg: dict) -> dict:
             kwargs[key] = None
             continue
 
-        if not is_stop_sweep(raw):
+        if not is_stop_sweep(raw, key):
             # Skalar/None bleibt unverändert (wie Schritt 1).
             kwargs[key] = raw
             continue

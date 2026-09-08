@@ -87,7 +87,7 @@ def _fmt_pct(v, stop_key: str) -> str:
     Indikator-Referenz als ``<mult> × <indikator_id>``."""
     if is_stop_ref(v):
         return _fmt_stop_ref(v, stop_key)
-    if is_stop_sweep(v):
+    if is_stop_sweep(v, stop_key):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo * 100) + "-" + _clean_num(hi * 100) + f"% ({n})"
     return _clean_num(v * 100) + "%"
@@ -98,7 +98,7 @@ def _fmt_td(v, stop_key: str) -> str:
     Indikator-Referenz als ``<mult> × <indikator_id>``."""
     if is_stop_ref(v):
         return _fmt_stop_ref(v, stop_key)
-    if is_stop_sweep(v):
+    if is_stop_sweep(v, stop_key):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo) + "-" + _clean_num(hi) + f" ({n})"
     return _clean_num(v)

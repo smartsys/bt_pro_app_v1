@@ -1892,7 +1892,7 @@ def _preflight_block_leverage_summary(
     from user_data.strategies.generic.indicator_factory import STOP_PARAM_KEYS, is_stop_sweep
 
     stops = stops_cfg or {}
-    stops_swept = any(is_stop_sweep(stops.get(key)) for key in STOP_PARAM_KEYS)
+    stops_swept = any(is_stop_sweep(stops.get(key), key) for key in STOP_PARAM_KEYS)
     spec = build_block_leverage_spec(rules_json, portfolio or {}, stops_swept)
     if spec is None:
         return None

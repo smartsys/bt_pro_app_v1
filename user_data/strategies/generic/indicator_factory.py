@@ -103,6 +103,14 @@ STOP_PARAM_KEYS = ('tp_stop', 'sl_stop', 'tsl_th', 'tsl_stop', 'td_stop')
 _TSL_PAIR_KEYS = ('tsl_th', 'tsl_stop')
 
 
+# Gültige Schreibweise eines Wertebereichs — Single Source für alle Meldungen, die
+# eine fehlgeformte Range-Notation abweisen (Stops wie Indikator-Parameter).
+_RANGE_DICT_NOTATION = (
+    '{"type": "arange", "start": <von>, "stop": <bis>, "step": <schritt>, '
+    '"dtype": "float64"}'
+)
+
+
 def expand_stop_values(value: Any, stop_key: str) -> list:
     """Expandiert einen einzelnen '_stops'-Wert zu einer Werteliste (Length >= 1).
 
@@ -132,12 +140,44 @@ def expand_stop_values(value: Any, stop_key: str) -> list:
     return values
 
 
-def is_stop_sweep(value: Any) -> bool:
-    """True, wenn ein '_stops'-Wert eine Sweep-Achse ist (Liste oder Range-Dict)."""
+def is_stop_sweep(value: Any, stop_key: str) -> bool:
+    """True, wenn ein '_stops'-Wert eine Sweep-Achse ist (Liste oder arange-Dict).
+
+    Zugleich der gemeinsame Riegel gegen die fehlgeformte Wertebereich-Schreibweise:
+    Jeder Weg, der einen Stop-Wert als Sweep oder Nicht-Sweep einordnet (Spec-Runner,
+    Kombi-Zählung, Chunking, Beschriftung, Preflight), geht durch diese Funktion.
+    Ein Dict, das weder ein arange-Dict ('type') noch eine Indikator-Referenz ('ref')
+    ist, wird deshalb hier abgewiesen — statt still als Skalar an ``from_signals``
+    durchgereicht zu werden und erst tief in VBT mit einer irreführenden Meldung
+    aufzufallen.
+
+    Args:
+        value: Roher '_stops'-Wert (Skalar, None, Liste, arange-Dict oder Referenz-Dict).
+        stop_key: Name des Stop-Feldes (für die Fehlermeldung).
+
+    Returns:
+        True bei Liste/Tupel/ndarray oder arange-Dict, sonst False.
+
+    Raises:
+        ValueError: Bei einem Dict, das weder 'type' (Wertebereich) noch 'ref'
+            (Indikator-Referenz) trägt.
+    """
     if isinstance(value, (list, tuple, np.ndarray)):
         return True
-    if isinstance(value, dict) and 'type' in value:
-        return True
+    if isinstance(value, dict):
+        if 'type' in value:
+            return True
+        # Lokaler Import: stop_refs importiert aus diesem Modul (STOP_PARAM_KEYS),
+        # ein Import am Dateianfang wäre zirkulär.
+        from user_data.strategies.generic.stop_refs import is_stop_ref
+        if is_stop_ref(value):
+            return False
+        raise ValueError(
+            f"Stop {stop_key!r}: Dict ohne Schlüssel 'type' — gefunden: {value!r}. "
+            f"Ein Wertebereich wird als arange-Dict geschrieben: "
+            f"{_RANGE_DICT_NOTATION}. Eine Indikator-Referenz braucht stattdessen "
+            f"den Schlüssel 'ref'."
+        )
     return False
 
 
@@ -161,8 +201,8 @@ def count_stop_combos(stops_cfg: dict) -> int:
         return 1
 
     n = 1
-    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'))
-    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'))
+    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'), 'tsl_th')
+    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'), 'tsl_stop')
 
     # Gekoppeltes TSL-Paar: beide gesweept -> eine Achse der (geprüften) Paar-Länge.
     if tsl_th_swept and tsl_stop_swept:
@@ -181,7 +221,7 @@ def count_stop_combos(stops_cfg: dict) -> int:
         if key in _TSL_PAIR_KEYS and tsl_th_swept and tsl_stop_swept:
             continue
         val = stops_cfg.get(key)
-        if is_stop_sweep(val):
+        if is_stop_sweep(val, key):
             n *= len(expand_stop_values(val, key))
     return n
 
@@ -595,13 +635,36 @@ def _resolve_params(entry: dict, factory: Any, type_id: str, ind_id: str) -> dic
 
 
 def _expand_range(value: Any, ind_id: str, key: str) -> list:
-    """Konvertiert einen Parameter-Wert in eine Liste (immer Length >= 1)."""
+    """Konvertiert einen Parameter-Wert in eine Liste (immer Length >= 1).
+
+    Args:
+        value: Roher Parameter-Wert (Skalar, None, Liste oder arange-Dict).
+        ind_id: Indikator-Key bzw. '_stops' (für die Fehlermeldung).
+        key: Parameter- bzw. Stop-Name (für die Fehlermeldung).
+
+    Returns:
+        Liste der konkreten Werte (Length >= 1 bei Skalar/None).
+
+    Raises:
+        ValueError: Bei einem Dict ohne 'type' (fehlgeformter Wertebereich) oder
+            einem sonst unbekannten Wert-Typ.
+    """
     if isinstance(value, (int, float, bool, str)) or value is None:
         return [value]
 
     if isinstance(value, dict) and 'type' in value:
         arr = convert_range_json_numpy_arrays(value)
         return [_np_scalar_to_python(v) for v in arr]
+
+    # Dict ohne 'type': als Wertebereich gemeint, aber fehlgeformt. Die frühere
+    # Sammelmeldung ("unbekannter Wert-Typ dict") nannte den Ausweg nicht — hier
+    # steht die gültige Schreibweise, wie beim Stop-Riegel in is_stop_sweep.
+    if isinstance(value, dict):
+        raise ValueError(
+            f"Indikator {ind_id!r} Parameter {key!r}: Dict ohne Schlüssel 'type' — "
+            f"gefunden: {value!r}. Ein Wertebereich wird als arange-Dict "
+            f"geschrieben: {_RANGE_DICT_NOTATION}."
+        )
 
     if isinstance(value, (list, tuple, np.ndarray)):
         return [_np_scalar_to_python(v) for v in value]
@@ -625,8 +688,9 @@ def _collect_varying_axes(indicators_json: dict) -> list[tuple[str, str, list]]:
     """Sammelt alle variierenden Indikator-Parameterachsen (aktiviert, Länge > 1).
 
     Eine Achse variiert, wenn ihr Wert über _expand_range mehr als einen Wert
-    ergibt — deckt sowohl Range-Dicts ({start, stop, step}) als auch Listen
-    ([a, b, c]) ab. Inputs (OHLC) und Meta-Keys zählen nicht.
+    ergibt — deckt sowohl arange-Dicts (mit Schlüssel 'type', siehe
+    _RANGE_DICT_NOTATION) als auch Listen ([a, b, c]) ab. Ein Dict ohne 'type' ist
+    kein Wertebereich und wird abgewiesen. Inputs (OHLC) und Meta-Keys zählen nicht.
 
     Args:
         indicators_json: Indikator-Spec mit Range-/Listen-Parametern.
@@ -724,15 +788,15 @@ def describe_combos(indicators_json: dict) -> dict:
     n_stop_combos = count_stop_combos(stops_cfg)
 
     # Stop-Achsen für die Aufschlüsselung benennen — TSL-Paar als EINE Achse.
-    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'))
-    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'))
+    tsl_th_swept = is_stop_sweep(stops_cfg.get('tsl_th'), 'tsl_th')
+    tsl_stop_swept = is_stop_sweep(stops_cfg.get('tsl_stop'), 'tsl_stop')
     if tsl_th_swept and tsl_stop_swept:
         details.append(f"_stops.tsl_pair: {len(expand_stop_values(stops_cfg.get('tsl_th'), 'tsl_th'))}")
     for key in STOP_PARAM_KEYS:
         if key in _TSL_PAIR_KEYS and tsl_th_swept and tsl_stop_swept:
             continue
         val = stops_cfg.get(key)
-        if is_stop_sweep(val):
+        if is_stop_sweep(val, key):
             details.append(f"_stops.{key}: {len(expand_stop_values(val, key))}")
 
     return {'total': n_indicator_combos * n_stop_combos, 'details': details}
@@ -850,8 +914,8 @@ def _build_chunk_axes(varying: list, stops_cfg: dict) -> list:
 
     # Stop-Achsen (inner). Gekoppeltes TSL-Paar als EINE Achse, sonst unabhaengige Achsen.
     tsl_pair_swept = (
-        is_stop_sweep(stops_cfg.get('tsl_th'))
-        and is_stop_sweep(stops_cfg.get('tsl_stop'))
+        is_stop_sweep(stops_cfg.get('tsl_th'), 'tsl_th')
+        and is_stop_sweep(stops_cfg.get('tsl_stop'), 'tsl_stop')
     )
     if tsl_pair_swept:
         th_vals = expand_stop_values(stops_cfg.get('tsl_th'), 'tsl_th')
@@ -866,7 +930,7 @@ def _build_chunk_axes(varying: list, stops_cfg: dict) -> list:
     for key in STOP_PARAM_KEYS:
         if key in _TSL_PAIR_KEYS and tsl_pair_swept:
             continue
-        if not is_stop_sweep(stops_cfg.get(key)):
+        if not is_stop_sweep(stops_cfg.get(key), key):
             continue
         vals = expand_stop_values(stops_cfg.get(key), key)
         def _make_stop_setter(key=key, vals=vals):
