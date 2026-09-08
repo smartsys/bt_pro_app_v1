@@ -293,7 +293,7 @@ def _extract_metrics(
     total_market_return = portfolios.total_market_return * 100
     position_coverage = portfolios.position_coverage * 100
     max_gross_exposure = portfolios.gross_exposure.vbt.max() * 100
-    print(f"  [DB] Portfolio-Werte: {_time.time() - t0:.1f}s")
+    logger.debug("  [DB] Portfolio-Werte: %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 3 — Drawdown (Gruppe 'drawdown')
@@ -303,7 +303,7 @@ def _extract_metrics(
         # pf.max_drawdown liefert den Wert bereits negativ; so wird er auch gespeichert.
         max_dd = portfolios.max_drawdown * 100
         max_dd_duration = portfolios.drawdowns.max_duration
-        print(f"  [DB] Drawdown: {_time.time() - t0:.1f}s")
+        logger.debug("  [DB] Drawdown: %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 4 — Orders und Trades
@@ -315,7 +315,7 @@ def _extract_metrics(
     open_trade_count = count_open_trades(portfolios)
     long_trade_count = _trades.direction_long.count()
     short_trade_count = _trades.direction_short.count()
-    print(f"  [DB] Orders/Trades: {_time.time() - t0:.1f}s")
+    logger.debug("  [DB] Orders/Trades: %.1fs", _time.time() - t0)
 
     # Gruppe 'trade_quality'
     if 'trade_quality' in active_groups:
@@ -329,7 +329,7 @@ def _extract_metrics(
         avg_losing_trade = _closed.losing.returns.mean() * 100
         avg_winning_duration = _wrapper.arr_to_timedelta(_closed.winning.duration.mean())
         avg_losing_duration = _wrapper.arr_to_timedelta(_closed.losing.duration.mean())
-        print(f"  [DB] Trade-Kennzahlen: {_time.time() - t0:.1f}s")
+        logger.debug("  [DB] Trade-Kennzahlen: %.1fs", _time.time() - t0)
 
     # GEÄNDERT: sqn und edge_ratio laufen wieder in jedem Lauf mit. Sie
     # waren 2026 ungemessen zu den teuren Kennzahlen sortiert worden; gemessen kostet
@@ -376,7 +376,7 @@ def _extract_metrics(
                 wtype=WType.Wilder,
             )[1]
         edge_ratio = _closed.get_edge_ratio(volatility=edge_volatility)
-        print(f"  [DB] sqn/edge_ratio: {_time.time() - t0:.1f}s")
+        logger.debug("  [DB] sqn/edge_ratio: %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 5 — Risiko- und Rendite-Verhältnisse
@@ -389,7 +389,7 @@ def _extract_metrics(
     ann_return = portfolios.annualized_return * 100
     ann_vol = portfolios.annualized_volatility * 100
     down_risk = portfolios.downside_risk * 100
-    print(f"  [DB] Risiko-Verhältnisse: {_time.time() - t0:.1f}s")
+    logger.debug("  [DB] Risiko-Verhältnisse: %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 6 — Extremrisiko (perzentil-basiert, parallel gerechnet; 'tail_risk')
@@ -407,7 +407,7 @@ def _extract_metrics(
         tail_ratio = portfolios.get_tail_ratio(jitted=dict(parallel=True))
         value_at_risk = portfolios.get_value_at_risk(jitted=dict(parallel=True))
         cond_value_at_risk = portfolios.get_cond_value_at_risk(jitted=dict(parallel=True))
-        print(f"  [DB] Extremrisiko (parallel): {_time.time() - t0:.1f}s")
+        logger.debug("  [DB] Extremrisiko (parallel): %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 7 — Benchmark-relative Kennzahlen (Gruppe 'benchmark')
@@ -417,7 +417,7 @@ def _extract_metrics(
         alpha = portfolios.alpha
         beta = portfolios.beta
         information_ratio = portfolios.information_ratio
-        print(f"  [DB] Benchmark-relativ: {_time.time() - t0:.1f}s")
+        logger.debug("  [DB] Benchmark-relativ: %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Abschnitt 8 — Verteilungsform der Renditen (Bausteine der Deflated Sharpe Ratio)
@@ -448,7 +448,7 @@ def _extract_metrics(
         scipy_stats.kurtosis(_returns_2d, axis=0, bias=True, fisher=False)
     )
     del _returns_2d
-    print(f"  [DB] Verteilungsform (skew/kurtosis): {_time.time() - t0:.1f}s")
+    logger.debug("  [DB] Verteilungsform (skew/kurtosis): %.1fs", _time.time() - t0)
 
     # =====================================================================
     # Zusammenbau
@@ -527,7 +527,7 @@ def _extract_metrics(
         df[_int_col] = df[_int_col].apply(
             lambda x: int(x) if pd.notna(x) and np.isfinite(x) else None
         )
-    print(f"  [DB] DataFrame: {_time.time() - t0:.1f}s, {len(df)} Zeilen")
+    logger.debug("  [DB] DataFrame: %.1fs, %d Zeilen", _time.time() - t0, len(df))
 
     if 'drawdown' in active_groups:
         _max_dd_durations = _durations(max_dd_duration)
@@ -788,7 +788,10 @@ def create_backtest_run(
         result = conn.execute(run_stmt)
         run_id = result.scalar()
 
-    print(f"[DB] BacktestRun {run_id} angelegt (status=queued, {n_combinations} Kombinationen, parent_run={parent_run_id}, iteration_id={iteration_id})")
+    logger.info(
+        "[DB] BacktestRun %s angelegt (status=queued, %d Kombinationen, parent_run=%s, iteration_id=%s)",
+        run_id, n_combinations, parent_run_id, iteration_id,
+    )
     return run_id
 
 
@@ -1223,7 +1226,7 @@ def _write_result_rows(
 
     # Batch aufbauen
     _t0 = _time.time()
-    print("[DB] Batch aufbauen ...")
+    logger.debug("[DB] Batch aufbauen ...")
     # Parameter aus MultiIndex extrahieren (vektorisiert)
     col_names = list(columns.names) if hasattr(columns, 'names') else []
     if col_names and hasattr(columns[0], '__iter__') and not isinstance(columns[0], str):
@@ -1274,7 +1277,7 @@ def _write_result_rows(
             )
         batch.append(record)
 
-    print(f"[DB] Batch aufgebaut ({_time.time() - _t0:.1f}s)")
+    logger.debug("[DB] Batch aufgebaut (%.1fs)", _time.time() - _t0)
 
     # Bulk-Upsert in Batches à 5000
     _t0 = _time.time()
@@ -1298,12 +1301,12 @@ def _write_result_rows(
             set_=update_cols,
         )
         conn.execute(result_stmt)
-        print(f"  [DB] {min(i + batch_size, len(batch))}/{len(batch)} geschrieben")
-    print(f"[DB] Results geschrieben ({_time.time() - _t0:.1f}s)")
+        logger.debug("  [DB] %d/%d geschrieben", min(i + batch_size, len(batch)), len(batch))
+    logger.debug("[DB] Results geschrieben (%.1fs)", _time.time() - _t0)
 
     # Parameter in backtest_params speichern
     _t0 = _time.time()
-    print("[DB] Parameter speichern ...")
+    logger.debug("[DB] Parameter speichern ...")
     # Result-IDs der gerade geschriebenen Kombinationen holen (nach Upsert)
     # Nur id + params_hash lesen: backtest_results ist sehr breit, und diese Abfrage
     # läuft im gechunkten Lauf einmal je Chunk. Der Filter auf die gerade
@@ -1348,7 +1351,7 @@ def _write_result_rows(
     if params_batch:
         for i in range(0, len(params_batch), batch_size):
             conn.execute(insert(BacktestParam), params_batch[i:i + batch_size])
-        print(f"  [DB] {len(params_batch)} Parameter gespeichert ({_time.time() - _t0:.1f}s)")
+        logger.debug("  [DB] %d Parameter gespeichert (%.1fs)", len(params_batch), _time.time() - _t0)
 
     return batch
 
@@ -1413,9 +1416,9 @@ def save_result_chunk(
             .where(BacktestRun.id == run_id)
             .values(completed_chunks=chunk_index + 1, ann_factor=float(ann_factor))
         )
-    print(
-        f"[DB] Chunk {chunk_index + 1} gespeichert: {len(columns)} Kombinationen "
-        f"(Run {run_id})"
+    logger.info(
+        "[DB] Chunk %d gespeichert: %d Kombinationen (Run %s)",
+        chunk_index + 1, len(columns), run_id,
     )
     return len(columns)
 
@@ -1459,9 +1462,9 @@ def _finalize_run(conn, run_id: int, ann_factor: Optional[float]) -> int:
     # bleibt atomar.
     _t0 = _time.time()
     n_dsr = _calculate_deflated_sharpe(conn, run_id)
-    print(
-        f"[DB] Deflated Sharpe Ratio nachgelaufen: {n_dsr} Results, "
-        f"N={n_combinations} ({_time.time() - _t0:.1f}s)"
+    logger.info(
+        "[DB] Deflated Sharpe Ratio nachgelaufen: %d Results, N=%d (%.1fs)",
+        n_dsr, n_combinations, _time.time() - _t0,
     )
     return n_combinations
 
@@ -1546,9 +1549,9 @@ def save_strategy_results(
         n_combinations = finalize_backtest_run(
             run_id, strategy_results.get('ann_factor')
         )
-        print(
-            f"[DB] BacktestRun {run_id} abgeschlossen, {n_combinations} Kombinationen "
-            f"(chunkweise gespeichert)"
+        logger.info(
+            "[DB] BacktestRun %s abgeschlossen, %d Kombinationen (chunkweise gespeichert)",
+            run_id, n_combinations,
         )
         return n_combinations
 
@@ -1601,7 +1604,7 @@ def save_strategy_results(
     engine = get_engine()
     import time as _time
     _t_start = _time.time()
-    print(f"[DB] {n_combinations} Kombinationen in strategy_results")
+    logger.info("[DB] %d Kombinationen in strategy_results", n_combinations)
 
     with engine.begin() as conn:
 
@@ -1627,7 +1630,7 @@ def save_strategy_results(
             # mit einer Kombination und ein Lauf mit vielen gehen durch denselben Code und
             # liefern denselben Satz Kennzahlen.
             _t0 = _time.time()
-            print("[DB] Metriken extrahieren ...")
+            logger.debug("[DB] Metriken extrahieren ...")
             # GEÄNDERT: 'metrics_resolved' kommt aus create_backtest_run
             # (einzige Auflösungsstelle). Fehlt der Key (Aufrufer außerhalb des
             # Run-Start-Wegs, z.B. Direktaufrufe in Tests), rechnet _extract_metrics
@@ -1636,7 +1639,7 @@ def save_strategy_results(
                 portfolios, columns, _snapshot_backtest_config,
                 groups=_snapshot_backtest_config.get('metrics_resolved'),
             )
-            print(f"[DB] Metriken extrahiert ({_time.time() - _t0:.1f}s)")
+            logger.debug("[DB] Metriken extrahiert (%.1fs)", _time.time() - _t0)
 
             # Zeitreihen bleiben getrennt (ausdrücklich nicht angefasst): sie
             # skalieren mit Kombinationen x Balken und entstehen nur beim Einzellauf.
@@ -1647,7 +1650,7 @@ def save_strategy_results(
                 positions_records = pf.positions.records_readable
         else:
             # Chunked-Pfad: Metriken bereits gesetzt, keine Trades/Orders/Positions
-            print(f"[DB] Chunked-Pfad: {len(all_metrics)} Metriken bereits extrahiert")
+            logger.debug("[DB] Chunked-Pfad: %d Metriken bereits extrahiert", len(all_metrics))
 
         _write_result_rows(
             conn=conn,
@@ -1692,7 +1695,7 @@ def save_strategy_results(
                         'return_pct': _safe_float(row.get('Return', 0) * 100),
                     })
                 conn.execute(insert(BacktestTrade), trades_batch)
-                print(f"  [DB] {len(trades_batch)} Trades gespeichert")
+                logger.debug("  [DB] %d Trades gespeichert", len(trades_batch))
 
             # Orders speichern
             if len(orders_records) > 0:
@@ -1713,7 +1716,7 @@ def save_strategy_results(
                         'stop_type': stop_type if stop_type and stop_type != 'None' else None,
                     })
                 conn.execute(insert(BacktestOrder), orders_batch)
-                print(f"  [DB] {len(orders_batch)} Orders gespeichert")
+                logger.debug("  [DB] %d Orders gespeichert", len(orders_batch))
 
             # Positions speichern
             if len(positions_records) > 0:
@@ -1737,7 +1740,7 @@ def save_strategy_results(
                         'return_pct': _safe_float(row.get('Return', 0) * 100),
                     })
                 conn.execute(insert(BacktestPosition), positions_batch)
-                print(f"  [DB] {len(positions_batch)} Positions gespeichert")
+                logger.debug("  [DB] %d Positions gespeichert", len(positions_batch))
 
             # Equity-Kurve speichern
             equity_series = pf.value
@@ -1755,7 +1758,7 @@ def save_strategy_results(
                 for i in range(0, len(equity_batch), batch_size):
                     chunk = equity_batch[i:i + batch_size]
                     conn.execute(insert(BacktestEquity), chunk)
-                print(f"  [DB] {len(equity_batch)} Equity-Werte gespeichert")
+                logger.debug("  [DB] %d Equity-Werte gespeichert", len(equity_batch))
 
             # Indikatoren speichern
             indicators_results = strategy_results.get('indicators_results', {})
@@ -1802,14 +1805,17 @@ def save_strategy_results(
                 for i in range(0, len(indicators_batch), batch_size):
                     chunk = indicators_batch[i:i + batch_size]
                     conn.execute(insert(BacktestIndicator), chunk)
-                print(f"  [DB] {len(indicators_batch)} Indikator-Werte gespeichert")
+                logger.debug("  [DB] %d Indikator-Werte gespeichert", len(indicators_batch))
 
         # Run abschließen (Status, n_combinations, ann_factor und der rasterweite
         # DSR-Nachlauf) — in derselben Transaktion wie die Results, damit der Zustand
         # atomar bleibt.
         n_combinations = finalize_backtest_run(run_id, ann_factor, conn=conn)
 
-    print(f"[DB] BacktestRun {run_id} gespeichert, {n_combinations} Kombinationen (Gesamt: {_time.time() - _t_start:.1f}s)")
+    logger.info(
+        "[DB] BacktestRun %s gespeichert, %d Kombinationen (Gesamt: %.1fs)",
+        run_id, n_combinations, _time.time() - _t_start,
+    )
 
     return n_combinations
 

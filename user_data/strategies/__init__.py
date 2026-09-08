@@ -1,5 +1,8 @@
+import logging
 import os
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def generate_portfolio_chart(portfolio, symbol, script_dir, subplots=['trades', 'drawdowns', 'trade_pnl'], params_info=None):
@@ -53,7 +56,7 @@ def generate_portfolio_chart(portfolio, symbol, script_dir, subplots=['trades', 
     # Parameter-Tabelle hinzuf�gen, falls params_info �bergeben wurde
     params_html = ""
     if params_info:
-        print(f"DEBUG: params_info Übergeben mit {len(params_info)} Eintr�gen")
+        logger.debug("params_info übergeben mit %d Einträgen", len(params_info))
         params_html = """
         <div style="margin: 20px; padding: 20px; background-color: #f5f5f5; border-radius: 8px; font-family: monospace;">
             <h3 style="margin-top: 0; color: #333;">Verwendete Parameter</h3>
@@ -74,20 +77,23 @@ def generate_portfolio_chart(portfolio, symbol, script_dir, subplots=['trades', 
             </table>
         </div>
 """
-        print(f"DEBUG: params_html erstellt, Länge: {len(params_html)}")
+        logger.debug("params_html erstellt, Länge: %d", len(params_html))
     else:
-        print("DEBUG: params_info ist None oder leer!")
+        logger.warning("params_info ist None oder leer!")
 
     # Kombiniere Chart und Parameter
     full_html = chart_html.replace('</body>', f'{params_html}</body>')
-    print(f"DEBUG: full_html L�nge: {len(full_html)}, contains 'Verwendete Parameter': {'Verwendete Parameter' in full_html}")
+    logger.debug(
+        "full_html Länge: %d, enthält 'Verwendete Parameter': %s",
+        len(full_html), 'Verwendete Parameter' in full_html,
+    )
 
     # HTML-Datei speichern
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(full_html)
 
     file_size_kb = os.path.getsize(file_path) / 1024
-    print(f"Chart gespeichert: {file_path}")
+    logger.info("Chart gespeichert: %s", file_path)
 
     return file_path
 
@@ -147,11 +153,11 @@ def save_stats_to_csv(stats_sorted, symbol, script_dir, start=None, end=None, ti
         existing_df = pd.read_csv(stats_file)
         combined_df = pd.concat([existing_df, stats_for_export], ignore_index=True)
         combined_df.to_csv(stats_file, index=False)
-        print(f"\nStats angehängt an: {stats_file}")
+        logger.info("Stats angehängt an: %s", stats_file)
     else:
         # Neue Datei erstellen
         stats_for_export.to_csv(stats_file, index=False)
-        print(f"\nStats exportiert nach: {stats_file}")
+        logger.info("Stats exportiert nach: %s", stats_file)
 
     return stats_file
 

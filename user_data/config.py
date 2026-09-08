@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,6 +8,8 @@ from vectorbtpro import *
 _project_root = Path(__file__).resolve().parent.parent
 load_dotenv(_project_root / '.env')
 
+logger = logging.getLogger(__name__)
+
 
 class Config:
     # Pfade und Dateinamen
@@ -15,10 +18,5 @@ class Config:
     DATA_PATH = str(_project_root) + os.sep + 'data' + os.sep + 'ohlc_data' + os.sep
     vbt.make_dir(DATA_PATH)
 
-    print("DATA_PATH", DATA_PATH)
+    logger.info("DATA_PATH %s", DATA_PATH)
     SQLITE_DB = f"sqlite:///{DATA_PATH}ohlcv_sqlite.db"
-
-    # print('------ Config ----- ')
-    # print('DATA_PATH:', DATA_PATH)
-    # print('SQLITE_DB:', SQLITE_DB)
-    # print('------------------\n ')

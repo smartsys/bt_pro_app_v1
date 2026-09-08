@@ -30,6 +30,7 @@ Hinweis: Nach einer Version-Erhöhung muss der Worker-Container neu gestartet
 werden, damit die neue VERSION in neue Runs/Results geschrieben wird.
 """
 
+import logging
 from typing import Any, Callable, Optional
 
 # GEÄNDERT: Versionskonstante für Reproduzierbarkeit von Backtests
@@ -192,6 +193,8 @@ from user_data.utils.metrics.trading_window import (
     slice_to_trading_window,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def run_spec_strategy(
     ohlc_data: Any,
@@ -235,7 +238,7 @@ def run_spec_strategy(
     Raises:
         ValueError: Wenn rules_json fehlt.
     """
-    print("\nstart run_spec_strategy ..")
+    logger.info("start run_spec_strategy ..")
 
     # GEÄNDERT: _rules-Fallback entfernt. Rules kommen jetzt immer explizit
     # aus iteration.spec_json (Worker-Pfad) oder direkt vom Aufrufer.
@@ -280,7 +283,7 @@ def run_spec_strategy(
         # (col % n_combo Mapping), daher kein Single-Combo-Zwang mehr. Jeder Chunk
         # ist ein kartesisches Sub-Produkt von max. chunk_size Kombis und liefert
         # ein Multi-Combo-Portfolio mit vollständigem Spalten-MultiIndex.
-        print(f" - Chunked Modus: {len(chunks)} Chunks a max. {chunk_size} Kombis")
+        logger.info(" - Chunked Modus: %d Chunks a max. %d Kombis", len(chunks), chunk_size)
         return _run_chunked(
             chunks=chunks,
             ohlc_data=ohlc_data,
@@ -296,7 +299,7 @@ def run_spec_strategy(
     indicators = build_indicators(
         indicators_json, ohlc_data, base_tf=backtest_config_json.get('timeframe')
     )
-    print(f" - Indikatoren gebaut: {list(indicators.keys())}")
+    logger.info(" - Indikatoren gebaut: %s", list(indicators.keys()))
 
     # Portfolio-Parameter aus backtest_config_json extrahieren
     pf_cfg = backtest_config_json['portfolio']
@@ -312,7 +315,7 @@ def run_spec_strategy(
     # build_indicators laufen — die Serie kommt aus einer gebauten Instanz.
     stop_ref_series = resolve_stop_refs(stops_cfg, ohlc_data, indicators)
     if stop_ref_series:
-        print(f" - Referenz-Stops: {sorted(stop_ref_series.keys())}")
+        logger.info(" - Referenz-Stops: %s", sorted(stop_ref_series.keys()))
     stops_swept = any(is_stop_sweep(stops_cfg.get(k)) for k in STOP_PARAM_KEYS)
 
     # GEÄNDERT: Ticket 104 — risikobasierte Positionsgröße. Die Prüfung
@@ -321,9 +324,9 @@ def run_spec_strategy(
     # size_type nicht 'risk_percent', kommt None zurück und nichts ändert sich.
     risk_sizing = build_risk_sizing_spec(pf_cfg, stops_cfg, stops_swept)
     if risk_sizing is not None:
-        print(
-            f" - Risikobasierte Größe: risk_pct={risk_sizing.risk_pct}, "
-            f"delta_format_code={risk_sizing.delta_format_code}"
+        logger.info(
+            " - Risikobasierte Größe: risk_pct=%s, delta_format_code=%s",
+            risk_sizing.risk_pct, risk_sizing.delta_format_code,
         )
 
     # GEÄNDERT: Ticket 106 — Hebel je Entry-Block. Die Prüfung läuft VOR dem
@@ -365,7 +368,7 @@ def run_spec_strategy(
     # ausweisen: welche Blöcke welchen Hebel tragen und dass der Hebelmodus der
     # BacktestConfig für diesen Lauf ersetzt wird.
     if block_leverage is not None:
-        print(f" - {describe_block_leverage(block_leverage, leverage_mode)}")
+        logger.info(" - %s", describe_block_leverage(block_leverage, leverage_mode))
 
     close_series = ohlc_data.get('Close')
     open_series = ohlc_data.get('Open')
@@ -375,7 +378,7 @@ def run_spec_strategy(
     # GEÄNDERT: Phase 2 — Einheitlicher nativer Pfad. Alle Backtests laufen
     # über evaluate_rules_native (signal_func_nb). Der Masken-Pfad (else-Zweig) wurde
     # entfernt. use_native-Flag und _rule_group_uses_state_refs-Check nicht mehr nötig.
-    print(" - Nativer Pfad: signal_func_nb")
+    logger.info(" - Nativer Pfad: signal_func_nb")
     # GEÄNDERT: Fenstergrenzen kommen aus build_trading_window, damit
     # Entry-Maske und Kennzahlen-Zuschnitt garantiert dieselben Grenzen benutzen.
     start_date, end_date = build_trading_window(backtest_config_json)
@@ -426,15 +429,18 @@ def run_spec_strategy(
     # Ohne Kreditlinie kürzt VBT eine zu große Order auf das verfügbare Geld; die
     # Kennzahlen sähen plausibel aus, messen aber eine konstante statt einer
     # risikobasierten Größe. Der Abgleich läuft über die Order-Records.
+    # GEÄNDERT: Ticket 109 — keine eigene Ausgabe der Selbstauskunft mehr. Sie
+    # geht bereits über worker_tasks.py per logger.warning ins Protokoll und an
+    # den Run (usability_note); eine zweite Ausgabe hier würde sie verdoppeln.
     risk_report = None
     if risk_sizing is not None:
         risk_report = summarize_truncation(portfolios, risk_sizing.desired_size)
-        if risk_report['note']:
-            print(f" ! Risikobasierte Größe: {risk_report['note']}")
 
     # GEÄNDERT: Ticket 106, Anforderung 3 — stille Kürzung bei Unterdeckung
     # sichtbar machen. Reicht das Konto für die gehebelte Nominale nicht, kürzt
     # VBT auf Konto x Hebel, ohne dass es auffiele.
+    # GEÄNDERT: Ticket 109 — dieselbe Begründung wie beim Risiko-Bericht: die
+    # Selbstauskunft läuft ausschließlich über worker_tasks.py, keine Ausgabe hier.
     leverage_report = None
     if block_leverage is not None:
         leverage_report = summarize_leverage_truncation(
@@ -444,15 +450,13 @@ def run_spec_strategy(
             size_value=pf_cfg.get('size'),
             desired_size=risk_sizing.desired_size if risk_sizing is not None else None,
         )
-        if leverage_report['note']:
-            print(f" ! Block-Hebel: {leverage_report['note']}")
 
     # Roh-Signale nicht verfügbar (signal_func_nb produziert per-bar)
     long_entries = None
     long_exits = None
     short_entries = None
     short_exits = None
-    print(f" - Portfolio gebaut (Trades = {len(portfolios.trades.records)})")
+    logger.info(" - Portfolio gebaut (Trades = %d)", len(portfolios.trades.records))
 
     # indicators_results in Format der bestehenden Strategien bringen
     indicators_results = _build_indicators_results(indicators, indicators_json, timeframe)
@@ -570,13 +574,13 @@ def _run_chunked(
         # überspringen. Ihre Results stehen in der Datenbank; sie noch einmal zu rechnen
         # wäre genau die Arbeit, die das Ticket sparen soll.
         if block_idx < completed_chunks:
-            print(
-                f" - Chunk {block_idx + 1}/{len(chunks)}: übersprungen "
-                f"(bereits gespeichert)"
+            logger.info(
+                " - Chunk %d/%d: übersprungen (bereits gespeichert)",
+                block_idx + 1, len(chunks),
             )
             continue
 
-        print(f" - Chunk {block_idx + 1}/{len(chunks)}: Indikatoren bauen ...")
+        logger.info(" - Chunk %d/%d: Indikatoren bauen ...", block_idx + 1, len(chunks))
 
         # GEÄNDERT: Chunk-Fortschritt an die DB melden (ein UPDATE pro Chunk), damit
         # das Frontend "Chunk X/Y" anzeigen kann. Fehler im Reporting darf den Lauf
@@ -585,7 +589,7 @@ def _run_chunked(
             try:
                 progress_callback(block_idx + 1, len(chunks))
             except Exception as exc:
-                print(f"   ! Fortschritts-Update fehlgeschlagen (ignoriert): {exc}")
+                logger.warning("   ! Fortschritts-Update fehlgeschlagen (ignoriert): %s", exc)
 
         block_result = run_spec_strategy(
             ohlc_data=ohlc_data,
@@ -605,7 +609,9 @@ def _run_chunked(
         block_columns = block_pf.wrapper.columns
         n_block = len(block_columns)
 
-        print(f"   -> {n_block} Kombis in Chunk {block_idx + 1}, Metriken extrahieren ...")
+        logger.info(
+            "   -> %d Kombis in Chunk %d, Metriken extrahieren ...", n_block, block_idx + 1,
+        )
         # GEÄNDERT: Bugfix — _vals() in _extract_metrics verwendet nun
         # np.atleast_1d(), sodass n_block==1 (VBT liefert Skalare statt Arrays) korrekt
         # behandelt wird. Kein gesonderter Workaround für n_block==1 mehr nötig.
@@ -645,22 +651,21 @@ def _run_chunked(
         # Chunk-Speicher freigeben
         del block_pf, block_result, block_metrics, block_columns
         gc.collect()
-        print(f"   -> Chunk {block_idx + 1} abgeschlossen")
+        logger.info("   -> Chunk %d abgeschlossen", block_idx + 1)
 
     # GEÄNDERT: signals-Dict enthält jetzt vier Masken statt entries/exits
     # GEÄNDERT: 'ann_factor' mitliefern: im gechunkten Pfad kommt beim
     # Speichern kein Portfolio an, aus dem er sich holen ließe. Ohne ihn kann der
     # DSR-Nachlauf den Sharpe je Balken nicht aus dem annualisierten rekonstruieren.
+    # GEÄNDERT: Ticket 109 — keine eigene Ausgabe hier (siehe Begründung beim
+    # Einzel-Combo-Pfad weiter oben): dieselben Berichte gehen über
+    # worker_tasks.py als Selbstauskunft ins Protokoll.
     merged_risk_report = merge_reports(risk_reports) if risk_reports else None
-    if merged_risk_report is not None and merged_risk_report['note']:
-        print(f" ! Risikobasierte Größe (ganzer Lauf): {merged_risk_report['note']}")
 
     # GEÄNDERT: Ticket 106 — Block-Hebel-Bericht über alle Chunks summieren.
     merged_leverage_report = (
         merge_leverage_reports(leverage_reports) if leverage_reports else None
     )
-    if merged_leverage_report is not None and merged_leverage_report['note']:
-        print(f" ! Block-Hebel (ganzer Lauf): {merged_leverage_report['note']}")
 
     common = {
         'ann_factor': ann_factor,
@@ -677,9 +682,10 @@ def _run_chunked(
     }
 
     if chunk_sink is not None:
-        print(
-            f" - Chunked Lauf abgeschlossen: {n_sunk} Kombis an die Senke abgegeben,"
-            f" {completed_chunks} Chunk(s) übersprungen (ann_factor={ann_factor})"
+        logger.info(
+            " - Chunked Lauf abgeschlossen: %d Kombis an die Senke abgegeben,"
+            " %d Chunk(s) übersprungen (ann_factor=%s)",
+            n_sunk, completed_chunks, ann_factor,
         )
         return {'chunks_saved': n_sunk, **common}
 
@@ -691,9 +697,9 @@ def _run_chunked(
     for col in all_columns[1:]:
         combined_columns = combined_columns.append(col)
 
-    print(
-        f" - Chunked Lauf abgeschlossen: {len(flat_metrics)} Kombis gesamt"
-        f" (ann_factor={ann_factor})"
+    logger.info(
+        " - Chunked Lauf abgeschlossen: %d Kombis gesamt (ann_factor=%s)",
+        len(flat_metrics), ann_factor,
     )
 
     return {

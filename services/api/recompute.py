@@ -136,7 +136,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
         'ohlc_start': backtest_config.get('ohlc_start'),
         'ohlc_end': backtest_config.get('ohlc_end'),
     })
-    print(f"  [RECOMPUTE] OHLCV geladen ({_time.time() - _t0:.1f}s)")
+    logger.debug("  [RECOMPUTE] OHLCV geladen (%.1fs)", _time.time() - _t0)
 
     # GEÄNDERT: _build_resolved_config statt hartcodierter Mapping-Funktion
     single_indicators = _build_resolved_config(indicators_config, actual_params)
@@ -148,7 +148,10 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
     # Strategie ausführen (chunked deaktivieren — nur 1 Kombination, kein Chunking nötig)
     _t_total = _time.time()
     _t0 = _time.time()
-    print(f"[RECOMPUTE] Starte Backtest für Result {result_id} ({strategy_name}, {symbol})...")
+    logger.info(
+        "[RECOMPUTE] Starte Backtest für Result %s (%s, %s)...",
+        result_id, strategy_name, symbol,
+    )
     backtest_config = dict(backtest_config)
     backtest_config['_disable_chunked'] = True
     # GEÄNDERT: rules_json nur übergeben, wenn die Strategie-Funktion es akzeptiert
@@ -158,7 +161,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
     else:
         strategy_result = strategy_fn(ohlc_data, single_indicators, backtest_config)
 
-    print(f"  [RECOMPUTE] Strategie ausgeführt ({_time.time() - _t0:.1f}s)")
+    logger.debug("  [RECOMPUTE] Strategie ausgeführt (%.1fs)", _time.time() - _t0)
 
     portfolios = strategy_result['portfolios']
     columns = portfolios.wrapper.columns
@@ -175,7 +178,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
     # unten gespeicherte Equity-Kurve bleibt bewusst über den vollen geladenen Zeitraum,
     # damit der Chart den Vorlauf weiter zeigt.
     all_metrics = _extract_metrics(portfolios, columns, backtest_config)[0]
-    print(f"  [RECOMPUTE] Kennzahlen extrahiert ({_time.time() - _t0:.1f}s)")
+    logger.debug("  [RECOMPUTE] Kennzahlen extrahiert (%.1fs)", _time.time() - _t0)
 
     # Phase 1: Metriken + Equity + Trades + Orders (sofort, blockiert Response)
     _t_phase1 = _time.time()
@@ -194,7 +197,7 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
             .values(**all_metrics, spec_runner_version=_spec_runner_version)
         )
 
-        print(f"  [RECOMPUTE] Metriken UPDATE ({_time.time() - _t0:.1f}s)")
+        logger.debug("  [RECOMPUTE] Metriken UPDATE (%.1fs)", _time.time() - _t0)
 
         # Equity speichern
         _t0 = _time.time()
@@ -212,7 +215,10 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
             batch_size = 2000
             for i in range(0, len(equity_batch), batch_size):
                 conn.execute(insert(BacktestEquity), equity_batch[i:i + batch_size])
-            print(f"  [RECOMPUTE] {len(equity_batch)} Equity-Werte gespeichert ({_time.time() - _t0:.1f}s)")
+            logger.debug(
+                "  [RECOMPUTE] %d Equity-Werte gespeichert (%.1fs)",
+                len(equity_batch), _time.time() - _t0,
+            )
 
         # Trades speichern
         _t0 = _time.time()
@@ -239,7 +245,10 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
                     'return_pct': _safe_float(row.get('Return', 0) * 100),
                 })
             conn.execute(insert(BacktestTrade), trades_batch)
-            print(f"  [RECOMPUTE] {len(trades_batch)} Trades gespeichert ({_time.time() - _t0:.1f}s)")
+            logger.debug(
+                "  [RECOMPUTE] %d Trades gespeichert (%.1fs)",
+                len(trades_batch), _time.time() - _t0,
+            )
 
         # Orders speichern
         _t0 = _time.time()
@@ -262,7 +271,10 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
                     'stop_type': stop_type if stop_type and stop_type != 'None' else None,
                 })
             conn.execute(insert(BacktestOrder), orders_batch)
-            print(f"  [RECOMPUTE] {len(orders_batch)} Orders gespeichert ({_time.time() - _t0:.1f}s)")
+            logger.debug(
+                "  [RECOMPUTE] %d Orders gespeichert (%.1fs)",
+                len(orders_batch), _time.time() - _t0,
+            )
 
         # Indikatoren speichern
         _t0 = _time.time()
@@ -301,9 +313,12 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
             batch_size = 2000
             for i in range(0, len(indicators_batch), batch_size):
                 conn.execute(insert(BacktestIndicator), indicators_batch[i:i + batch_size])
-            print(f"  [RECOMPUTE] {len(indicators_batch)} Indikator-Werte gespeichert ({_time.time() - _t0:.1f}s)")
+            logger.debug(
+                "  [RECOMPUTE] %d Indikator-Werte gespeichert (%.1fs)",
+                len(indicators_batch), _time.time() - _t0,
+            )
 
-    print(f"[RECOMPUTE] Phase 1 fertig ({_time.time() - _t_phase1:.1f}s)")
+    logger.info("[RECOMPUTE] Phase 1 fertig (%.1fs)", _time.time() - _t_phase1)
 
     # Phase 2: Positions speichern
     def _save_positions():
@@ -330,19 +345,21 @@ def recompute_single_result(result_id: int, sync: bool = False) -> bool:
                         'return_pct': _safe_float(row.get('Return', 0) * 100),
                     })
                 conn.execute(insert(BacktestPosition), positions_batch)
-                print(f"  [RECOMPUTE] {len(positions_batch)} Positions gespeichert")
+                logger.debug("  [RECOMPUTE] %d Positions gespeichert", len(positions_batch))
 
     if sync:
         # Worker-Kontext: synchron ausführen
         _save_positions()
-        print(f"[RECOMPUTE] Result {result_id} vollständig ({_time.time() - _t_phase1:.1f}s)")
+        logger.info(
+            "[RECOMPUTE] Result %s vollständig (%.1fs)", result_id, _time.time() - _t_phase1,
+        )
     else:
         # Chart-Kontext: im Hintergrund ausführen
         import threading
         def _bg():
             try:
                 _save_positions()
-                print(f"[RECOMPUTE BG] Result {result_id} Phase 2 fertig")
+                logger.info("[RECOMPUTE BG] Result %s Phase 2 fertig", result_id)
             except Exception as e:
                 logger.error(f"[RECOMPUTE BG] Fehler bei Result {result_id}: {e}")
         threading.Thread(target=_bg, daemon=True).start()
