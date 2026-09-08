@@ -66,7 +66,7 @@ def _sweep_bounds(value, stop_key: str) -> tuple:
     return min(values), max(values), len(values)
 
 
-def _fmt_stop_ref(v: dict, stop_key: str) -> str:
+def format_stop_ref(v: dict, stop_key: str) -> str:
     """Indikator-Referenz-Stop lesbar: ``<mult> × <indikator_id>`` (+ live/ratchet).
 
     Nutzt ``stop_refs.parse_stop_ref`` (Single Source der Notation, keine zweite
@@ -86,7 +86,7 @@ def _fmt_pct(v, stop_key: str) -> str:
     """TP/SL/TSL-Wert als Prozent (×100 mit %); Sweep als ``min-max% (n)``;
     Indikator-Referenz als ``<mult> × <indikator_id>``."""
     if is_stop_ref(v):
-        return _fmt_stop_ref(v, stop_key)
+        return format_stop_ref(v, stop_key)
     if is_stop_sweep(v, stop_key):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo * 100) + "-" + _clean_num(hi * 100) + f"% ({n})"
@@ -97,7 +97,7 @@ def _fmt_td(v, stop_key: str) -> str:
     """TD-Wert als ganze Zahl; Sweep als ``min-max (n)`` (ohne Prozent);
     Indikator-Referenz als ``<mult> × <indikator_id>``."""
     if is_stop_ref(v):
-        return _fmt_stop_ref(v, stop_key)
+        return format_stop_ref(v, stop_key)
     if is_stop_sweep(v, stop_key):
         lo, hi, n = _sweep_bounds(v, stop_key)
         return _clean_num(lo) + "-" + _clean_num(hi) + f" ({n})"

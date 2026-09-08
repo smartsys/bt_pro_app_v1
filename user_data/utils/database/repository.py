@@ -43,6 +43,9 @@ from user_data.utils.metrics.trading_window import (
     count_open_trades,
     slice_to_trading_window,
 )
+# GEÄNDERT: Referenz-Stops ({'ref': ..., 'mult': ...}) müssen beim Snapshot-Bau als
+# Dict erhalten bleiben — Erkennung über die Single Source der Notation.
+from user_data.strategies.generic.stop_refs import is_stop_ref
 # GEÄNDERT: die Deflated Sharpe Ratio kommt aus der eigenen, korrigierten
 # Rechnung und läuft als Nachlauf über den ganzen Lauf (siehe _calculate_deflated_sharpe).
 from user_data.utils.metrics.deflated_sharpe import deflated_sharpe_ratio
@@ -1035,10 +1038,16 @@ def _build_full_config_snapshot(
     # '_stops'. Kein Rückgriff mehr auf backtest_config (toter Pfad nach dem
     # Stop-Umbau, Eigentümerschaft liegt bei der IndicatorConfig).
     def _stop(key: str):
-        """Per-Result-Stop: actual_params (Sweep) vor Skalar aus _stops."""
+        """Per-Result-Stop: actual_params (Sweep) vor Skalar/Referenz aus _stops."""
         if key in actual_params:
             return _safe_json_value(actual_params[key])
         sval = _stops_cfg.get(key)
+        # GEÄNDERT: Ein Referenz-Stop ist ein Dict, aber KEINE Sweep-Achse — er bleibt
+        # zur Laufzeit ein Dict und wird nie über actual_params aufgelöst. Er geht
+        # deshalb unverändert in den Snapshot, sonst verliert das Result seine Stops
+        # (der Playground lud danach eine Konfiguration ganz ohne Stopabstand).
+        if is_stop_ref(sval):
+            return _safe_json_value(sval)
         # Range-Dicts erscheinen bei Sweep in actual_params; ein hier verbliebenes
         # dict ist kein skalarer Stop-Wert und gilt als nicht gesetzt.
         if isinstance(sval, dict):

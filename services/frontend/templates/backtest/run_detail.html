@@ -100,6 +100,17 @@ function fmtNum(val, decimals) {
   return parseFloat(val).toFixed(decimals || 2);
 }
 
+// GEÄNDERT: Stop-Spalten (TP/SL) tragen entweder einen Zahlenwert oder — bei einem
+// Referenz-Stop — den fertigen Text aus dem Backend ("5 × atr_stop"). Zahlen werden
+// wie bisher auf Prozent hochgerechnet, Text wird unveraendert (maskiert) gezeigt.
+function fmtStop(val) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  if (typeof val === 'string') {
+    return val.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+  }
+  return fmtNum(val * 100);
+}
+
 // GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
 // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
 // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
@@ -144,12 +155,11 @@ document.addEventListener("DOMContentLoaded", function() {
       },
       {
         data: "tp_stop",
-        render: function(data) { return data !== null && data !== undefined ? fmtNum(data * 100) : '<span class="text-muted">-</span>'; }
+        render: function(data) { return fmtStop(data); }
       },
       {
         data: "sl_stop",
-        render: function(data) { return data !== null && data !== undefined ? fmtNum(data * 100) : '<span class="text-muted">-</span>';
-        }
+        render: function(data) { return fmtStop(data); }
       },
       {
         data: "sharpe_ratio",

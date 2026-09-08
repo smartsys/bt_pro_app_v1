@@ -236,6 +236,17 @@ function fmtNum(val, dec) {
   if (val === null || val === undefined) return '<span class="text-muted">-</span>';
   return parseFloat(val).toFixed(dec || 2);
 }
+
+// GEÄNDERT: Stop-Spalten (TP/SL) tragen entweder einen Zahlenwert oder — bei einem
+// Referenz-Stop — den fertigen Text aus dem Backend ("5 × atr_stop"). Zahlen werden
+// wie bisher auf Prozent hochgerechnet, Text wird unveraendert (maskiert) gezeigt.
+function fmtStop(val) {
+  if (val === null || val === undefined) return '<span class="text-muted">-</span>';
+  if (typeof val === 'string') {
+    return val.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+  }
+  return fmtNum(val * 100);
+}
 // GEÄNDERT: Trefferquote und Trade-Anzahl haben verschiedene Nenner: die
 // Quote rechnet über die geschlossenen Trades (total_trades - open_trades). Die offenen
 // Positionen stehen deshalb direkt in der Trades-Zelle, nicht nur in der Datenbank.
@@ -553,12 +564,12 @@ document.addEventListener("DOMContentLoaded", function() {
       {
         // GEÄNDERT: TP sortierbar (Server sortiert über den Snapshot-JSON-Pfad)
         data: "tp_stop",
-        render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
+        render: function(d) { return fmtStop(d); }
       },
       {
         // GEÄNDERT: SL sortierbar (Server sortiert über den Snapshot-JSON-Pfad)
         data: "sl_stop",
-        render: function(d) { return d !== null && d !== undefined ? fmtNum(d * 100) : '<span class="text-muted">-</span>'; }
+        render: function(d) { return fmtStop(d); }
       },
       { data: "sharpe_ratio", render: function(d) { return fmtColor(d); } },
       { data: "sortino_ratio", render: function(d) { return fmtColor(d); } },

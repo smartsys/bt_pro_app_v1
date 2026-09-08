@@ -46,6 +46,10 @@ from user_data.utils.database.models import (
 )
 # GEÄNDERT: ToDo 10 — Key->Kürzel+Label-Mapping der Bestwert-Kriterien (Single Source, serverseitig)
 from services.api.utils.best_criteria_labels import criteria_keys_to_badges
+# GEÄNDERT: Referenz-Stops stehen im Result-Snapshot als Dict; die Anzeige nutzt die
+# vorhandene Notation (Single Source) statt einer zweiten Formatierung im Frontend.
+from services.api.utils.indicator_labels import format_stop_ref
+from user_data.strategies.generic.stop_refs import is_stop_ref
 from services.api.utils.walk_forward import shift_backtest_window
 # GEÄNDERT: _build_resolved_config für den Iterations-Tooltip (alle Indikator-Eingabewerte)
 from user_data.utils.database.repository import (
@@ -69,16 +73,29 @@ BACKTEST_RUN_JOB = 'services.api.worker_tasks.run_backtest_job'
 DELETE_ALL_RESULTS_JOB = 'services.api.worker_tasks.delete_all_results_job'
 DELETE_ALL_RUNS_JOB = 'services.api.worker_tasks.delete_all_runs_job'
 
+# GEÄNDERT: Ein Referenz-Stop steht im Snapshot als Dict und hat keinen Zahlenwert.
+# Für die Anzeige wird er über die vorhandene Notation zu Text ("5 × atr_stop"); das
+# Frontend zeigt Text unverändert und rechnet nur Zahlen auf Prozent hoch.
+def _stop_display(value, stop_key: str):
+    """Stop-Wert für die Anzeige: Referenz-Dict als Text, alles andere unverändert."""
+    if is_stop_ref(value):
+        return format_stop_ref(value, stop_key)
+    return value
+
+
 # GEÄNDERT: Stops aus Result-Snapshot statt run-weitem portfolio (sweep-fähig, per Result)
 def _result_stops(result) -> tuple:
-    """Liest die per-Result aufgelösten Skalar-Stops (tp_stop, sl_stop) aus dem
+    """Liest die per-Result aufgelösten Stops (tp_stop, sl_stop) aus dem
     full_config_snapshot_json['backtest_config'] des Results.
 
     Einzig korrekte Anzeige-Quelle bei gesweepten Stops — kein Fallback auf die
     run-weite portfolio-Config. Fehlt der Snapshot, sind beide None.
     """
     bc = (result.full_config_snapshot_json or {}).get('backtest_config') or {}
-    return bc.get('tp_stop'), bc.get('sl_stop')
+    return (
+        _stop_display(bc.get('tp_stop'), 'tp_stop'),
+        _stop_display(bc.get('sl_stop'), 'sl_stop'),
+    )
 
 
 # GEÄNDERT: Stop-Keys für die Tooltip-Anzeige (td/tp/sl/tsl + tsl_th)
@@ -93,7 +110,7 @@ def _result_stops_dict(result) -> dict:
     ist das Dict leer.
     """
     bc = (result.full_config_snapshot_json or {}).get('backtest_config') or {}
-    return {k: bc[k] for k in _TOOLTIP_STOP_KEYS if bc.get(k) is not None}
+    return {k: _stop_display(bc[k], k) for k in _TOOLTIP_STOP_KEYS if bc.get(k) is not None}
 
 
 router = APIRouter(prefix='/api/backtest', tags=['backtest'])

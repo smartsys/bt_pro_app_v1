@@ -212,6 +212,36 @@ def test_snapshot_no_extra_fields_from_run():
     assert 'import_path' not in bc_keys
 
 
+def test_snapshot_keeps_indicator_reference_stops():
+    """Referenz-Stops bleiben als Dict im Snapshot — sie sind keine Sweep-Achse.
+
+    Ein Referenz-Stop wird nie über actual_params aufgelöst. Landete er als NULL im
+    Snapshat, verlöre das Result seine Stops (der Chart-Playground lud danach eine
+    Konfiguration ganz ohne Stopabstand).
+    """
+    sl_ref = {'ref': 'indicator:atr14:real', 'mult': 5.0}
+    tsl_ref = {'ref': 'indicator:atr14:real', 'mult': 2.5, 'live': True, 'ratchet': True}
+    snapshot = _build_full_config_snapshot(
+        backtest_config=_BACKTEST_CONFIG,
+        indicators_config={'_stops': {'sl_stop': sl_ref, 'tsl_stop': tsl_ref, 'delta_format': 'absolute'}},
+        actual_params={},
+        rules=_RULES,
+    )
+    assert snapshot['backtest_config']['sl_stop'] == sl_ref
+    assert snapshot['backtest_config']['tsl_stop'] == tsl_ref
+
+
+def test_snapshot_drops_unresolved_range_stops():
+    """Ein Range-Dict ohne Auflösung in actual_params gilt weiter als nicht gesetzt."""
+    snapshot = _build_full_config_snapshot(
+        backtest_config=_BACKTEST_CONFIG,
+        indicators_config={'_stops': {'sl_stop': {'type': 'arange', 'start': 0.01, 'stop': 0.05, 'step': 0.01}}},
+        actual_params={},
+        rules=_RULES,
+    )
+    assert snapshot['backtest_config']['sl_stop'] is None
+
+
 # ============================================================================
 # Bestandsschutz: Alt-Result mit NULL-Snapshot soll nicht crashen
 # ============================================================================
