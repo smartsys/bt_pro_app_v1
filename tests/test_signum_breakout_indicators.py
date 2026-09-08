@@ -9,18 +9,25 @@ Geprüft wird:
   - eine Range gilt nur bei zulässiger Höhe und erreichter Mindestdauer
   - die Zonen-Ausgabe beschreibt dieselbe Formation wie die Serien
   - unbrauchbare Parameter werden abgewiesen
+  - `breakout_age` zählt Balken seit dem letzten Ausbruch, resettet korrekt und bleibt
+    nach dem ersten Ausbruch lückenlos (Ticket 110), auch im Multi-Combo-Lauf
+  - `breakout_age <= 25` liefert an einem NaN-Balken in der Rules-Engine kein Signal
 """
 
 import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+import vectorbtpro as vbt
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from user_data.strategies.generic.rules_engine import _evaluate_rule_group
+from user_data.utils.indicators.custom import dwsSignumRange
 from user_data.utils.indicators.signum import (
     signum_level_inc,
     signum_pivot_inc,
@@ -143,10 +150,10 @@ def test_range_verwirft_zu_hohe_formation(zacken):
     """Überschreitet die Range die zulässige Höhe, ist sie ungültig."""
     high, low, close = zacken
 
-    _, _, valid_weit, hoehe, _ = signum_range_inc(
+    _, _, valid_weit, hoehe, _, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.30, min_duration=1)
-    _, _, valid_eng, _, _ = signum_range_inc(
+    _, _, valid_eng, _, _, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.01, min_duration=1)
 
@@ -160,10 +167,10 @@ def test_range_verwirft_zu_kurze_formation(zacken):
     """Vor Erreichen der Mindestdauer ist die Formation ungültig."""
     high, low, close = zacken
 
-    _, _, valid, _, dauer = signum_range_inc(
+    _, _, valid, _, dauer, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.30, min_duration=1)
-    _, _, valid_lang, _, _ = signum_range_inc(
+    _, _, valid_lang, _, _, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.30, min_duration=500)
 
@@ -176,7 +183,7 @@ def test_range_verwirft_zu_kurze_formation(zacken):
 def test_range_zonen_passen_zu_den_serien(zacken):
     """Jede Zone trägt Deckel und Boden der Formation und liegt in der Reihe."""
     high, low, close = zacken
-    top, bottom, valid, _, _ = signum_range_inc(
+    top, bottom, valid, _, _, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.30, min_duration=1)
     zonen = signum_range_zones(
@@ -199,7 +206,7 @@ def test_ausbruch_ist_erster_schlusskurs_ueber_dem_deckel():
     low = high - 5.0
     close = high - 2.5
 
-    top, _, valid, _, _ = signum_range_inc(
+    top, _, valid, _, _, _ = signum_range_inc(
         high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
         max_height=0.30, min_duration=1)
 
@@ -212,6 +219,130 @@ def test_ausbruch_ist_erster_schlusskurs_ueber_dem_deckel():
     for t in ausbrueche:
         assert close[t] > top[t]
         assert close[t - 1] <= top[t - 1]
+
+
+def _pruefe_breakout_age_verlauf(top: np.ndarray, valid: np.ndarray, close: np.ndarray,
+                                 breakout_age: np.ndarray) -> None:
+    """Prüft `breakout_age` gegen die Definition, unabhängig aus `top`/`valid`/`close`
+    hergeleitet: Ausbruch an Balken t ist `close[t] > top[t]` UND `valid[t] > 0`.
+
+    0 am Ausbruchsbalken, danach je Balken +1, Reset am nächsten Ausbruch, NaN vor
+    dem ersten Ausbruch, danach lückenlos (Ticket 110).
+    """
+    ausbrueche = [
+        t for t in range(len(close))
+        if valid[t] > 0.0 and not np.isnan(top[t]) and close[t] > top[t]
+    ]
+    assert len(ausbrueche) >= 2, 'die Testreihe muss mindestens zwei Ausbrüche enthalten'
+
+    erster = ausbrueche[0]
+    assert np.all(np.isnan(breakout_age[:erster])), (
+        'vor dem ersten Ausbruch muss der Zähler NaN sein')
+    assert not np.any(np.isnan(breakout_age[erster:])), (
+        'nach dem ersten Ausbruch darf keine Lücke entstehen — sonst kehrt die '
+        'skipna-Falle zurück (siehe Dokument 25)')
+
+    erwartet = 0.0
+    for t in range(erster, len(close)):
+        if t in ausbrueche:
+            erwartet = 0.0
+        assert breakout_age[t] == pytest.approx(erwartet), (
+            f'Balken {t}: erwartet {erwartet}, erhalten {breakout_age[t]}')
+        erwartet += 1.0
+
+
+def test_breakout_age_zaehlt_ab_null_und_resettet_beim_naechsten_ausbruch():
+    """Zwei Ausbrüche über denselben Deckel: Zähler 0/1/2/…, Reset beim zweiten,
+    NaN davor, kein NaN dazwischen — auch während `valid` zwischenzeitlich 0 ist.
+    """
+    muster = [100.0, 102.0, 105.0, 110.0, 105.0, 102.0, 100.0]
+    ramp1 = [112.0, 115.0, 118.0, 120.0, 118.0, 115.0, 112.0, 110.0, 108.0, 105.0]
+    muster2 = [108.0, 112.0, 120.0, 130.0, 120.0, 112.0, 108.0]
+    ramp2 = [132.0, 135.0, 138.0, 140.0]
+    high = np.array(muster * 3 + ramp1 + muster2 * 3 + ramp2, dtype=np.float64)
+    low = high - 5.0
+    close = high - 2.5
+
+    top, _, valid, _, _, breakout_age = signum_range_inc(
+        high, low, close, left=3, right=3, window=80, tolerance=0.05, min_tests=2,
+        max_height=0.30, min_duration=1)
+
+    _pruefe_breakout_age_verlauf(top, valid, close, breakout_age)
+
+
+def test_breakout_age_multi_combo_passt_zur_eigenen_spalte():
+    """Multi-Combo-Lauf über drei `window`-Werte: `breakout_age` passt je Spalte zu
+    `top`/`valid` derselben Spalte — geprüft an zwei Spalten, keine davon Spalte 0
+    (Ticket-Akzeptanzkriterium gegen die Multi-Combo-Falle Spalte 0).
+    """
+    muster = [100.0, 102.0, 105.0, 110.0, 105.0, 102.0, 100.0]
+    ramp1 = [112.0, 115.0, 118.0, 120.0, 118.0, 115.0, 112.0, 110.0, 108.0, 105.0]
+    muster2 = [108.0, 112.0, 120.0, 130.0, 120.0, 112.0, 108.0]
+    ramp2 = [132.0, 135.0, 138.0, 140.0]
+    seq = muster * 3 + ramp1 + muster2 * 3 + ramp2
+    idx = pd.date_range('2024-01-01', periods=len(seq), freq='1D')
+    high = pd.Series(seq, index=idx)
+    low = high - 5.0
+    close = high - 2.5
+
+    ind = dwsSignumRange.run(high, low, close, window=[40, 60, 80], min_tests=2, min_duration=1)
+
+    assert list(ind.breakout_age.columns) == list(ind.top.columns)
+    for spalte in (1, 2):    # window=60 und window=80 — keine davon Spalte 0
+        top = ind.top.iloc[:, spalte].to_numpy()
+        valid = ind.valid.iloc[:, spalte].to_numpy()
+        breakout_age = ind.breakout_age.iloc[:, spalte].to_numpy()
+        _pruefe_breakout_age_verlauf(top, valid, close.to_numpy(), breakout_age)
+
+
+def test_breakout_age_kleiner_gleich_nan_ergibt_kein_signal_in_der_rules_engine():
+    """`breakout_age <= 25` an einem Balken mit NaN (vor dem ersten Ausbruch) darf in
+    der Rules-Engine kein Signal ergeben.
+
+    IEEE-754-Semantik trägt das bereits ohne Sonderfall: `NaN <= 25` ist False, anders
+    als bei `!=`, das eine explizite Maske braucht (rules_engine.py, `_evaluate_condition`,
+    Zeile 527 wertet `_OPS[op_name](lhs, rhs)` aus — für `<=` ist das `operator.le`, das
+    auf einem NaN-Operanden bereits False liefert; nur `!=` bekommt danach die
+    Extra-Behandlung in den Zeilen 534–539).
+
+    Echte Bausteine statt Ersatzkonstruktion: `ohlc_data` ist ein echtes `vbt.Data`
+    (derselbe Weg wie beim Laden über `load_ohlc_data`), der Indikator eine echte
+    `dwsSignumRange.run(...)`-Instanz mit ihrem `breakout_age`-Output — genau die
+    Objekte, die `_resolve_ref` in der Produktion bekommt.
+    """
+    muster = [100.0, 102.0, 105.0, 110.0, 105.0, 102.0, 100.0]
+    high = np.array(muster * 3 + [112.0, 115.0, 118.0, 120.0], dtype=np.float64)
+    low = high - 5.0
+    close_arr = high - 2.5
+    idx = pd.date_range('2024-01-01', periods=len(high), freq='1D', tz='UTC')
+
+    df = pd.DataFrame({
+        'Open': close_arr,
+        'High': high,
+        'Low': low,
+        'Close': close_arr,
+        'Volume': np.full(len(high), 1000.0),
+    }, index=idx)
+    ohlc_data = vbt.Data.from_data({'X': df})
+    ohlc_data.use_feature_config_of(vbt.BinanceData)
+
+    ind = dwsSignumRange.run(
+        pd.Series(high, index=idx), pd.Series(low, index=idx), pd.Series(close_arr, index=idx),
+        left=3, right=3, window=80, tolerance=0.05, min_tests=2, max_height=0.30, min_duration=1)
+    breakout_age_arr = ind.breakout_age.to_numpy()
+    assert np.isnan(breakout_age_arr[0]), 'vor dem ersten Ausbruch muss breakout_age NaN sein'
+
+    indicators = {'range': ind}
+    cond = {'lhs': 'indicator:range:breakout_age', 'lhs_shift': 0,
+            'op': '<=', 'rhs': 25, 'rhs_shift': 0}
+    mask = _evaluate_rule_group({'blocks': [{'conditions': [cond]}]}, ohlc_data, indicators)
+
+    assert not mask.iloc[0], (
+        '`breakout_age <= 25` an einem NaN-Balken (vor dem ersten Ausbruch) darf kein '
+        'Signal ergeben')
+    nach_erstem_ausbruch = int(np.argmax(~np.isnan(breakout_age_arr)))
+    assert mask.iloc[nach_erstem_ausbruch], (
+        'am Ausbruchsbalken selbst (breakout_age == 0) muss die Bedingung dagegen greifen')
 
 
 @pytest.mark.parametrize('kwargs, text', [

@@ -27,6 +27,12 @@ der Backtest mit Wissen aus der Zukunft rechnen.
 Der Ausbruch selbst hat hier bewusst keinen Code — er ist eine Regel:
     close > indicator:range:top UND close[1] <= indicator:range:top[1]
     UND indicator:range:valid > 0
+
+`dwsSignumRange` liefert zusätzlich `breakout_age`: die Zahl der Balken seit dem
+letzten Ausbruch nach oben (`close[t] > top[t]` UND `valid[t] > 0`, ohne die
+Vorbalken-Bedingung der Regel oben). 0 am Ausbruchsbalken, danach je Balken +1,
+bis der nächste Ausbruch den Zähler wieder auf 0 setzt. Vor dem ersten Ausbruch
+NaN, danach lückenlos — auch wenn `valid` zwischendurch 0 ist.
 """
 
 from typing import Tuple
@@ -301,11 +307,14 @@ def _range_arrays(high, low, close, left: int, right: int, window: int, toleranc
     """Gemeinsame Rechnung für Range-Serien und Range-Zonen.
 
     Returns:
-        Tuple (top, bottom, valid, height, duration, start_index) — die letzte
-        Größe ist der Balkenindex des Formationsbeginns (NaN, wenn ungültig).
+        Tuple (top, bottom, valid, height, duration, start_index, breakout_age)
+        — start_index ist der Balkenindex des Formationsbeginns (NaN, wenn
+        ungültig), breakout_age die Zahl der Balken seit dem letzten Ausbruch
+        nach oben (`close[t] > top[t]` UND `valid[t] > 0`).
     """
     high = np.ascontiguousarray(np.asarray(high, dtype=np.float64))
     low = np.ascontiguousarray(np.asarray(low, dtype=np.float64))
+    close_arr = np.ascontiguousarray(np.asarray(close, dtype=np.float64))
 
     conf_high, conf_low = _pivot_confirm_nb(high, low, left, right)
     resistance, support, _, _, res_start, sup_start = _tested_levels_nb(
@@ -335,7 +344,22 @@ def _range_arrays(high, low, close, left: int, right: int, window: int, toleranc
         if h <= max_height and d >= min_duration:
             valid[t] = 1.0
             start_index[t] = beginn
-    return top, bottom, valid, height, duration, start_index
+
+    # Ausbruchsalter: Balken seit dem letzten Ausbruch nach oben. Eigener
+    # Durchlauf, weil top/valid erst nach der Schleife oben feststehen —
+    # top[t]/valid[t] hängen nur von Daten bis t ab, bleiben also kausal.
+    breakout_age = np.full(n, np.nan)
+    alter = -1.0
+    for t in range(n):
+        ausbruch = valid[t] > 0.0 and not np.isnan(close_arr[t]) and close_arr[t] > top[t]
+        if ausbruch:
+            alter = 0.0
+        elif alter >= 0.0:
+            alter += 1.0
+        if alter >= 0.0:
+            breakout_age[t] = alter
+
+    return top, bottom, valid, height, duration, start_index, breakout_age
 
 
 def signum_range_inc(high, low, close, left: int = 3, right: int = 3, window: int = 80,
@@ -360,8 +384,10 @@ def signum_range_inc(high, low, close, left: int = 3, right: int = 3, window: in
         min_duration: Mindestdauer der Formation in Balken (Vorgabe 14).
 
     Returns:
-        Tuple (top, bottom, valid, height, duration) — Deckel, Boden, 1/0 für
-        eine gültige Formation, Höhe als Anteil und Dauer in Balken.
+        Tuple (top, bottom, valid, height, duration, breakout_age) — Deckel,
+        Boden, 1/0 für eine gültige Formation, Höhe als Anteil, Dauer in Balken
+        und die Zahl der Balken seit dem letzten Ausbruch nach oben (NaN vor
+        dem ersten Ausbruch, danach lückenlos).
 
     Raises:
         ValueError: Bei unbrauchbarer Höhe oder Dauer.
@@ -389,9 +415,9 @@ def signum_range_inc(high, low, close, left: int = 3, right: int = 3, window: in
         raise ValueError(
             f'dwsSignumRange: min_duration muss mindestens 1 sein, ist {min_duration}')
 
-    top, bottom, valid, height, duration, _ = _range_arrays(
+    top, bottom, valid, height, duration, _, breakout_age = _range_arrays(
         high, low, close, left, right, window, tolerance, min_tests, max_height, min_duration)
-    return top, bottom, valid, height, duration
+    return top, bottom, valid, height, duration, breakout_age
 
 
 def signum_range_zones(high, low, close, left: int = 3, right: int = 3, window: int = 80,
@@ -417,7 +443,7 @@ def signum_range_zones(high, low, close, left: int = 3, right: int = 3, window: 
     Returns:
         Liste von Dicts mit start_index, end_index, top, bottom und bullish.
     """
-    top, bottom, valid, _, _, start_index = _range_arrays(
+    top, bottom, valid, _, _, start_index, _ = _range_arrays(
         high, low, close, int(left), int(right), int(window), float(tolerance), int(min_tests),
         float(max_height), int(min_duration))
 
@@ -484,8 +510,8 @@ dwsSignumLevel = vbt.IF(
 
 
 # dwsSignumRange — die Konsolidierungs-Range als handelbare Formation.
-# Preisskaliert (Overlay); valid/height/duration sind Kennzahlen fürs Subplot.
-# Beispiel-Regel „Ausbruch nach oben":
+# Preisskaliert (Overlay); valid/height/duration/breakout_age sind Kennzahlen
+# fürs Subplot. Beispiel-Regel „Ausbruch nach oben":
 #   close > indicator:range:top UND close[1] <= indicator:range:top[1]
 #   UND indicator:range:valid > 0
 dwsSignumRange = vbt.IF(
@@ -493,7 +519,7 @@ dwsSignumRange = vbt.IF(
     input_names=['high', 'low', 'close'],
     param_names=['left', 'right', 'window', 'tolerance', 'min_tests',
                  'max_height', 'min_duration'],
-    output_names=['top', 'bottom', 'valid', 'height', 'duration'],
+    output_names=['top', 'bottom', 'valid', 'height', 'duration', 'breakout_age'],
 ).with_apply_func(
     signum_range_inc,
     takes_1d=True,

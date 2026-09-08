@@ -117,6 +117,12 @@ INDICATOR_EXPLANATIONS: dict[str, dict] = {
             'valid': '1, solange die Spanne flach und alt genug ist, sonst 0.',
             'height': 'Höhe der Spanne als Anteil: 0.12 heißt 12 Prozent zwischen Boden und Deckel.',
             'duration': 'Kerzen seit dem ersten Test der Formation.',
+            'breakout_age': (
+                'Kerzen seit dem letzten Ausbruch nach oben (Schlusskurs über dem Deckel '
+                'einer gültigen Spanne). 0 an der Ausbruchskerze, danach je Kerze eins mehr, '
+                'bis der nächste Ausbruch wieder auf 0 zurückspringt. Vor dem ersten Ausbruch '
+                'leer.'
+            ),
         },
     },
 
