@@ -132,3 +132,23 @@ def test_kein_blick_nach_vorn():
     voll = np.asarray(_run(_ohlc(kurs)).filt).ravel()
     kurz = np.asarray(_run(_ohlc(kurs[:300])).filt).ravel()
     assert np.allclose(voll[:300], kurz, atol=1e-12)
+
+
+def test_width_ist_relativer_bandabstand():
+    """`width` ist der Bandabstand relativ zur Mittellinie in Prozent.
+
+    Rechnerisch (hband - lband) / filt * 100 auf jedem Balken; bei konstantem Kurs
+    kollabiert das Band und die Breite geht gegen null.
+    """
+    df = _ohlc(100 + np.sin(np.linspace(0, 40, 500)) * 15)
+    ind = _run(df)
+    filt = np.asarray(ind.filt).ravel()
+    hband = np.asarray(ind.hband).ravel()
+    lband = np.asarray(ind.lband).ravel()
+    width = np.asarray(ind.width).ravel()
+    assert len(width) == len(df)
+    assert np.allclose(width[1:], (hband[1:] - lband[1:]) / filt[1:] * 100.0)
+    assert np.all(width[1:] > 0)
+
+    flach = _run(_ohlc(np.full(600, 250.0), spanne=0.0))
+    assert np.asarray(flach.width).ravel()[-1] == pytest.approx(0.0, abs=1e-6)

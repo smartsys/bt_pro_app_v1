@@ -9,6 +9,15 @@ from numba import njit
 import numpy as np
 import talib
 
+# GEÄNDERT: SIGNUM-Breakout-Bausteine liegen in einem eigenen Modul; der Import macht
+# sie hier sichtbar, weil Katalog und Registry ausschließlich dieses Modul scannen.
+from user_data.utils.indicators.signum import (  # noqa: F401
+    dwsSignumPivot,
+    dwsSignumLevel,
+    dwsSignumRange,
+    signum_range_zones,
+)
+
 
 def align_dataframes(dataframes):
     """
@@ -624,6 +633,11 @@ def gaussian_channel_inc(open_, high, low, close, source='hlc3', poles=4, period
     Gehandelt wird in der Vorlage ausschließlich gegen `hband` — `filt` und `lband`
     sind dort Anzeige.
 
+    GEÄNDERT: Zusätzlicher Output `width` — Bandabstand relativ zur Mittellinie in
+    Prozent, (hband - lband) / filt * 100. Misst den Volatilitätszustand des Kanals
+    (eng = Kompression, weit = gelaufene Bewegung) und ist damit als Einstiegsfilter
+    in den Regeln verwendbar; die Rules-Engine rechnet selbst keine Arithmetik.
+
     Args:
         open_: Open-Serie (nur für `source='ohlc4'` gebraucht).
         high: High-Serie.
@@ -637,7 +651,8 @@ def gaussian_channel_inc(open_, high, low, close, source='hlc3', poles=4, period
         fast_response: Mittelwert aus N-Pol- und 1-Pol-Filter (Pine „Fast Response Mode").
 
     Returns:
-        Tuple (filt, hband, lband) — Mittellinie, obere und untere Kanallinie.
+        Tuple (filt, hband, lband, width) — Mittellinie, obere und untere Kanallinie,
+        relative Kanalbreite in Prozent.
     """
     poles = int(poles)
     if not 1 <= poles <= 9:
@@ -684,7 +699,10 @@ def gaussian_channel_inc(open_, high, low, close, source='hlc3', poles=4, period
 
     hband = filt + filttr * mult
     lband = filt - filttr * mult
-    return filt, hband, lband
+    # GEÄNDERT: relative Kanalbreite; bei filt <= 0 (nur bei unsinnigen Kursen) NaN statt Division durch null
+    with np.errstate(divide='ignore', invalid='ignore'):
+        width = np.where(filt > 0, (hband - lband) / filt * 100.0, np.nan)
+    return filt, hband, lband, width
 
 
 # dwsGaussianChannel — Ehlers-Tiefpass mit True-Range-Band, Nachbau des TradingView-
@@ -696,7 +714,7 @@ dwsGaussianChannel = vbt.IF(
     class_name='dwsGaussianChannel',
     input_names=['open', 'high', 'low', 'close'],
     param_names=['source', 'poles', 'period', 'mult', 'reduced_lag', 'fast_response'],
-    output_names=['filt', 'hband', 'lband'],
+    output_names=['filt', 'hband', 'lband', 'width'],
 ).with_apply_func(
     gaussian_channel_inc,
     takes_1d=True,
@@ -908,6 +926,7 @@ def fvg_zones(high, low, close, threshold=0.0, auto=False):
 # start_index / end_index / top / bottom / bullish.
 ZONE_PROVIDERS = {
     'dwsFVG': {'fn': fvg_zones, 'inputs': ['high', 'low', 'close']},
+    'dwsSignumRange': {'fn': signum_range_zones, 'inputs': ['high', 'low', 'close']},
 }
 
 

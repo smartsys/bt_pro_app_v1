@@ -33,8 +33,23 @@
   }
   /* GEÄNDERT: Short-Blöcke optisch als Short-Position kennzeichnen */
   .cp-rule-block--short { border-left: 3px solid #d63939 !important; background: rgba(214, 57, 57, 0.08); }
-  /* GEÄNDERT: Indikator-Konfig-Dropdown — Zeile zeigt nur den Namen; Beschreibung als schwebender Tooltip (verschiebt nichts) */
-  #cpIndCfgTip {
+  /* GEÄNDERT: Blätter-Buttons neben dem Symbol-Dropdown auf Feldhöhe der Toolbar */
+  .cp-toolbar .cp-step-btn {
+    height: 32px;
+    padding: 0 4px;
+    line-height: 1;
+    font-size: 0.95rem;
+  }
+  /* GEÄNDERT: Die Custom-Dropdown-Buttons sind <button>-Elemente und werden von der Toolbar-Regel
+     (.cp-toolbar select, input) nicht erfasst — hier auf dieselbe Höhe und Schriftgröße bringen.
+     Rechts bleibt Platz für den Pfeil der .form-select-Optik. */
+  .cp-toolbar button.form-select {
+    font-size: 0.85rem;
+    height: 32px;
+    padding: 4px 28px 4px 8px;
+  }
+  /* GEÄNDERT: Konzept- und Indikator-Konfig-Dropdown — Zeile zeigt nur den Namen; Beschreibung als schwebender Tooltip (verschiebt nichts) */
+  #cpIndCfgTip, #cpConceptTip, #cpIterationTip, #cpSetupTip {
     display: none; position: fixed; z-index: 1080; max-width: 28rem;
     padding: 0.5rem 0.75rem; border-radius: 6px;
     background: #1a2234; color: #e8ecf3; font-size: 0.875rem; line-height: 1.4;
@@ -55,15 +70,25 @@
     <div class="cp-toolbar mb-2">
       <div style="flex:1;min-width:120px">
         <label class="form-label">Konzept</label>
-        <select class="form-select w-100" id="cpConceptSlug" title="Konzept für den Backtest-Run auswählen">
-          <option value="">-- Konzept --</option>
-        </select>
+        <!-- GEÄNDERT: natives select durch Custom-Dropdown ersetzt, damit die Konzept-Beschreibung als Tooltip erscheint;
+             der Wert (Slug) lebt weiterhin unter der ID cpConceptSlug, jetzt als hidden input -->
+        <div class="dropdown w-100" id="cpConceptDropdown" style="position:relative">
+          <button type="button" class="form-select w-100 text-start text-truncate" id="cpConceptButton" title="Konzept für den Backtest-Run auswählen">-- Konzept --</button>
+          <div class="dropdown-menu p-0" id="cpConceptMenu" style="position:absolute;top:100%;left:0;min-width:22rem;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
+          <input type="hidden" id="cpConceptSlug">
+          <div id="cpConceptTip"></div>
+        </div>
       </div>
       <div style="flex:1;min-width:120px">
         <label class="form-label">Iteration</label>
-        <select class="form-select w-100" id="cpIterationSelect">
-          <option value="">-- Iteration --</option>
-        </select>
+        <!-- GEÄNDERT: natives select durch Custom-Dropdown ersetzt, damit die Iterations-Beschreibung als Tooltip erscheint;
+             der Wert (Iterations-ID) lebt weiterhin unter der ID cpIterationSelect, jetzt als hidden input -->
+        <div class="dropdown w-100" id="cpIterationDropdown" style="position:relative">
+          <button type="button" class="form-select w-100 text-start text-truncate" id="cpIterationButton" title="Iteration des Konzepts auswählen">-- Iteration --</button>
+          <div class="dropdown-menu p-0" id="cpIterationMenu" style="position:absolute;top:100%;left:0;min-width:22rem;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
+          <input type="hidden" id="cpIterationSelect">
+          <div id="cpIterationTip"></div>
+        </div>
       </div>
       <div style="flex:1;min-width:120px">
         <label class="form-label">Indikator-Konfiguration</label>
@@ -98,7 +123,12 @@
       </div>
       <div>
         <label class="form-label">Symbol</label>
-        <select class="form-select" id="cpSymbol" style="min-width:140px"></select>
+        <!-- GEÄNDERT: Blätter-Buttons links/rechts neben dem Symbol-Dropdown -->
+        <div class="d-flex align-items-center" style="gap:2px">
+          <button type="button" class="btn btn-outline-secondary cp-step-btn" id="cpSymbolPrevBtn" title="Vorheriges Symbol">&lsaquo;</button>
+          <select class="form-select" id="cpSymbol" style="min-width:120px"></select>
+          <button type="button" class="btn btn-outline-secondary cp-step-btn" id="cpSymbolNextBtn" title="Nächstes Symbol">&rsaquo;</button>
+        </div>
       </div>
       <div>
         <label class="form-label">OHLC Start</label>
@@ -133,9 +163,10 @@
         <button type="button" class="tf-btn nav-btn" id="cpNavEndBtn" title="Zum Ende springen">|&raquo;</button>
         <span class="tf-separator"></span>
         <button type="button" class="tf-btn nav-btn" id="cpFitBtn" title="Alles anzeigen">Fit</button>
+        <!-- GEÄNDERT: Höhe steht jetzt direkt neben Fit; der Trennstrich davor gehört zu Lineal -->
+        <button type="button" class="tf-btn" id="cpHeightBtn" title="Charthöhe umschalten (400/700)">Höhe</button>
         <span class="tf-separator"></span>
         <button type="button" class="tf-btn" id="cpRulerBtn" title="Preis-Differenz messen">Lineal</button>
-        <button type="button" class="tf-btn" id="cpHeightBtn" title="Charthöhe umschalten (400/700)">Höhe</button>
         <span class="tf-separator"></span>
         <!-- GEÄNDERT: View-Schalter (Candles/Equity/Long/Short) als an-/abwählbare Toggle-Buttons.
              Checkbox-Input bleibt erhalten (gleiche IDs) — gesamte JS-Logik unverändert; die .active-Klasse
@@ -147,9 +178,14 @@
       </div>
       <div class="d-flex align-items-center gap-2 ms-auto">
         <span id="cpStatus" class="cp-status"></span>
-        <select class="form-select form-select-sm" id="cpSetupSelect" style="min-width:300px;max-width:400px">
-          <option value="">-- Setup --</option>
-        </select>
+        <!-- GEÄNDERT: natives select durch Custom-Dropdown ersetzt, damit die Setup-Beschreibung als Tooltip erscheint;
+             der Wert (Setup-ID) lebt weiterhin unter der ID cpSetupSelect, jetzt als hidden input -->
+        <div class="dropdown" id="cpSetupDropdown" style="position:relative;min-width:300px;max-width:400px">
+          <button type="button" class="form-select form-select-sm w-100 text-start text-truncate" id="cpSetupButton" title="Setup auswählen">-- Setup --</button>
+          <div class="dropdown-menu p-0" id="cpSetupMenu" style="position:absolute;top:100%;right:0;min-width:30rem;width:max-content;max-width:900px;max-height:360px;overflow-y:auto;overflow-x:hidden"></div>
+          <input type="hidden" id="cpSetupSelect">
+          <div id="cpSetupTip"></div>
+        </div>
         <button class="btn btn-sm btn-outline-primary" id="cpLoadSetupBtn" title="Gewähltes Setup laden (überschreibt die aktuelle Playground-Arbeit)">Laden</button>
         <button class="btn btn-sm btn-outline-success" id="cpSaveBtn" title="Aktuelles Setup speichern">Speichern</button>
         <button class="btn btn-sm btn-outline-success" id="cpSaveAsBtn" title="Als neues Setup speichern">Speichern unter...</button>
@@ -905,14 +941,23 @@
     }));
   }
 
+  // GEÄNDERT: Letzter Ausschnitt, der NICHT "alles" zeigte — Ziel des zweiten Fit-Klicks.
+  let cpLastUnfittedRange = null;
+
   function cpUpdateFitButtonState() {
     const btn = document.getElementById('cpFitBtn');
     if (!btn) return;
     if (!state.chart || !state.candleSeries) { btn.classList.remove('active'); return; }
-    const r = state.chart.timeScale().getVisibleLogicalRange();
+    const ts = state.chart.timeScale();
+    const r = ts.getVisibleLogicalRange();
     const n = (state.candleSeries.data() || []).length;
     if (!r || n === 0) { btn.classList.remove('active'); return; }
     const fitted = r.from <= 0.5 && r.to >= n - 1.5;
+    // GEÄNDERT: solange die Ansicht ein Teilstück zeigt, den Bereich mitschreiben — daraus
+    // bedient sich der zweite Fit-Klick, um den vorherigen Ausschnitt zurückzuholen.
+    if (!fitted) {
+      try { cpLastUnfittedRange = ts.getVisibleRange() || cpLastUnfittedRange; } catch (e) {}
+    }
     btn.classList.toggle('active', fitted);
   }
 
@@ -949,6 +994,21 @@
     (src ? src.symbols : []).forEach(sy => { const o = document.createElement('option'); o.value = sy; o.textContent = sy; symSel.appendChild(o); });
     if (src && src.symbols.includes(prev)) symSel.value = prev;
   }
+
+  // GEÄNDERT: Symbol-Auswahl um eine Position verschieben (an den Enden anhalten).
+  // Löst change aus, damit die bestehende Logik (u.a. Verwerfen des Schnellbacktest-Ergebnisses) greift,
+  // und rechnet anschließend den Schnellbacktest für das neue Symbol (lädt den Chart selbst nach).
+  function stepSymbol(delta) {
+    const sel = document.getElementById('cpSymbol');
+    if (!sel.options.length) return;
+    const next = Math.min(sel.options.length - 1, Math.max(0, sel.selectedIndex + delta));
+    if (next === sel.selectedIndex) return;
+    sel.selectedIndex = next;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    runBacktestLite({ fitAfter: true });
+  }
+  document.getElementById('cpSymbolPrevBtn').addEventListener('click', () => stepSymbol(-1));
+  document.getElementById('cpSymbolNextBtn').addEventListener('click', () => stepSymbol(1));
 
   async function loadBacktestConfigs() {
     try {
@@ -1098,10 +1158,26 @@
     const r = await fetch('/api/chart-playground/setups');
     const j = await r.json();
     state.setups = (j.data && j.data.items) || [];
-    const sel = document.getElementById('cpSetupSelect');
-    sel.innerHTML = '<option value="">-- Setup --</option>';
-    // GEÄNDERT: Setup-ID voranstellen (= URL-Schlüssel ?setupid=) zur besseren Identifikation
-    state.setups.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.id + ' — ' + s.name; sel.appendChild(o); });
+    const menu = document.getElementById('cpSetupMenu');
+    menu.innerHTML = '';
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'dropdown-item text-secondary';
+    clear.dataset.id = '';
+    clear.textContent = '-- Setup --';
+    menu.appendChild(clear);
+    // GEÄNDERT: Setup-ID voranstellen (= URL-Schlüssel ?setupid=) zur besseren Identifikation;
+    // die Beschreibung erscheint beim Hover als schwebender Tooltip
+    state.setups.forEach(s => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'dropdown-item';
+      item.dataset.id = s.id;
+      item.dataset.desc = (s.description || '').trim();
+      item.textContent = s.id + ' — ' + s.name;
+      menu.appendChild(item);
+    });
+    updateSetupButton();
   }
 
   async function loadConcepts() {
@@ -1110,21 +1186,45 @@
       const j = await r.json();
       const concepts = (j.data && j.data.items) || j.data || [];
       state.concepts = concepts;
-      const sel = document.getElementById('cpConceptSlug');
-      sel.innerHTML = '<option value="">-- Konzept --</option>';
-      concepts.forEach(c => {
-        const o = document.createElement('option');
-        o.value = c.slug;
-        o.textContent = c.name || c.slug;
-        sel.appendChild(o);
+      const menu = document.getElementById('cpConceptMenu');
+      menu.innerHTML = '';
+      // Leerauswahl
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'dropdown-item text-secondary';
+      clear.dataset.slug = '';
+      clear.textContent = '-- Konzept --';
+      menu.appendChild(clear);
+      // GEÄNDERT: absteigend nach ID sortieren (neuestes Konzept zuerst)
+      concepts.slice().sort((a, b) => (b.id || 0) - (a.id || 0)).forEach(c => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'dropdown-item';
+        item.dataset.slug = c.slug;
+        // GEÄNDERT: Beschreibung als schwebender Tooltip beim Hover (gleichnamige Konzepte unterscheidbar)
+        item.dataset.desc = (c.description || '').trim();
+        // GEÄNDERT: Konzept-ID voranstellen (wie beim Setup-Dropdown)
+        item.textContent = c.id + ' — ' + (c.name || c.slug);
+        menu.appendChild(item);
       });
+      updateConceptButton();
     } catch (e) { console.warn('Konzepte laden fehlgeschlagen', e); }
   }
 
+  // GEÄNDERT: Menü-Zeilen des Iterations-Dropdowns neu aufbauen; die Auswahl wird dabei zurückgesetzt
+  // (entspricht dem früheren Neuaufbau der select-Optionen).
   async function loadIterationsForConcept(conceptSlug) {
-    const sel = document.getElementById('cpIterationSelect');
-    sel.innerHTML = '<option value="">-- Iteration --</option>';
+    const menu = document.getElementById('cpIterationMenu');
+    menu.innerHTML = '';
+    document.getElementById('cpIterationSelect').value = '';
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'dropdown-item text-secondary';
+    clear.dataset.id = '';
+    clear.textContent = '-- Iteration --';
+    menu.appendChild(clear);
     state.iterations = [];
+    updateIterationButton();
     if (!conceptSlug) return;
     const concept = (state.concepts || []).find(c => c.slug === conceptSlug);
     if (!concept) return;
@@ -1140,13 +1240,22 @@
         .filter(it => it.status !== 'draft')
         .sort((a, b) => (b.version || 0) - (a.version || 0))
         .forEach(it => {
-          const o = document.createElement('option');
-          o.value = it.id;
-          const name = (it.version_name || '').trim();
-          o.textContent = name ? it.version + ' - ' + name : String(it.version);
-          sel.appendChild(o);
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'dropdown-item';
+          item.dataset.id = it.id;
+          // GEÄNDERT: Beschreibung als schwebender Tooltip beim Hover
+          item.dataset.desc = (it.description || '').trim();
+          item.textContent = iterationOptionLabel(it);
+          menu.appendChild(item);
         });
     } catch (e) { console.warn('Iterationen laden fehlgeschlagen', e); }
+  }
+
+  // GEÄNDERT: Beschriftung einer Iterations-Zeile — Version plus Versionsname (bewusst nicht die ID)
+  function iterationOptionLabel(it) {
+    const name = (it.version_name || '').trim();
+    return name ? it.version + ' - ' + name : String(it.version);
   }
 
   async function loadCatalog() {
@@ -2828,7 +2937,9 @@
         // Chart-Lade-Fehler genauso gut lesbar ist wie der Lite-Backtest-Fehler.
         showToast('Chart laden: ' + errs.length + (errs.length === 1 ? ' Indikator fehlgeschlagen' : ' Indikatoren fehlgeschlagen') + ': ' + errDetail, 'err');
       } else {
-        setStatus('Alle Indikatoren berechnet', 'ok');
+        // GEÄNDERT: keine Erfolgsmeldung mehr in der Toolbar — nur eine eventuell dort stehende
+        // ältere Meldung räumen. Rückmeldungen zum Lauf stehen unter dem Chart (Badge).
+        setStatus('');
       }
     } catch (e) {
       setStatus('Fehler: ' + e.message, 'err');
@@ -3613,9 +3724,20 @@
   // GEÄNDERT: Das Schnellbacktest-Ergebnis ist nach jeder Änderung an Indikatoren/Regeln/Portfolio/Chart-Config
   // veraltet. Komplett verwerfen (Badge + Equity-Overlay + Trade-Marker), damit keine irreführenden Alt-Werte
   // stehen bleiben. Idempotent — tut nichts, wenn bereits leer.
+  // GEÄNDERT: Hinweis-Meldung an der Stelle des Ergebnis-Badges unter dem Chart (z.B. "Setup geladen").
+  // kind='info' markiert sie, damit der anschließende Schnellbacktest sie stehen lässt und erst das
+  // Ergebnis sie ersetzt — ein altes Ergebnis wird dagegen wie bisher sofort verworfen.
+  function setLiteBadgeInfo(msg) {
+    const badge = document.getElementById('cpLiteBadge');
+    if (!badge) return;
+    badge.dataset.kind = 'info';
+    badge.textContent = msg;
+    badge.className = 'badge bg-azure-lt';
+  }
+
   function invalidateLiteResult() {
     const badge = document.getElementById('cpLiteBadge');
-    if (badge && !badge.classList.contains('d-none')) badge.className = 'badge d-none';
+    if (badge && !badge.classList.contains('d-none')) { badge.className = 'badge d-none'; badge.dataset.kind = ''; }
     if (cpCurrentEquitySeries && state.chart) {
       try { state.chart.removeSeries(cpCurrentEquitySeries); } catch (e) {}
       cpCurrentEquitySeries = null;
@@ -3715,7 +3837,8 @@
     const btn = document.getElementById('cpRunLiteBtn');
     const badge = document.getElementById('cpLiteBadge');
     btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Berechne...';
-    badge.className = 'badge d-none';
+    // GEÄNDERT: Hinweis-Meldung (z.B. "Setup geladen") bleibt bis zum Ergebnis stehen; ein altes Ergebnis nicht.
+    if (badge.dataset.kind !== 'info') badge.className = 'badge d-none';
 
     // GEÄNDERT: Änderungs-Check — wurde seit dem letzten Laden tf/Symbol/Exchange/Zeitraum geändert,
     // erst Candles+Indikatoren auf den aktuellen Stand bringen. Sonst rechnete der Lauf z.B. auf 4h,
@@ -3767,6 +3890,7 @@
       const ddStr = d.max_drawdown != null ? pctFmtLite.format(d.max_drawdown * 100) + ' %' : '-';
       badge.textContent = `Total Return: ${retStr}  ·  Benchmark: ${benchStr}  ·  Profitfaktor: ${pfStr}  ·  Max DD: ${ddStr}  ·  ${d.trades ?? '-'} Trades  ·  ${durStr}`;
       const isPositive = d.total_return != null && d.total_return >= 0;
+      badge.dataset.kind = 'result';
       // GEÄNDERT: text-white für WCAG-AA-Kontrast auf grün/rot
       badge.className = 'badge text-white ' + (isPositive ? 'bg-success' : 'bg-danger');
 
@@ -3957,6 +4081,7 @@
     // Konzept-Dropdown auf gespeichertes Konzept setzen und Iterationen nachladen
     if (strat.concept_slug !== undefined) {
       document.getElementById('cpConceptSlug').value = strat.concept_slug || '';
+      updateConceptButton();
       await loadIterationsForConcept(strat.concept_slug || '');
     }
 
@@ -4060,7 +4185,7 @@
     // GEÄNDERT: Dropdown-Auswahl (Iteration/Backtest-Config/Indikator-Config) nur optisch wiederherstellen.
     // Direktes Setzen von .value löst KEIN change-Event aus → die geladenen Werte werden nicht überschrieben.
     const sc = ui.selected_configs || {};
-    if (sc.iteration_id) document.getElementById('cpIterationSelect').value = String(sc.iteration_id);
+    if (sc.iteration_id) { document.getElementById('cpIterationSelect').value = String(sc.iteration_id); updateIterationButton(); }
     if (sc.backtest_config_id) document.getElementById('cpBacktestCfgSelect').value = String(sc.backtest_config_id);
     // Indikator-Config-Optionen nach gesetztem Konzept/Iteration neu gruppieren, dann Auswahl setzen
     refreshIndCfgOptions();
@@ -4102,6 +4227,7 @@
       if (j.error) { setStatus('Fehler beim Speichern: ' + j.error, 'err'); return; }
       await loadSetups();
       document.getElementById('cpSetupSelect').value = state.currentSetupId;
+      updateSetupButton();
       setStatus('Setup aktualisiert', 'ok');
     } else {
       // Modal öffnen — Name und Beschreibung aus Konzept/Iteration/Backtest vorbelegen
@@ -4156,6 +4282,7 @@
     state.currentSetupId = j.data.id;
     await loadSetups();
     document.getElementById('cpSetupSelect').value = state.currentSetupId;
+    updateSetupButton();
     closeModal('cpSaveModal');
     setStatus('Setup "' + name + '" gespeichert', 'ok');
   }
@@ -4334,8 +4461,10 @@
       if (cc) cc.iteration_counter = j.data.version;
       // Neu angelegtes/gewähltes Konzept im Playground aktiv setzen
       document.getElementById('cpConceptSlug').value = conceptSlug || '';
+      updateConceptButton();
       await loadIterationsForConcept(conceptSlug || '');
       document.getElementById('cpIterationSelect').value = String(j.data.id);
+      updateIterationButton();
       refreshIndCfgOptions();
       closeModal('cpIterSaveModal');
       setIterStatus((isNew ? 'Neues Konzept + Iteration ' : 'Neue Iteration ') + j.data.version + ' gespeichert', 'ok');
@@ -4596,7 +4725,16 @@
     e.stopPropagation(); this.blur();
     // GEÄNDERT: Fit bleibt aktiv, solange die Ansicht "alles" zeigt — der Zustand wird vom
     // subscribeVisibleLogicalRangeChange-Abo (cpUpdateFitButtonState) gesetzt, kein kurzes Blinken mehr.
-    if (state.chart) { state.chart.timeScale().fitContent(); cpUpdateFitButtonState(); }
+    // GEÄNDERT: Zweiter Klick bei aktivem Fit holt den zuletzt gezeigten Teilausschnitt zurück.
+    if (!state.chart) return;
+    const ts = state.chart.timeScale();
+    if (this.classList.contains('active') && cpLastUnfittedRange) {
+      const back = cpLastUnfittedRange;
+      try { ts.setVisibleRange({ from: back.from, to: back.to }); } catch (e2) { ts.fitContent(); }
+    } else {
+      ts.fitContent();
+    }
+    cpUpdateFitButtonState();
   });
   // Charthöhe zwischen 400 und 700 umschalten (autoSize folgt dem Container automatisch).
   // GEÄNDERT: Im hohen Modus wird zusätzlich die Top-Navigation ausgeblendet, damit der
@@ -4946,10 +5084,89 @@
     });
   }
 
+  // GEÄNDERT: Button-Anzeige (geschlossenes Konzept-Dropdown) aus dem hidden-Wert ableiten
+  function updateConceptButton() {
+    const slug = document.getElementById('cpConceptSlug').value;
+    const c = slug ? (state.concepts || []).find(x => x.slug === slug) : null;
+    const btn = document.getElementById('cpConceptButton');
+    btn.textContent = c ? (c.id + ' — ' + (c.name || c.slug)) : '-- Konzept --';
+    btn.title = c && c.description ? c.description : 'Konzept für den Backtest-Run auswählen';
+  }
+
+  // GEÄNDERT: Custom-Dropdown auf/zu
+  document.getElementById('cpConceptButton').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('cpConceptMenu').classList.toggle('show');
+  });
+  // GEÄNDERT: Item-Klick → hidden-Wert setzen, Menü schließen, change auslösen (bestehende Ladelogik greift)
+  document.getElementById('cpConceptMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    const hidden = document.getElementById('cpConceptSlug');
+    hidden.value = item.dataset.slug || '';
+    document.getElementById('cpConceptMenu').classList.remove('show');
+    hideDescTip('cpConceptTip');
+    updateConceptButton();
+    hidden.dispatchEvent(new Event('change'));
+  });
+  // GEÄNDERT: Klick außerhalb schließt das Menü (und versteckt den Tooltip)
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('cpConceptDropdown');
+    if (dd && !dd.contains(e.target)) { document.getElementById('cpConceptMenu').classList.remove('show'); hideDescTip('cpConceptTip'); }
+  });
+  // GEÄNDERT: Hover über eine Zeile zeigt die Konzept-Beschreibung als schwebenden Tooltip
+  const cpConceptMenuEl = document.getElementById('cpConceptMenu');
+  cpConceptMenuEl.addEventListener('mouseover', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (item && item.dataset.slug) showDescTip('cpConceptTip', item); else hideDescTip('cpConceptTip');
+  });
+  cpConceptMenuEl.addEventListener('mouseleave', () => hideDescTip('cpConceptTip'));
+  cpConceptMenuEl.addEventListener('scroll', () => hideDescTip('cpConceptTip'));
+
   document.getElementById('cpConceptSlug').addEventListener('change', async (e) => {
     await loadIterationsForConcept(e.target.value);
     refreshIndCfgOptions();
   });
+
+  // GEÄNDERT: Button-Anzeige (geschlossenes Iterations-Dropdown) aus dem hidden-Wert ableiten
+  function updateIterationButton() {
+    const id = parseInt(document.getElementById('cpIterationSelect').value, 10) || null;
+    const it = id ? (state.iterations || []).find(x => x.id === id) : null;
+    const btn = document.getElementById('cpIterationButton');
+    // Wert gesetzt, Iteration aber nicht im Cache (z.B. anderes Konzept geladen) -> ID zeigen statt Platzhalter
+    btn.textContent = it ? iterationOptionLabel(it) : (id ? 'Iteration ' + id : '-- Iteration --');
+    btn.title = it && it.description ? it.description : 'Iteration des Konzepts auswählen';
+  }
+
+  // GEÄNDERT: Custom-Dropdown auf/zu
+  document.getElementById('cpIterationButton').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('cpIterationMenu').classList.toggle('show');
+  });
+  // GEÄNDERT: Item-Klick → hidden-Wert setzen, Menü schließen, change auslösen (bestehende Ladelogik greift)
+  document.getElementById('cpIterationMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    const hidden = document.getElementById('cpIterationSelect');
+    hidden.value = item.dataset.id || '';
+    document.getElementById('cpIterationMenu').classList.remove('show');
+    hideDescTip('cpIterationTip');
+    updateIterationButton();
+    hidden.dispatchEvent(new Event('change'));
+  });
+  // GEÄNDERT: Klick außerhalb schließt das Menü (und versteckt den Tooltip)
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('cpIterationDropdown');
+    if (dd && !dd.contains(e.target)) { document.getElementById('cpIterationMenu').classList.remove('show'); hideDescTip('cpIterationTip'); }
+  });
+  // GEÄNDERT: Hover über eine Zeile zeigt die Iterations-Beschreibung als schwebenden Tooltip
+  const cpIterationMenuEl = document.getElementById('cpIterationMenu');
+  cpIterationMenuEl.addEventListener('mouseover', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (item && item.dataset.id) showDescTip('cpIterationTip', item); else hideDescTip('cpIterationTip');
+  });
+  cpIterationMenuEl.addEventListener('mouseleave', () => hideDescTip('cpIterationTip'));
+  cpIterationMenuEl.addEventListener('scroll', () => hideDescTip('cpIterationTip'));
 
   document.getElementById('cpIterationSelect').addEventListener('change', () => {
     refreshIndCfgOptions();
@@ -4969,6 +5186,45 @@
   // GEÄNDERT: Auswahl lädt NICHT mehr automatisch — sie setzt nur das Überschreib-Ziel für "Speichern".
   // Das verhindert, dass eine versehentliche Auswahl die laufende Playground-Arbeit überschreibt.
   // Bewusstes Laden passiert über den "Laden"-Button.
+  // GEÄNDERT: Button-Anzeige (geschlossenes Setup-Dropdown) aus dem hidden-Wert ableiten
+  function updateSetupButton() {
+    const id = parseInt(document.getElementById('cpSetupSelect').value, 10) || null;
+    const st = id ? (state.setups || []).find(x => x.id === id) : null;
+    const btn = document.getElementById('cpSetupButton');
+    btn.textContent = st ? (st.id + ' — ' + st.name) : '-- Setup --';
+    btn.title = st && st.description ? st.description : 'Setup auswählen';
+  }
+
+  // GEÄNDERT: Custom-Dropdown auf/zu
+  document.getElementById('cpSetupButton').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('cpSetupMenu').classList.toggle('show');
+  });
+  // GEÄNDERT: Item-Klick → hidden-Wert setzen, Menü schließen, change auslösen (bestehende Logik greift)
+  document.getElementById('cpSetupMenu').addEventListener('click', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    const hidden = document.getElementById('cpSetupSelect');
+    hidden.value = item.dataset.id || '';
+    document.getElementById('cpSetupMenu').classList.remove('show');
+    hideDescTip('cpSetupTip');
+    updateSetupButton();
+    hidden.dispatchEvent(new Event('change'));
+  });
+  // GEÄNDERT: Klick außerhalb schließt das Menü (und versteckt den Tooltip)
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('cpSetupDropdown');
+    if (dd && !dd.contains(e.target)) { document.getElementById('cpSetupMenu').classList.remove('show'); hideDescTip('cpSetupTip'); }
+  });
+  // GEÄNDERT: Hover über eine Zeile zeigt die Setup-Beschreibung als schwebenden Tooltip
+  const cpSetupMenuEl = document.getElementById('cpSetupMenu');
+  cpSetupMenuEl.addEventListener('mouseover', (e) => {
+    const item = e.target.closest('.dropdown-item');
+    if (item && item.dataset.id) showDescTip('cpSetupTip', item); else hideDescTip('cpSetupTip');
+  });
+  cpSetupMenuEl.addEventListener('mouseleave', () => hideDescTip('cpSetupTip'));
+  cpSetupMenuEl.addEventListener('scroll', () => hideDescTip('cpSetupTip'));
+
   document.getElementById('cpSetupSelect').addEventListener('change', (e) => {
     state.currentSetupId = parseInt(e.target.value, 10) || null;
   });
@@ -4992,6 +5248,15 @@
       state.indicatorConfigs = Array.isArray(j.data) ? j.data : ((j.data && j.data.items) || []);
       refreshIndCfgOptions();
     } catch (e) { console.warn('Indikator-Configs laden fehlgeschlagen', e); }
+  }
+
+  // GEÄNDERT: Kurzlabel einer Iteration (Version plus Versionsname) für den Konzept-Bereich des Dropdowns
+  function iterationLabel(iterationId) {
+    if (!iterationId) return '';
+    const it = (state.iterations || []).find(i => i.id === iterationId);
+    if (!it) return '';
+    const name = (it.version_name || '').trim();
+    return name ? 'Iteration ' + it.version + ' - ' + name : 'Iteration ' + it.version;
   }
 
   // GEÄNDERT: Custom-Dropdown-Menü neu aufbauen — Iterations-Match zuerst, dann Konzept-Match, dann Rest.
@@ -5022,40 +5287,66 @@
     clear.textContent = '-- Indikator --';
     menu.appendChild(clear);
 
-    // GEÄNDERT: Zeile zeigt nur den Namen; die Beschreibung liegt in dataset.desc und erscheint als schwebender Tooltip beim Hover
-    function addItem(c) {
+    // GEÄNDERT: Zeile zeigt den Namen; die Beschreibung liegt in dataset.desc und erscheint als schwebender Tooltip beim Hover.
+    // Im Konzept-Bereich steht dahinter dezent die Iteration, zu der die Konfiguration gehört.
+    function addItem(c, withIterationHint) {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'dropdown-item fw-bold';
       item.dataset.id = c.id;
       item.dataset.desc = (c.description || '').trim();
       item.textContent = c.name;
+      if (withIterationHint) {
+        const label = iterationLabel(c.strategy_iteration_id);
+        if (label) {
+          const hint = document.createElement('span');
+          hint.className = 'text-secondary fw-normal ms-2';
+          hint.textContent = label;
+          item.appendChild(hint);
+        }
+      }
       menu.appendChild(item);
     }
-    function addGroup(label, items) {
+    function addGroup(label, items, withIterationHint) {
       if (!items.length) return;
       const head = document.createElement('div');
       head.className = 'dropdown-header fw-bold';
       head.style.color = '#2fb344';  // GEÄNDERT: Grün der Setup-ok-Meldung (.cp-status.ok)
       head.textContent = label;
       menu.appendChild(head);
-      items.forEach(addItem);
+      items.forEach(c => addItem(c, withIterationHint));
     }
-    // GEÄNDERT: filtern statt gruppieren — Iteration gewählt -> nur deren Configs; sonst Konzept gewählt -> nur dessen Configs; nichts gewählt -> alle
     // GEÄNDERT: alphabetisch sortieren (numerisch-bewusst: VWMA-4 vor VWMA-10)
-    const visible = (iterationId ? iterMatch : (conceptId ? conceptMatch : rest))
-      .slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }));
-    const groupLabel = iterationId ? 'Diese Iteration' : (conceptId ? 'Dieses Konzept' : null);
-    if (groupLabel && !visible.length) {
-      // gefiltert, aber keine passende Config -> sichtbarer Hinweis statt leerem Menü
-      const hint = document.createElement('div');
-      hint.className = 'dropdown-item text-secondary disabled';
-      hint.textContent = '(keine Konfiguration für ' + (iterationId ? 'diese Iteration' : 'dieses Konzept') + ')';
-      menu.appendChild(hint);
-    } else if (groupLabel) {
-      addGroup(groupLabel, visible);
+    const sortByName = list => list.slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }));
+
+    // GEÄNDERT: zwei Bereiche statt einer gefilterten Liste — oben die Konfigurationen, die genau zur
+    // gewählten Kombination Konzept + Iteration gehören, darunter die übrigen Konfigurationen desselben
+    // Konzepts (an eine andere Iteration gebunden, aber zu dieser hier ebenfalls verwendbar).
+    if (iterationId) {
+      const exact = sortByName(iterMatch);
+      const sameConcept = sortByName(conceptMatch);
+      if (!exact.length && !sameConcept.length) {
+        const hint = document.createElement('div');
+        hint.className = 'dropdown-item text-secondary disabled';
+        hint.textContent = '(keine Konfiguration für dieses Konzept)';
+        menu.appendChild(hint);
+      } else {
+        addGroup('Diese Iteration', exact, false);
+        addGroup('Weitere aus diesem Konzept', sameConcept, true);
+      }
+    } else if (conceptId) {
+      const sameConcept = sortByName(conceptMatch);
+      if (!sameConcept.length) {
+        const hint = document.createElement('div');
+        hint.className = 'dropdown-item text-secondary disabled';
+        hint.textContent = '(keine Konfiguration für dieses Konzept)';
+        menu.appendChild(hint);
+      } else {
+        addGroup('Dieses Konzept', sameConcept, true);
+      }
     } else {
-      visible.forEach(addItem);
+      sortByName(rest).forEach(c => addItem(c, false));
     }
     updateIndCfgButton();
   }
@@ -5091,11 +5382,12 @@
     if (dd && !dd.contains(e.target)) { document.getElementById('cpIndCfgMenu').classList.remove('show'); hideIndCfgTip(); }
   });
 
-  // GEÄNDERT: schwebender Beschreibungs-Tooltip — erscheint rechts neben der gehoverten Zeile, verschiebt nichts
-  function showIndCfgTip(item) {
-    const tip = document.getElementById('cpIndCfgTip');
+  // GEÄNDERT: schwebender Beschreibungs-Tooltip — erscheint rechts neben der gehoverten Zeile, verschiebt nichts.
+  // Wird vom Konzept- und vom Indikator-Konfig-Dropdown genutzt (tipId benennt das jeweilige Tooltip-Element).
+  function showDescTip(tipId, item) {
+    const tip = document.getElementById(tipId);
     const desc = item.dataset.desc || '';
-    if (!desc) { hideIndCfgTip(); return; }
+    if (!desc) { hideDescTip(tipId); return; }
     tip.textContent = desc;
     tip.style.display = 'block';
     const r = item.getBoundingClientRect();
@@ -5106,7 +5398,9 @@
     tip.style.left = left + 'px';
     tip.style.top = r.top + 'px';
   }
-  function hideIndCfgTip() { document.getElementById('cpIndCfgTip').style.display = 'none'; }
+  function hideDescTip(tipId) { document.getElementById(tipId).style.display = 'none'; }
+  const showIndCfgTip = item => showDescTip('cpIndCfgTip', item);
+  const hideIndCfgTip = () => hideDescTip('cpIndCfgTip');
 
   const cpIndCfgMenuEl = document.getElementById('cpIndCfgMenu');
   cpIndCfgMenuEl.addEventListener('mouseover', (e) => {
@@ -5204,10 +5498,11 @@
         const j = await r.json();
         if (!j.error && j.data) {
           state.currentSetupId = urlSetupId;
-          const sel = document.getElementById('cpSetupSelect');
-          if (sel) sel.value = String(urlSetupId);
+          document.getElementById('cpSetupSelect').value = String(urlSetupId);
+          updateSetupButton();
           await applySetupConfig(j.data || {});
-          setStatus('Setup "' + j.data.name + '" geladen', 'ok');
+          // GEÄNDERT: Rückmeldung unter dem Chart (Badge-Platz), wo sie das Schnellbacktest-Ergebnis ablöst
+          setLiteBadgeInfo('Setup "' + j.data.name + '" geladen');
           // GEÄNDERT: Schnellbacktest automatisch starten (identisch zum früheren Dropdown-Verhalten)
           runBacktestLite({ fitAfter: true });
         }
