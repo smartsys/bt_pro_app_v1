@@ -393,6 +393,17 @@
   </div>
 </div>
 
+<!-- Custom Modal: Indikator-Erklärung (Info-Icon in der Indikator-Karte) -->
+<div class="cp-modal-backdrop" id="cpIndInfoModal">
+  <div class="cp-modal-box">
+    <div class="cp-modal-head">
+      <h5 id="cpIndInfoTitle">Indikator</h5>
+      <button type="button" class="btn-close" data-cp-close="cpIndInfoModal"></button>
+    </div>
+    <div class="cp-modal-body cp-ind-info" id="cpIndInfoBody"></div>
+  </div>
+</div>
+
 <!-- Custom Modal: Speichern unter -->
 <div class="cp-modal-backdrop" id="cpSaveModal">
   <div class="cp-modal-box">
@@ -602,6 +613,7 @@
     backgroundPrimitivesByClientId: {}, // GEÄNDERT: Hintergrund-Indikator als Custom Series Primitive (an candleSeries attached) statt HistogramSeries
     bandPrimitivesByClientId: {},        // GEÄNDERT: Kanal-Indikator als gefülltes Band (Custom Series Primitive, an candleSeries attached)
     zonePrimitivesByClientId: {},        // GEÄNDERT: Zonen-Indikator (z.B. Fair Value Gap) als Preis-Rechtecke
+    markerPrimitivesByClientId: {},      // GEÄNDERT: Pivot-Punkte als Kerzen-Marker (an candleSeries attached)
   };
 
   // GEÄNDERT: Vorgabe der Zonen-Länge in Kerzen — entspricht dem Extend-Vorgabewert
@@ -1403,12 +1415,32 @@
   // Baut die Zeilen einer Indikator-Karte: erst der Indikator selbst, darunter seine Einzelteile.
   // Welche Teile es gibt, hängt an der Betriebsart — Linien haben Farbe und Stil, Bandkanten
   // folgen der Richtungsfarbe, Zonen sind Flächen ohne Linieneigenschaften.
+  // GEÄNDERT: Farbstrich im Kartenkopf zeigt das, was tatsächlich gezeichnet wird.
+  // Band/Zonen/Hintergrund bestimmen ihre Farben selbst (BAND_COLORS bzw. zoneColors) — dort
+  // wäre jede Kartenfarbe eine Behauptung ohne Deckung und der Strich bleibt neutral grau.
+  // Bei Linien folgt er der ersten sichtbaren Ausgabereihe; ohne sichtbare Reihe der Vorgabe.
+  const CP_NEUTRAL_COLOR = '#868e96';
+  function indHeaderColor(ind) {
+    if (ind.plot_type === 'band' || ind.plot_type === 'zones' || ind.plot_type === 'background') {
+      return CP_NEUTRAL_COLOR;
+    }
+    const sichtbare = (ind.outputNames || []).find(on => indOutputStyle(ind, on).visible);
+    if (sichtbare) return indOutputStyle(ind, sichtbare).color;
+    return ind.color || CP_NEUTRAL_COLOR;
+  }
+
   function visRowsForIndicator(ind) {
     const isBand = ind.plot_type === 'band';
     const isZones = ind.plot_type === 'zones';
     const isBackground = ind.plot_type === 'background';
     const asLines = !isBand && !isZones && !isBackground;
-    const rows = [visRow({
+    // GEÄNDERT: Bei Linien-Indikatoren mit mehreren Ausgaben entfällt die Zeile "Indikator".
+    // Sie war dort reine Doppelung: das An/Aus dupliziert das Häkchen im Kartenkopf, und
+    // Farbe/Stil/Stärke sind nur eine Vorgabe, die jede Ausgabezeile ohnehin überschreibt.
+    // Bei Band/Zonen/Hintergrund und bei Linien mit genau einer Ausgabe bleibt sie die
+    // einzige Stelle für diese Einstellungen und wird weiterhin gebaut.
+    const hasOutputRows = asLines && (ind.outputNames || []).length > 1;
+    const rows = hasOutputRows ? [] : [visRow({
       cid: ind.client_id,
       label: 'Indikator',
       hint: asLines
@@ -1445,7 +1477,7 @@
           color: `data-zonecolor="${key}"`, colorValue: (ind.zoneColors && ind.zoneColors[key]) || ZONE_COLOR_DEFAULTS[key],
         }));
       });
-    } else if (asLines && (ind.outputNames || []).length > 1) {
+    } else if (hasOutputRows) {
       // Mehr-Output-Indikatoren (ADX mit adx/dx/plus_di/minus_di, MACD, BBANDS): je Ausgabereihe
       // eine eigene Zeile. Ohne eigene Einstellung folgt die Reihe der Zeile "Indikator".
       ind.outputNames.forEach(on => {
@@ -1458,6 +1490,17 @@
           width: `data-outwidth="${on}"`, widthValue: st.lineWidth,
         }));
       });
+    }
+    // GEÄNDERT: Pivot-Indikatoren können ihre Extrempunkte zusätzlich als Pfeil an der Kerze
+    // zeigen. Die Treppenlinien sagen nur, WELCHER Wert ab wann gilt — nicht, an welcher Kerze
+    // der Extrempunkt lag. Farbe erbt der Pfeil von der zugehörigen Ausgabereihe, deshalb
+    // trägt die Zeile nur einen Schalter.
+    if (indHasPivotMarkers(ind)) {
+      rows.push(visRow({
+        cid: ind.client_id, label: 'Pivot-Punkte',
+        hint: 'Pfeil an der Kerze des Extrempunkts — nach unten über dem Pivot-Hoch, nach oben unter dem Pivot-Tief',
+        toggle: 'data-markervisible="1"', toggleOn: ind.markersVisible !== false,
+      }));
     }
     return rows.join('');
   }
@@ -1726,14 +1769,19 @@
           </span>
           <div class="cp-ind-identity">
             <input class="cp-ind-name cp-ind-name-edit" type="text" data-cid="${ind.client_id}" data-name-edit="1" value="${ind.name}" title="Name (editierbar) – wird in Regeln/Chains referenziert">
-            <div class="cp-ind-typename" title="Bibliothek + Indikator (aufgelöste Katalog-ID)">${ind.display_name}</div>
+            <div class="cp-ind-typename" title="Bibliothek + Indikator (aufgelöste Katalog-ID)">
+              <span>${ind.display_name}</span>
+              <button type="button" class="cp-ind-info-btn" data-indinfo="${ind.client_id}" title="Was macht dieser Indikator?">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg>
+              </button>
+            </div>
           </div>
         </div>
         ${inputsHtml ? `<div class="cp-field-group">${inputsHtml}</div>` : ''}
         ${valuesHtml ? `<div class="cp-field-group">${valuesHtml}</div>` : ''}
         <div class="cp-field-group">${tfHtml}</div>
         <div class="cp-ind-vis-group ms-auto">
-          <span class="cp-ind-colorline" style="background:${ind.color}" title="Indikator-Farbe"></span>
+          <span class="cp-ind-colorline" data-colorline="${ind.client_id}" style="background:${indHeaderColor(ind)}" title="Farbe der Darstellung im Chart"></span>
           <input class="form-check-input cp-ind-vis-check mb-0" type="checkbox" data-cid="${ind.client_id}" data-chartvisible="1" title="Im Chart anzeigen" ${ind.chartVisible === false ? '' : 'checked'}>
         </div>
         <div class="cp-ind-advanced">
@@ -2059,6 +2107,11 @@
       ind.outputStyles = { ...(ind.outputStyles || {}) };
       ind.outputStyles[outputName] = { ...(ind.outputStyles[outputName] || {}), [field]: value };
       renderIndRespectingTf(ind);
+      // GEÄNDERT: Der Farbstrich im Kartenkopf folgt der ersten sichtbaren Ausgabereihe und muss
+      // deshalb bei jeder Farb- und Sichtbarkeitsänderung nachziehen. Gezielt statt Panel-Neubau,
+      // damit der Farbwähler beim Ziehen nicht den Fokus verliert.
+      const strich = panel.querySelector(`[data-colorline="${ind.client_id}"]`);
+      if (strich) strich.style.background = indHeaderColor(ind);
     }
     panel.querySelectorAll('[data-outcolor]').forEach(inp => {
       inp.oninput = () => {
@@ -2103,6 +2156,23 @@
         panel.querySelectorAll(`[data-chartvisible][data-cid="${ind.client_id}"]`).forEach(other => { other.checked = inp.checked; });
         removeIndFromChart(ind.client_id);
         if (ind.chartVisible) renderIndRespectingTf(ind);
+      };
+    });
+    // GEÄNDERT: Info-Icon je Indikator — öffnet die Erklärung aus dem Quelltext.
+    panel.querySelectorAll('[data-indinfo]').forEach(btn => {
+      btn.onclick = () => {
+        const ind = state.indicators.find(i => i.client_id === btn.dataset.indinfo);
+        if (ind) openIndicatorInfo(ind);
+      };
+    });
+    // GEÄNDERT: Schalter für die Pivot-Pfeile an den Kerzen.
+    panel.querySelectorAll('[data-markervisible]').forEach(inp => {
+      inp.onchange = () => {
+        const ind = state.indicators.find(i => i.client_id === inp.dataset.cid);
+        if (!ind) return;
+        ind.markersVisible = inp.checked;
+        removeIndFromChart(ind.client_id);
+        renderIndRespectingTf(ind);
       };
     });
     // GEÄNDERT: Ein- und Ausschalter je Ausgabereihe (z.B. nur adx zeigen, plus_di/minus_di/dx aus).
@@ -2184,6 +2254,14 @@
       try { if (state.candleSeries) state.candleSeries.detachPrimitive(zonePrim); } catch (e) {}
       delete state.zonePrimitivesByClientId[clientId];
     }
+    // GEÄNDERT: Pivot-Marker abräumen. Sie hängen an der Kerzen-Serie und würden sonst auch
+    // nach dem Entfernen des Indikators stehen bleiben.
+    if (state.markerPrimitivesByClientId[clientId]) {
+      const markerPrim = state.markerPrimitivesByClientId[clientId];
+      try { markerPrim.setMarkers([]); } catch (e) {}
+      try { markerPrim.detach(); } catch (e) {}
+      delete state.markerPrimitivesByClientId[clientId];
+    }
   }
 
   // GEÄNDERT: Verwaiste Chart-Serien entfernen — client_ids, die noch im Chart getrackt sind,
@@ -2199,6 +2277,7 @@
       ...Object.keys(state.backgroundPrimitivesByClientId), // GEÄNDERT: Hintergrund-Primitive ebenfalls auf Geister prüfen
       ...Object.keys(state.bandPrimitivesByClientId),       // GEÄNDERT: Band-Primitive ebenfalls auf Geister prüfen
       ...Object.keys(state.zonePrimitivesByClientId),       // GEÄNDERT: Zonen-Primitive ebenfalls auf Geister prüfen
+      ...Object.keys(state.markerPrimitivesByClientId),     // GEÄNDERT: Pivot-Marker ebenfalls auf Geister prüfen
     ]);
     tracked.forEach(clientId => { if (!valid.has(clientId)) removeIndFromChart(clientId); });
   }
@@ -2780,6 +2859,80 @@
   // Mehr-Output-Indikatoren (Gaussian Channel mit filt/hband/lband, BBANDS, MACD) verloren
   // ihre übrigen Reihen vorher still.
 
+  // ========= Pivot-Punkte als Kerzen-Marker =========
+  // GEÄNDERT: Ein Pivot steht erst 'right' Kerzen nach seinem Extrempunkt fest. Die Treppenlinie
+  // beginnt deshalb am Bestätigungsbalken und verrät nicht, welche Kerze den Extrempunkt gebildet
+  // hat. Der Marker setzt genau dort einen Pfeil: über der Kerze beim Pivot-Hoch (nach unten
+  // zeigend), unter der Kerze beim Pivot-Tief (nach oben zeigend).
+  // Erkannt wird der Extrempunkt an der Alters-Ausgabe: sie steht am Bestätigungsbalken auf 0,
+  // der Extrempunkt liegt dann genau 'right' Kerzen davor.
+  const PIVOT_MARKER_OUTPUTS = {
+    'custom:dwsSignumPivot': [
+      { level: 'high_level', age: 'high_age', position: 'aboveBar', shape: 'arrowDown' },
+      { level: 'low_level', age: 'low_age', position: 'belowBar', shape: 'arrowUp' },
+    ],
+  };
+
+  function indHasPivotMarkers(ind) {
+    return !!PIVOT_MARKER_OUTPUTS[ind.id];
+  }
+
+  // 'right' kann als Einzelwert oder als Wertebereich (Sweep) dastehen — für die Anzeige gilt
+  // der erste Wert des Bereichs, weil der Chart genau eine Kombination zeigt.
+  function pivotRightBars(ind) {
+    const roh = (ind.params || {}).right;
+    const wert = (roh !== null && typeof roh === 'object') ? roh.start : roh;
+    const n = parseInt(wert, 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function pivotMarkerList(ind, snapSec) {
+    const spezifikationen = PIVOT_MARKER_OUTPUTS[ind.id];
+    if (!spezifikationen || !ind.outputs) return [];
+    const kerzen = state.ohlcv || [];
+    if (!kerzen.length) return [];
+    const rightBars = pivotRightBars(ind);
+    const indexByTime = new Map();
+    kerzen.forEach((k, i) => indexByTime.set(k.time, i));
+    const baseSec = CHART_TF_SEC[document.getElementById('cpTimeframe').value] || 0;
+    const versatzSec = (ind.displayOffset || 0) * baseSec;
+    const marker = [];
+    const gesetzt = new Set();
+    for (const spez of spezifikationen) {
+      const alter = ind.outputs[spez.age];
+      if (!alter || !alter.length) continue;
+      const farbe = indLineColor(ind, spez.level);
+      for (const punkt of alter) {
+        // Alter 0 = hier wurde der Pivot bestätigt.
+        if (punkt.value !== 0) continue;
+        const bestaetigungsIndex = indexByTime.get(punkt.time);
+        if (bestaetigungsIndex == null) continue;
+        const extrem = kerzen[bestaetigungsIndex - rightBars];
+        if (!extrem) continue;
+        let zeit = extrem.time + versatzSec;
+        if (snapSec) zeit = Math.floor(zeit / snapSec) * snapSec;
+        // Bei gröberer Anzeige (z.B. 1d-Rechnung in der Wochenansicht) fallen mehrere
+        // Extrempunkte auf denselben Balken — dort genügt ein Pfeil je Richtung, sonst
+        // stapelt lightweight-charts sie übereinander.
+        const schluessel = zeit + '|' + spez.position;
+        if (gesetzt.has(schluessel)) continue;
+        gesetzt.add(schluessel);
+        marker.push({ time: zeit, position: spez.position, shape: spez.shape, color: farbe });
+      }
+    }
+    // lightweight-charts erwartet die Marker in zeitlicher Reihenfolge.
+    marker.sort((a, b) => a.time - b.time);
+    return marker;
+  }
+
+  function renderPivotMarkers(ind, snapSec) {
+    if (!state.candleSeries || !indHasPivotMarkers(ind)) return;
+    if (ind.markersVisible === false) return;
+    const marker = pivotMarkerList(ind, snapSec);
+    if (!marker.length) return;
+    state.markerPrimitivesByClientId[ind.client_id] = LightweightCharts.createSeriesMarkers(state.candleSeries, marker);
+  }
+
   // Bereitet alle nicht-leeren Outputs auf: erst resampeln (falls Anzeige-TF abweicht), dann
   // um den Anzeige-Versatz schieben. Rückgabe: {output_name -> points[]}.
   function prepareIndicatorSeries(ind, secPerBar, doResample) {
@@ -2798,6 +2951,10 @@
     const keys = Object.keys(prepared);
     if (!keys.length) return;
     const multi = keys.length > 1;
+
+    // GEÄNDERT: Pivot-Pfeile hängen an den Kerzen, nicht an der Indikator-Serie — deshalb vor
+    // der Betriebsart-Verzweigung, damit sie auch im Subplot-Modus stehen bleiben.
+    renderPivotMarkers(ind, snapSec);
 
     // GEÄNDERT: 'band' kann auf 'overlay' zurückfallen, wenn die Kanten nicht erkennbar sind —
     // deshalb eine lokale Betriebsart statt direkt auf ind.plot_type zu verzweigen.
@@ -2953,6 +3110,91 @@
     await loadCatalog();
     renderPicker('');
     openModal('cpPickerModal');
+  }
+
+  // ========= Info-Fenster je Indikator =========
+  // GEÄNDERT: Zu jedem Indikator gehört ein Info-Icon, das erklärt, was er rechnet, welche
+  // Eingaben er braucht, was jeder Parameter bewirkt und was er ausgibt. Die Texte kommen aus
+  // dem Katalog (Feld 'doc'), der sie wiederum aus den Docstrings im Quelltext zieht — es gibt
+  // also keine zweite Textsammlung, die veralten könnte. Bewusst ein Fenster statt eines
+  // Hover-Tooltips: die Erklärungen sind mehrere Absätze plus Tabellen lang und sollen
+  // stehenbleiben und lesbar sein, solange man an den Werten arbeitet.
+  function cpEscapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Docstrings setzen Namen von Reihen, Werten und Skripten in Backticks — im Fenster wird
+  // daraus dieselbe Auszeichnung, die auch die Regeln benutzen. Läuft immer NACH dem Escapen.
+  function cpInlineCode(escaped) {
+    return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+  }
+
+  // Absätze erhalten: Leerzeile trennt Absätze, einfacher Umbruch bleibt ein Umbruch.
+  function cpTextToHtml(text) {
+    if (!text) return '';
+    return cpEscapeHtml(text).split(/\n\s*\n/)
+      .map(abs => `<p>${cpInlineCode(abs.replace(/\n/g, '<br>'))}</p>`).join('');
+  }
+
+  function cpInfoTable(titel, zeilen) {
+    if (!zeilen.length) return '';
+    // Bibliotheks-Indikatoren (TA-Lib, VBT) beschreiben ihre Parameter nicht einzeln. Dann
+    // entfällt die Beschreibungsspalte ganz, statt eine Spalte voller Striche zu zeigen.
+    const mitText = zeilen.some(z => z.text);
+    const koerper = zeilen.map(z => {
+      const beschreibung = mitText ? `<td>${cpInlineCode(cpEscapeHtml(z.text)) || ''}</td>` : '';
+      return `<tr><td class="cp-info-key">${cpEscapeHtml(z.name)}</td>${beschreibung}<td class="cp-info-default">${z.dflt == null ? '' : cpEscapeHtml(z.dflt)}</td></tr>`;
+    }).join('');
+    return `<h6>${titel}</h6><table class="cp-info-table">${koerper}</table>`;
+  }
+
+  function openIndicatorInfo(ind) {
+    const meta = findIndicatorMeta(ind.id) || {};
+    const doc = meta.doc || {};
+    document.getElementById('cpIndInfoTitle').textContent = ind.display_name || ind.id;
+    const teile = [];
+
+    if (doc.was) teile.push(`<h6>Was er zeigt</h6>${cpTextToHtml(doc.was)}`);
+    if (doc.wie) teile.push(`<h6>Wie er rechnet</h6>${cpTextToHtml(doc.wie)}`);
+    if (!doc.was && !doc.wie) {
+      teile.push('<p class="cp-info-leer">Für diesen Indikator liegt keine Beschreibung vor.</p>');
+    }
+
+    // Eingaben nur zeigen, wenn ihre Wahl etwas ändert — bei high/low/close ist der Name
+    // Erklärung genug und die Tabelle wäre nur Ballast.
+    const eingaben = (meta.inputs || [])
+      .filter(n => (doc.inputs || {})[n])
+      .map(n => ({ name: n, text: doc.inputs[n] }));
+    teile.push(cpInfoTable('Eingaben', eingaben));
+
+    // Vorgabewerte stehen im Katalog am Parameter, die Erklärung im Docstring — hier
+    // zusammengeführt. Der Docstring nennt seine Vorgabe oft in Klammern mit; maßgeblich ist
+    // der Wert aus der Factory, deshalb fliegt die Klammer aus dem Text, sobald es eine
+    // eigene Spalte dafür gibt.
+    const parameter = (meta.params || []).map(p => {
+      let text = (doc.params || {})[p.name] || '';
+      if (p.default != null) text = text.replace(/\s*\((?:Vorgabe|Default|default)[^)]*\)/g, '');
+      return { name: p.name, text: text.trim(), dflt: p.default == null ? null : ('Vorgabe ' + p.default) };
+    });
+    teile.push(cpInfoTable('Parameter', parameter));
+
+    // Ausgaben mit Erklärung als Tabelle, ohne (Bibliotheks-Indikatoren) als Aufzählung.
+    const ausgaben = (meta.outputs || []).map(n => ({ name: n, text: (doc.outputs || {})[n] || '' }));
+    if (ausgaben.some(a => a.text)) {
+      teile.push(cpInfoTable('Ausgaben', ausgaben));
+    } else if (ausgaben.length) {
+      teile.push(`<h6>Ausgaben</h6><p class="cp-info-outputs">${ausgaben.map(a => cpEscapeHtml(a.name)).join(' · ')}</p>`);
+    }
+
+    // In den Regeln wird eine Ausgabe als <name>.<ausgabe> referenziert — hier gleich zeigen.
+    if ((meta.outputs || []).length) {
+      teile.push(`<p class="cp-info-hinweis">In Regeln ansprechbar als <code>${cpEscapeHtml(ind.name)}.${cpEscapeHtml(meta.outputs[0])}</code>.</p>`);
+    }
+
+    document.getElementById('cpIndInfoBody').innerHTML = teile.join('');
+    openModal('cpIndInfoModal');
   }
 
   function renderPicker(filter) {
@@ -4065,6 +4307,8 @@
         zone_extend: (i.zoneExtend == null) ? ZONE_EXTEND_DEFAULT : i.zoneExtend,
         zone_colors: { ...ZONE_COLOR_DEFAULTS, ...(i.zoneColors || {}) },
         zone_visible: { ...ZONE_VISIBLE_DEFAULTS, ...(i.zoneVisible || {}) },
+        // GEÄNDERT: Sichtbarkeit der Pivot-Pfeile mitspeichern
+        markers_visible: i.markersVisible !== false,
       };
     });
     // GEÄNDERT: Schritt 4c — Stops als _stops in die Indikator-Config (Wire-Format-Vertrag)
@@ -4194,6 +4438,8 @@
         zoneExtend: (uiInd.zone_extend == null) ? ZONE_EXTEND_DEFAULT : uiInd.zone_extend,
         zoneColors: { ...ZONE_COLOR_DEFAULTS, ...(uiInd.zone_colors || {}) },
         zoneVisible: { ...ZONE_VISIBLE_DEFAULTS, ...(uiInd.zone_visible || {}) },
+        // GEÄNDERT: Pivot-Pfeile laden (an für Alt-Setups ohne das Feld)
+        markersVisible: uiInd.markers_visible !== false,
         // GEÄNDERT: enabled laden (Default true für Alt-Setups ohne Feld)
         enabled: entry.enabled !== false,
         outputs: null,

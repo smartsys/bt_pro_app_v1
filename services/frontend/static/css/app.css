@@ -1177,6 +1177,69 @@ tr.dt-hasChild td.dt-control::before {
   font-size: 0.7rem;
   color: var(--tblr-muted, #6b7280);
   padding-left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Info-Icon neben dem Indikator-Typ: öffnet die Erklärung aus dem Quelltext */
+.cp-ind-info-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 0;
+  color: var(--tblr-muted, #6b7280);
+  cursor: pointer;
+  opacity: 0.65;
+}
+.cp-ind-info-btn:hover {
+  opacity: 1;
+  color: var(--tblr-primary, #2fb344);
+}
+
+/* Inhalt des Indikator-Info-Fensters */
+.cp-ind-info p {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+.cp-ind-info .cp-info-summary {
+  font-weight: 600;
+}
+.cp-ind-info h6 {
+  margin: 14px 0 6px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.cp-info-table td {
+  padding: 3px 8px 3px 0;
+  vertical-align: top;
+  border-top: 1px solid rgba(128, 128, 128, 0.18);
+}
+.cp-info-table .cp-info-key {
+  white-space: nowrap;
+  font-family: var(--tblr-font-monospace, monospace);
+  /* Namensspalte so schmal wie ihr Inhalt, damit Beschreibungen direkt daneben stehen */
+  width: 1%;
+}
+.cp-info-table .cp-info-default {
+  white-space: nowrap;
+  color: var(--tblr-muted, #6b7280);
+}
+.cp-info-outputs {
+  font-family: var(--tblr-font-monospace, monospace);
+  font-size: 0.8rem;
+}
+.cp-info-returns,
+.cp-info-hinweis,
+.cp-info-leer {
+  color: var(--tblr-muted, #6b7280);
+  font-size: 0.8rem;
 }
 .cp-group-header {
   font-weight: 600;

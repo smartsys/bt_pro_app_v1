@@ -35,6 +35,7 @@ from services.api.redis_conn import (
     get_redis_connection,
 )
 # GEÄNDERT: Genau-eines-Regel für die Raster-Quelle des Preflights
+from services.api.utils.indicator_docs import build_indicator_doc
 from services.api.utils.indicator_source import require_exactly_one_indicator_source
 from user_data.strategies.generic.indicator_factory import (
     STOP_PARAM_KEYS,
@@ -420,6 +421,8 @@ def _build_catalog() -> dict:
             'params': [{'name': p, 'default': defaults.get(p)} for p in params],
             'outputs': outputs,
             'plot_type': _guess_plot_type(full_id, outputs, full_id),
+            # GEÄNDERT: Beschreibungstext fürs Info-Fenster im Playground.
+            'doc': build_indicator_doc(factory, full_id, inputs, params, outputs),
         })
 
     # Custom-Indikatoren
@@ -443,6 +446,8 @@ def _build_catalog() -> dict:
             ],
             'outputs': outputs,
             'plot_type': _guess_plot_type(cname, outputs, full_id),
+            # GEÄNDERT: Beschreibungstext fürs Info-Fenster im Playground.
+            'doc': build_indicator_doc(factory, full_id, inputs, params, outputs),
         })
 
     # Custom-Gruppe zuerst, dann alphabetisch
