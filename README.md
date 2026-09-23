@@ -39,7 +39,7 @@ Der Beispiel-Prompt oben ist der große Auftrag — aber die KI kann weit mehr a
 **Beispiele für Aufträge:**
 
 - *„Lade ETHUSDT und SOLUSDT im 1-Stunden-Timeframe herunter."*
-- *„Leg mir eine Strategie an: Einstieg, wenn der RSI(14) unter 30 fällt und der Kurs über der EMA 200 liegt. Ausstieg, wenn der RSI über 70 steigt. Stop-Loss 2 %."*
+- *„Leg mir eine Strategie an: Einstieg, wenn der RSI(14) unter 30 fällt und der Kurs über der EMA 200 liegt. Ausstieg, wenn der RSI über 70 steigt. Stop-Loss 2 %. Speicher sie mir als Setup."*
 - *„Teste die RSI-Längen von 7 bis 21 und die EMA-Längen von 100 bis 300 in 50er-Schritten."*
 - *„Leg ein Test-Set mit BTC, ETH und SOL auf 4h an, jeweils von 2022 bis 2024, und lass die Strategie dagegen laufen."*
 - *„Zeig mir die fünf besten Kombinationen nach Sharpe mit mindestens 30 Trades."*
@@ -51,21 +51,59 @@ Der Beispiel-Prompt oben ist der große Auftrag — aber die KI kann weit mehr a
 
 Alles, was die KI anlegt, siehst du sofort in der Oberfläche und kannst es dort weiterbearbeiten — und umgekehrt findet die KI alles, was du von Hand angelegt hast.
 
-## Funktionsumfang
+## Was du mit der App machen kannst
 
-- **Chart Playground** — zentraler Arbeitsbereich, in dem eine Strategie als strukturierte JSON-Spec definiert wird (kein Python-Code nötig): Indikatoren, Entry-/Exit-Regeln, Stop-Loss/Take-Profit, Portfolio-Parameter. Direkt im Chart lässt sich ein **Schnellbacktest** fahren (synchron, ohne DB-Schreibvorgang) und das Ergebnis sofort visuell prüfen; die fertige Spec wird als Iteration gespeichert und anschließend als vollständiger, persistierender Lauf gestartet (siehe „Backtest starten"). Dank der vektorisierten VectorBT-Pro-Engine ist das sehr schnell — rund 30.000 Parameter-Kombinationen über einen Zeitraum von zwei Jahren in etwa 15 Minuten.
-- **Multiparameter-Läufe** — ein einzelner Lauf spannt ein Parameter-Raster über das Kreuzprodukt mehrerer Werte auf (z.B. 5 SMA-Längen × 3 Multiplikatoren = 15 Kombinationen oder auch 50.000 Kombinationen) 
-- **Strategie-Konzepte und Iterationen** — eine **Strategie** (Konzept) ist die Trading-Idee (z.B. eine Teststrategie). Eine **Iteration** ist eine konkrete, versionierte und ausführbare Umsetzung dieser Idee — der vollständige, unveränderliche Snapshot aus Indikatoren und Regeln. Jede strukturelle Änderung erzeugt eine neue Iteration (mit Verweis auf den Vorgänger), sodass jeder Backtest reproduzierbar einer exakten Strategie-Version zugeordnet bleibt.
-- **Indikator-Konfiguration** — legt für eine Iteration das **Parameter-Raster** fest, das ein Multiparameter-Lauf abfährt: je Indikator-Parameter ein fester Wert, eine Liste oder eine Range; das Kreuzprodukt ergibt die getesteten Kombinationen. Hier liegen auch die **Stops** (Take-Profit, Stop-Loss, Trailing-Stop, Time-Stop), ebenfalls sweep-fähig. Die Indikatoren selbst sind Teil der Iteration — die Konfiguration bestimmt nur, mit welchen Werten sie durchgerechnet werden.
-- **Backtest-Konfiguration** — definiert **Marktdaten und Portfolio** eines Laufs: Symbol, Exchange, Timeframe und Zeitraum sowie Startkapital, Positionsgröße/-typ und Gebühren. Unabhängig von der Strategie — dieselbe Iteration lässt sich gegen beliebige Backtest-Konfigurationen rechnen.
-- **Backtest starten** — einen einzelnen Lauf anstoßen: eine Iteration gegen eine gewählte Backtest- und Indikator-Konfiguration rechnen (asynchron über die Queue).
-- **Backtest-TestSet starten** — eine Iteration in einem Rutsch gegen alle Backtest-Konfigurationen eines Test-Sets laufen lassen.
-- **Runs** — ein Run ist die Ausführung einer Kombination aus **Konzept-Iteration, Backtest-Konfiguration und Indikator-Konfiguration**. Je nach Konfiguration entsteht dabei ein einzelnes Result oder — bei einem Multiparameter-Raster — viele Results in einem Durchlauf. Die Runs-Übersicht zeigt alle Läufe (laufend und abgeschlossen) mit Status und Fortschritt.
-- **Results** — ein Result ist das Ergebnis genau einer Parameter-Kombination (Kennzahlen wie Gesamtrendite, Sharpe, Drawdown, Trades). Alle Results bleiben dauerhaft gespeichert und sind durchsuchbar.
-- **Test-Sets** — ein Test-Set ist eine benannte Liste mehrerer Backtest-Konfigurationen (z.B. verschiedene Symbole und Marktphasen). Eine Iteration läuft gegen das ganze Set unter identischen Bedingungen — so wird sie über mehrere Szenarien hinweg fair und reproduzierbar bewertet.
-- **Leaderboard** — eigene Rangliste zum **Vergleich mehrerer Strategien bzw. Iterationen**. Sie speist sich aus den Ergebnissen von Test-Set-Läufen, deren Test-Set dafür freigeschaltet ist (Opt-in-Flag), und ist sortierbar nach Gesamtrendite, Sharpe, Drawdown u.a.
-- **OHLC-Daten-Management** — Kursdaten (OHLCV) werden über die Konfiguration als Hintergrund-Jobs von Binance heruntergeladen oder aktualisiert (`vbt.BinanceData`, asynchron über die RQ-Queue) und als HDF5-Dateien abgelegt; der Job-Status ist nachverfolgbar.
-- **Wissens-Index (Vault-Embedding)** — der verknüpfte Obsidian-Vault wird eingebettet und indiziert (PostgreSQL + pgvector); ein Dashboard zeigt Index- und Reindex-Status sowie die indizierten Dateien. Die **semantische Abfrage** selbst läuft (noch) nicht über die Oberfläche, sondern über den Skill `ds-strategie-session` / `toolbox.py` (`knowledge:"…"` → `GET /api/knowledge/search`).
+Die Oberfläche ist zum **Ansehen, Prüfen und Vergleichen** gebaut. Das Anlegen überlässt du am besten deiner KI — sie kennt die Indikatoren, ihre Parameter und die Regel-Syntax, die du dafür sonst erst lernen müsstest.
+
+### Strategie beschreiben — die KI legt dir ein Setup an
+
+Das ist die Standard-Arbeitsweise: Du sagst der KI in deinen Worten, was du testen möchtest, und lässt dir das Ergebnis als **Setup** speichern.
+
+- *„Bau mir eine Strategie für ETHUSDT auf 1h: Einstieg, wenn die EMA 20 die EMA 50 von unten kreuzt und der RSI unter 70 liegt. Ausstieg bei der Gegenkreuzung, Stop-Loss 2 %. Speicher sie mir als Setup."*
+
+Ein Setup hält alles fest, was zur Strategie gehört: Marktdaten, Indikatoren mit ihren Werten, Einstiegs- und Ausstiegsregeln, Stops und die Darstellung im Chart. Jedes Setup hat eine eigene Adresse — du öffnest es im Playground und siehst die Strategie sofort im Chart.
+
+Damit ist das Setup der **Übergabepunkt zwischen dir und der KI** — in beide Richtungen. Hast du im Playground etwas verändert, speicherst du es als Setup und sagst: *„Schau dir Setup 12 an und teste die EMA-Längen durch."*
+
+### Im Chart ansehen und feinjustieren — der Chart Playground
+
+Im Playground siehst du, was die Strategie tut:
+
+- **Schnellbacktest per Klick:** Die Trades erscheinen direkt im Chart, dazu die Equity-Kurve. So siehst du sofort, ob die Idee überhaupt trägt.
+- **Werte ändern und neu rechnen:** Parameter anpassen, einzelne Regelblöcke oder Indikatoren zum Ausprobieren abschalten, Stops verändern — und das Ergebnis direkt wieder im Chart sehen.
+- **Darstellung nach Wunsch:** Farbe, Linienstil und Stärke jeder Linie; Kanäle erscheinen als gefülltes Band, Zonen als Flächen. Jeder Indikator kann auf einem eigenen Timeframe rechnen (z.B. 4h-Trendfilter im 30-Minuten-Chart).
+- **Werkzeuge im Chart:** Lineal zum Messen von Preisabständen, Long/Short getrennt ein- und ausblendbar, per Pfeil zum nächsten Symbol wechseln.
+
+Natürlich kannst du eine Strategie auch komplett von Hand im Playground zusammenklicken — Indikatoren aus allen Bibliotheken, die VectorBT Pro mitbringt, Regeln mit UND und ODER. Das ist aber mühsam und setzt voraus, dass du die Indikatoren und ihre Parameter gut kennst.
+
+### Indikator-Konfiguration — viele Parameter auf einmal testen
+
+Statt jede Einstellung einzeln auszuprobieren, gibst du für jeden Parameter einen Wertebereich an — z.B. EMA-Länge von 10 bis 100 in 5er-Schritten. Ein **Multiparameter-Lauf** rechnet dann jede Kombination durch, auch die Stops. Die Kombinationen zählt die App vorher für dich. Dank VectorBT Pro geht das schnell: rund 30.000 Kombinationen über zwei Jahre Kursdaten in etwa 15 Minuten.
+
+Die Wertebereiche speicherst du als **Indikator-Konfiguration**, Markt und Portfolio (Symbol, Zeitraum, Startkapital, Positionsgröße, Gebühren) als **Backtest-Konfiguration**. Beide sind unabhängig von der Strategie — dieselbe Strategie lässt sich mit beliebigen Werten und gegen beliebige Märkte rechnen.
+
+### Test-Sets — über Märkte und Zeiträume prüfen
+
+Eine Strategie, die nur auf BTC im letzten Jahr funktioniert, ist wenig wert. Ein **Test-Set** fasst mehrere Backtest-Konfigurationen zusammen — verschiedene Symbole, Bullen- und Bärenphasen, Seitwärtsmärkte — und rechnet deine Strategie mit einem Klick gegen alle unter identischen Bedingungen. Die Grundausstattung bringt fertige Test-Sets mit.
+
+### Ergebnisse auswerten
+
+- **Runs:** alle Läufe mit Status und Fortschritt, laufende und abgeschlossene.
+- **Results:** jede einzelne Parameter-Kombination mit Kennzahlen wie Rendite, Sharpe, Drawdown, Profit Factor und Trefferquote — filter- und sortierbar, dauerhaft gespeichert. Gute Ergebnisse markierst du mit einem Stern.
+- **Analyse eines Laufs:** Zusammenfassung, Top 10, Verteilung von Gewinnen und Verlusten, Heatmaps (auch als 3D) — so siehst du, ob gute Werte ein stabiles Plateau bilden oder nur ein zufälliger Ausreißer sind.
+- **Einzelergebnis im Detail:** Chart mit allen Trades, Equity und Drawdown, vollständige Statistik, Trade-, Order- und Positionslisten. Mit **Walk Forward** prüfst du per Klick, wie dieselben Werte in den folgenden 3, 6 oder 12 Monaten abgeschnitten hätten. Mit „In Playground öffnen“ landest du direkt wieder im Chart.
+
+### Strategien weiterentwickeln und vergleichen
+
+- **Konzepte und Iterationen:** Ein **Konzept** ist deine Trading-Idee, eine **Iteration** eine konkrete Fassung davon. Jede Änderung an der Strategie wird eine neue Iteration mit Verweis auf die vorige — du kannst jederzeit nachvollziehen, welches Ergebnis zu welcher Fassung gehört, und zu einer älteren zurückkehren.
+- **Leaderboard:** eine Rangliste, in der du Strategien und Iterationen über lange, vergleichbare Zeiträume gegenüberstellst — sortierbar nach Rendite, Sharpe, Drawdown und mehr. So kommt etwas hinein: Setz beim Test-Set den Haken **„Leaderboard-Eintrag erstellen“**. Jeder abgeschlossene Lauf dieses Test-Sets landet dann automatisch im Leaderboard — mit der besten Parameter-Kombination je Markt und den zusammengefassten Kennzahlen über alle Märkte des Sets.
+
+### Rund um die App
+
+- **Kursdaten:** Beliebige Binance-Symbole und Timeframes herunterladen und aktualisieren, ohne API-Key. Der Download läuft im Hintergrund.
+- **Job-Übersicht:** zeigt, welche Worker gerade rechnen und welche Aufträge noch warten.
+- **Datenbank-Sicherung:** den aktuellen Stand (Strategien, Konfigurationen, Ergebnisse) mit einem Klick sichern und später zurückspielen.
+- **Wissens-Index:** Deine Strategie-Notizen (Obsidian-Vault) werden durchsuchbar gemacht, damit die KI bei neuen Aufträgen auf frühere Erkenntnisse zurückgreifen kann.
 
 ![Chart Playground](documentation/knowledge/assets/playground.png)
 *Chart Playground — zentraler Arbeitsbereich*
