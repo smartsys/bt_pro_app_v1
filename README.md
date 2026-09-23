@@ -26,6 +26,31 @@ Strategie schreibst. Fahre nur fort, wenn die Metriken der Strategie eine echte 
 Du kannst gerne Optimierungen nutzen, um die Ergebnisse zu verbessern. Stelle sicher, dass die Ergebnisse nicht overfitted (überangepasst) sind.
 Mache so lange weiter, bis du Strategien findest, die die geforderten Kriterien vollständig erfüllen. Unterbrich mich in der Zwischenzeit nicht mit Rückfragen.
 
+## Die ganze App mit der KI bedienen
+
+Der Beispiel-Prompt oben ist der große Auftrag — aber die KI kann weit mehr als das: **Alles, was du in der Oberfläche anklicken kannst, erledigt sie auch für dich.** Strategien anlegen, Indikatoren und Regeln festlegen, Parameter-Raster aufspannen, Kursdaten laden, Backtests und Test-Set-Läufe starten, Ergebnisse auswerten und vergleichen. Du musst dafür weder die JSON-Spec einer Strategie kennen noch eine Konfiguration von Hand ausfüllen.
+
+**So gehst du vor:**
+
+1. App installieren und starten (siehe [Installation](#installation-lokal)).
+2. Deine KI im Projektordner öffnen — Claude Code findet den mitgelieferten Skill von allein, anderen KI-Werkzeugen gibst du den Skill-Ordner mit (siehe [Schritt 4](#4-skill---ki-anbinden)).
+3. In deinen eigenen Worten sagen, was du haben oder getestet sehen möchtest. Die KI legt alles Nötige an, startet die Läufe und berichtet dir das Ergebnis.
+
+**Beispiele für Aufträge:**
+
+- *„Lade ETHUSDT und SOLUSDT im 1-Stunden-Timeframe herunter."*
+- *„Leg mir eine Strategie an: Einstieg, wenn der RSI(14) unter 30 fällt und der Kurs über der EMA 200 liegt. Ausstieg, wenn der RSI über 70 steigt. Stop-Loss 2 %."*
+- *„Teste die RSI-Längen von 7 bis 21 und die EMA-Längen von 100 bis 300 in 50er-Schritten."*
+- *„Leg ein Test-Set mit BTC, ETH und SOL auf 4h an, jeweils von 2022 bis 2024, und lass die Strategie dagegen laufen."*
+- *„Zeig mir die fünf besten Kombinationen nach Sharpe mit mindestens 30 Trades."*
+- *„Ist das beste Ergebnis statistisch signifikant oder nur Zufall?"*
+- *„Vergleich die aktuelle Iteration mit der vorherigen."*
+- *„Schau dir das hier an: http://localhost:5570/…"* — du kannst der KI einfach die Adresse einer Seite aus der App geben, sie liest das Objekt dahinter selbst ein.
+
+**Zwei Arbeitsweisen:** Einzelne Aufträge wie oben erledigt die KI Schritt für Schritt und meldet sich danach zurück. Gibst du ihr dagegen ein **Ziel** — wie im Beispiel-Prompt —, arbeitet sie eigenständig in Schleifen: recherchieren, Strategie bauen, testen, bewerten, verbessern, bis das Ziel erreicht ist oder sie begründet aufhört.
+
+Alles, was die KI anlegt, siehst du sofort in der Oberfläche und kannst es dort weiterbearbeiten — und umgekehrt findet die KI alles, was du von Hand angelegt hast.
+
 ## Funktionsumfang
 
 - **Chart Playground** — zentraler Arbeitsbereich, in dem eine Strategie als strukturierte JSON-Spec definiert wird (kein Python-Code nötig): Indikatoren, Entry-/Exit-Regeln, Stop-Loss/Take-Profit, Portfolio-Parameter. Direkt im Chart lässt sich ein **Schnellbacktest** fahren (synchron, ohne DB-Schreibvorgang) und das Ergebnis sofort visuell prüfen; die fertige Spec wird als Iteration gespeichert und anschließend als vollständiger, persistierender Lauf gestartet (siehe „Backtest starten"). Dank der vektorisierten VectorBT-Pro-Engine ist das sehr schnell — rund 30.000 Parameter-Kombinationen über einen Zeitraum von zwei Jahren in etwa 15 Minuten.
@@ -122,7 +147,7 @@ Nach kurzer Startzeit ist die App erreichbar (der App-Container migriert die Dat
 
 ### 4. SKILL - KI anbinden
 
-Bedient wird die App von der KI über den mitgelieferten Skill-Ordner **`.claude/skills/ds-strategie-session/`** — darin der Entwicklungs-Loop (`SKILL.md`) und `toolbox.py`, das jedes App-Objekt (Iterationen, Configs, Runs, Results, Test-Sets, Leaderboard) über die API anlegt, startet und ausliest.
+Bedient wird die App von der KI über den mitgelieferten Skill-Ordner **`.claude/skills/ds-strategie-session/`** — darin der Entwicklungs-Loop (`SKILL.md`) und `scripts/toolbox.py`, das jedes App-Objekt (Iterationen, Configs, Runs, Results, Test-Sets, Leaderboard) über die API anlegt, startet und ausliest.
 
 Claude Code findet den Ordner im Projekt-Root von allein; bei anderen KI-Werkzeugen legst du ihn dort ab, wo sie ihre Skills erwarten. Mehr ist nicht nötig: `toolbox.py` braucht nur ein `python3` ohne Zusatzpakete und spricht standardmäßig `http://localhost:5570` an (abweichender Port über `VBT_APP_BASE_URL`).
 
