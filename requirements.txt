@@ -51,9 +51,11 @@ kaleido==1.2.0
 kiwisolver==1.5.0
 llvmlite==0.44.0
 logistro==2.0.1
+markdown-it-py==4.2.0
 matplotlib==3.10.8
 matplotlib-inline==0.2.1
 mcp==1.26.0
+mdurl==0.1.2
 multidict==6.7.1
 mypy_extensions==1.1.0
 narwhals==2.18.1
@@ -98,11 +100,13 @@ redis==7.4.0
 referencing==0.37.0
 regex==2026.3.32
 requests==2.33.0
+rich==15.0.0
 rpds-py==0.30.0
 schedule==1.2.2
 scikit-learn==1.8.0
 scipy==1.17.1
 setuptools==82.0.1
+shellingham==1.5.4
 simplejson==3.20.2
 six==1.17.0
 psycopg2-binary==2.9.11
@@ -117,13 +121,14 @@ threadpoolctl==3.6.0
 tornado==6.5.5
 tqdm==4.67.3
 traitlets==5.14.3
+typer==0.27.2
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
 tzlocal==5.3.1
 urllib3==2.6.3
 uvicorn==0.42.0
-vectorbtpro @ git+https://github.com/polakowo/vectorbt.pro.git@286ef59b6ce30bf8f0dfdf2493110ed8715be0dc
+vectorbtpro @ git+https://github.com/polakowo/vectorbt.pro.git@7e2c8e86425d28ed7d97a3e07fd548b0fc694323
 wcwidth==0.6.0
 websocket-client==1.9.0
 websockets==16.0

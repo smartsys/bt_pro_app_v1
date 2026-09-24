@@ -27,10 +27,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # VBT Pro vom Original installieren — Zugang per SSH-Key als BuildKit-Secret (kein Token, Key nie im Image).
 # Wer baut, gibt seinen eigenen Key mit: --secret id=ssh_key,src=<pfad-zum-key> (eigene VBT-Pro-Lizenz noetig).
+# GEÄNDERT: Version fest auf v2026.6.27 (Commit 7e2c8e8) — ohne Festlegung holte jeder Neubau
+# still den neuesten Stand und veränderte damit die Rechenergebnisse. 2026.6.27 ist der Stand,
+# den das Image vom 31.08.2026 enthielt. Gleicher Stand wie in requirements.txt (lokales venv);
+# ein Versionswechsel ist eine bewusste Entscheidung.
 RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN --mount=type=secret,id=ssh_key \
     GIT_SSH_COMMAND='ssh -i /run/secrets/ssh_key -o IdentitiesOnly=yes' \
-    pip install --no-cache-dir git+ssh://git@github.com/polakowo/vectorbt.pro.git
+    pip install --no-cache-dir git+ssh://git@github.com/polakowo/vectorbt.pro.git@7e2c8e86425d28ed7d97a3e07fd548b0fc694323
 
 # Arbeitsverzeichnis fuer gemounteten Code
 WORKDIR /workspace
