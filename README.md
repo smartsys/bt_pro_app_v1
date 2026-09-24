@@ -2,6 +2,8 @@
 
 # BT Pro App - Werkbank und GUI für VectorBT Pro
 
+*English version: [README.en.md](README.en.md)*
+
 **Research-Werkbank zum iterativen Entwickeln und Backtesten algorithmischer Crypto-Trading-Strategien** — auf Basis von [VectorBT Pro](https://vectorbt.pro/).
 
 Kern-Workflow: Strategie-Idee formulieren → Parameter definieren → Backtest gegen historische Kursdaten ausführen → Ergebnis auswerten → Hypothese verfeinern → wiederholen.
