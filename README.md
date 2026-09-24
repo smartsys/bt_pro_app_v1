@@ -55,7 +55,7 @@ Alles, was die KI anlegt, siehst du sofort in der Oberfläche und kannst es dort
 
 Die Oberfläche ist zum **Ansehen, Prüfen und Vergleichen** gebaut. Das Anlegen überlässt du am besten deiner KI — sie kennt die Indikatoren, ihre Parameter und die Regel-Syntax, die du dafür sonst erst lernen müsstest.
 
-### Strategie beschreiben — die KI legt dir ein Setup an
+### Setup — die KI legt dir deine Strategie an
 
 Das ist die Standard-Arbeitsweise: Du sagst der KI in deinen Worten, was du testen möchtest, und lässt dir das Ergebnis als **Setup** speichern.
 
@@ -65,7 +65,7 @@ Ein Setup hält alles fest, was zur Strategie gehört: Marktdaten, Indikatoren m
 
 Damit ist das Setup der **Übergabepunkt zwischen dir und der KI** — in beide Richtungen. Hast du im Playground etwas verändert, speicherst du es als Setup und sagst: *„Schau dir Setup 12 an und teste die EMA-Längen durch."*
 
-### Im Chart ansehen und feinjustieren — der Chart Playground
+### Chart Playground — im Chart ansehen und feinjustieren
 
 Im Playground siehst du, was die Strategie tut:
 
