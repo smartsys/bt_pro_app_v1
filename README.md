@@ -298,3 +298,5 @@ Die Nutzung erfolgt vollständig auf eigenes Risiko. Es wird **keinerlei Garanti
 Dieses Projekt steht unter der **Apache License 2.0** — siehe [`LICENSE`](LICENSE).
 
 Die Lizenz deckt ausschließlich den Code **dieses** Repos. **VectorBT Pro ist davon nicht erfasst**: Es ist ein separates, kommerzielles Produkt unter eigener Lizenz und liegt nicht im Repo (siehe [Voraussetzungen](#vectorbt-pro--notwendiges-externes-framework)). Jede Nutzung von VBT Pro erfordert eine eigene gültige Lizenz.
+
+Dies ist ein unabhängiges Projekt. Es ist weder mit VectorBT PRO bzw. Oleg Polakow verbunden noch von ihm unterstützt oder empfohlen. VECTORBT® ist eine eingetragene Marke von Oleg Polakow.
